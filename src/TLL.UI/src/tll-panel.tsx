@@ -195,6 +195,13 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
           {t("Panel.Release", "Return to the game's control")}
         </Button>
       </div>
+      <div className={styles.row}>
+        <Hint text={t("Panel.DiagnoseHint", "Writes every lane, its signal, and why the first vehicle waits, to Logs/TLL.log. Useful when vehicles stand at green.")}>
+          <Button variant="flat" className={styles.wide} onSelect={actions.diagnose}>
+            {t("Panel.Diagnose", "Write diagnostics to the log")}
+          </Button>
+        </Hint>
+      </div>
     </div>
   );
 };

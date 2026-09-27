@@ -1,0 +1,141 @@
+using System.Text;
+using Game.Creatures;
+using Game.Net;
+using Game.Objects;
+using TLL.Components;
+using TLL.Core;
+using Unity.Entities;
+using Unity.Mathematics;
+
+namespace TLL.UI
+{
+    /// <summary>
+    /// Writes everything that decides whether traffic moves at one junction
+    /// into the log: the controller, every signalled lane with its signal,
+    /// and for the vehicle at the front of each approach why the game holds
+    /// it (the vehicle's Blocker: a signal, the vehicle ahead, crossing
+    /// traffic, ...). For reports of vehicles standing at green.
+    /// </summary>
+    internal static class JunctionDiagnostics
+    {
+        public static string Describe(EntityManager em, Entity node)
+        {
+            var text = new StringBuilder();
+            text.Append($"Diagnostics for junction {node}\n");
+            if (!em.HasComponent<ManagedJunction>(node))
+            {
+                text.Append("  not managed by TLL\n");
+                return text.ToString();
+            }
+            ManagedJunction junction = em.GetComponentData<ManagedJunction>(node);
+            text.Append($"  origin {junction.Origin}, mode {junction.Mode}, layout {junction.Strategy}\n");
+            if (em.HasComponent<JunctionRuntime>(node))
+            {
+                var s = em.GetComponentData<JunctionRuntime>(node).State;
+                text.Append($"  stage {s.Stage}, phase {s.Phase + 1}, next {s.Next + 1}, {SimTime.ToSeconds(s.StageSteps):0} s in stage, walk {s.Walk}\n");
+            }
+
+            DynamicBuffer<JunctionMovement> movements = em.GetBuffer<JunctionMovement>(node, true);
+            var edges = Systems.NetGeometry.ConnectedEdges(em, node);
+            DynamicBuffer<JunctionPhase> phases = em.GetBuffer<JunctionPhase>(node, true);
+            for (int p = 0; p < phases.Length; p++)
+            {
+                var d = phases[p].Data;
+                text.Append($"  phase {p + 1}: demand {d.Demand:0.#}, pressure {d.Pressure:0.#}, approaching {d.Approaching:0.#}, call {d.PedestrianCall}, waiting {SimTime.ToSeconds(d.WaitSteps):0} s, flags {d.Flags}\n");
+            }
+
+            DynamicBuffer<JunctionLane> lanes = em.GetBuffer<JunctionLane>(node, true);
+            for (int l = 0; l < lanes.Length; l++)
+            {
+                JunctionLane lane = lanes[l];
+                string movement = lane.Movement < movements.Length
+                    ? $"{edges.IndexOf(movements[lane.Movement].Source)}->{edges.IndexOf(movements[lane.Movement].Target)} {movements[lane.Movement].Kind}"
+                    : "?";
+                text.Append($"  lane {lane.Lane} [{movement}] flags {lane.Flags}");
+                if (em.HasComponent<LaneSignal>(lane.Lane))
+                {
+                    LaneSignal signal = em.GetComponentData<LaneSignal>(lane.Lane);
+                    text.Append($", signal {signal.m_Signal}, groups 0x{signal.m_GroupMask:x4}");
+                }
+                if (em.HasBuffer<LaneObject>(lane.Lane))
+                    text.Append($", {em.GetBuffer<LaneObject>(lane.Lane, true).Length} inside");
+                text.Append('\n');
+                if (lane.Approach != Entity.Null && !SeenBefore(lanes, l))
+                    text.Append($"    approach {lane.Approach}: {Front(em, lane.Approach)}\n");
+                if (lane.Exit != Entity.Null)
+                    text.Append($"    exit {lane.Exit}: {Fill(em, lane.Exit)}\n");
+            }
+            return text.ToString();
+        }
+
+        private static bool SeenBefore(DynamicBuffer<JunctionLane> lanes, int index)
+        {
+            for (int k = 0; k < index; k++)
+            {
+                if (lanes[k].Approach == lanes[index].Approach)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>The vehicles on a lane, and what holds the one nearest its end.</summary>
+        private static string Front(EntityManager em, Entity lane)
+        {
+            if (!em.HasBuffer<LaneObject>(lane) || !em.HasComponent<Curve>(lane))
+                return "no data";
+            DynamicBuffer<LaneObject> objects = em.GetBuffer<LaneObject>(lane, true);
+            if (objects.Length == 0)
+                return "empty";
+            float length = em.GetComponentData<Curve>(lane).m_Length;
+            int front = 0;
+            int standing = 0;
+            for (int i = 0; i < objects.Length; i++)
+            {
+                if (math.cmax(objects[i].m_CurvePosition) > math.cmax(objects[front].m_CurvePosition))
+                    front = i;
+                if (Speed(em, objects[i].m_LaneObject) < 1.5f)
+                    standing++;
+            }
+            Entity vehicle = objects[front].m_LaneObject;
+            float distance = (1f - math.cmax(objects[front].m_CurvePosition)) * length;
+            var text = new StringBuilder($"{objects.Length} vehicles, {standing} standing; front {vehicle} {distance:0} m from the line at {Speed(em, vehicle):0.0} m/s");
+            if (em.HasComponent<Game.Vehicles.Blocker>(vehicle))
+            {
+                var blocker = em.GetComponentData<Game.Vehicles.Blocker>(vehicle);
+                text.Append($", held by {blocker.m_Type} {blocker.m_Blocker} ({KindOf(em, blocker.m_Blocker)})");
+            }
+            return text.ToString();
+        }
+
+        private static string Fill(EntityManager em, Entity lane)
+        {
+            if (!em.HasBuffer<LaneObject>(lane) || !em.HasComponent<Curve>(lane))
+                return "no data";
+            float length = em.GetComponentData<Curve>(lane).m_Length;
+            int count = em.GetBuffer<LaneObject>(lane, true).Length;
+            return $"{count} vehicles on {length:0} m";
+        }
+
+        private static float Speed(EntityManager em, Entity entity)
+        {
+            return em.HasComponent<Moving>(entity) ? math.length(em.GetComponentData<Moving>(entity).m_Velocity) : 0f;
+        }
+
+        private static string KindOf(EntityManager em, Entity entity)
+        {
+            if (entity == Entity.Null)
+                return "nothing";
+            if (!em.Exists(entity))
+                return "gone";
+            if (em.HasComponent<Game.Vehicles.Vehicle>(entity))
+                return em.HasComponent<Game.Vehicles.Train>(entity) ? "tram or train" : "vehicle";
+            if (em.HasComponent<Creature>(entity))
+                return "pedestrian";
+            if (em.HasComponent<Game.Net.Node>(entity))
+                return "junction";
+            if (em.HasComponent<Lane>(entity))
+                return "lane";
+            return "other";
+        }
+    }
+}

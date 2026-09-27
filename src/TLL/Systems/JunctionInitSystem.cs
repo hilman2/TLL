@@ -136,13 +136,12 @@ namespace TLL.Systems
             // automatic plan is always generated afresh, so automatic junctions
             // follow the current planner; the timing learnt so far is kept
             // where a phase stays the same.
-            List<JunctionPhase> existing = ExistingPlan(node, storedMovements, model);
+            List<JunctionPhase> existing = ExistingPlan(node, storedMovements, model, out string misfit);
             List<JunctionPhase> phases = junction.Origin == JunctionOrigin.Manual ? existing : null;
             if (phases == null)
             {
-                if (junction.Origin == JunctionOrigin.Manual && EntityManager.HasBuffer<JunctionPhase>(node)
-                    && EntityManager.GetBuffer<JunctionPhase>(node).Length > 0)
-                    Mod.Log.Warn($"Junction {node}: the road layout changed, the manual plan no longer fits and was replaced by a generated one.");
+                if (junction.Origin == JunctionOrigin.Manual && misfit != null)
+                    Mod.Log.Warn($"Junction {node}: the saved plan was replaced by a generated one, because {misfit}.");
                 phases = NewPlan(model, junction.Strategy);
                 KeepTiming(existing, phases);
             }
@@ -282,21 +281,37 @@ namespace TLL.Systems
         }
 
         /// <summary>The saved plan, if it still matches the junction's movements and gives every movement green.</summary>
-        private List<JunctionPhase> ExistingPlan(Entity node, List<JunctionMovement> movements, JunctionModel model)
+        /// <summary>
+        /// The saved plan, if it still fits the junction, else null with the
+        /// reason in <paramref name="reason"/> (null when there was no plan).
+        /// </summary>
+        private List<JunctionPhase> ExistingPlan(Entity node, List<JunctionMovement> movements, JunctionModel model, out string reason)
         {
+            reason = null;
             if (!EntityManager.HasBuffer<JunctionMovement>(node) || !EntityManager.HasBuffer<JunctionPhase>(node))
+                return null;
+            DynamicBuffer<JunctionPhase> storedPhases = EntityManager.GetBuffer<JunctionPhase>(node, true);
+            if (storedPhases.Length == 0)
                 return null;
             DynamicBuffer<JunctionMovement> stored = EntityManager.GetBuffer<JunctionMovement>(node, true);
             if (stored.Length != movements.Count)
+            {
+                reason = $"the junction now has {movements.Count} movements instead of {stored.Length}";
                 return null;
+            }
             for (int i = 0; i < stored.Length; i++)
             {
                 if (stored[i].Source != movements[i].Source || stored[i].Target != movements[i].Target || stored[i].Kind != movements[i].Kind)
+                {
+                    reason = $"movement {i} is now {movements[i].Kind} instead of {stored[i].Kind}, or connects other roads";
                     return null;
+                }
             }
-            DynamicBuffer<JunctionPhase> storedPhases = EntityManager.GetBuffer<JunctionPhase>(node, true);
-            if (storedPhases.Length == 0 || storedPhases.Length > PhasePlanner.MaxPhases)
+            if (storedPhases.Length > PhasePlanner.MaxPhases)
+            {
+                reason = $"it has {storedPhases.Length} phases, at most {PhasePlanner.MaxPhases} are allowed";
                 return null;
+            }
 
             var plan = new PhasePlan();
             var result = new List<JunctionPhase>();
@@ -306,7 +321,10 @@ namespace TLL.Systems
                 result.Add(storedPhases[i]);
             }
             if (plan.Uncovered(movements.Count) != 0)
+            {
+                reason = "some movements never get green in it";
                 return null;
+            }
             // A plan that would give green to two movements the geometry says
             // must never run together is not kept, whoever made it.
             foreach (Phase phase in plan.Phases)
@@ -316,7 +334,10 @@ namespace TLL.Systems
                     for (int b = a + 1; b < movements.Count; b++)
                     {
                         if (phase.Has(a) && phase.Has(b) && !model.Conflicts.CanShare(a, b))
+                        {
+                            reason = $"it gives green together to {model.Movements[a]} and {model.Movements[b]}, whose paths cross";
                             return null;
+                        }
                     }
                 }
             }

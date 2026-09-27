@@ -337,6 +337,60 @@ namespace TLL.Core.Tests.Control
             Assert.Contains(h.Trace, r => r.Walk && r.Step >= 150);
         }
 
+        /// <summary>
+        /// Two vehicle phases, the first with a crosswalk, and optionally a
+        /// scramble phase. Vehicles ask for both vehicle phases all the time;
+        /// a pedestrian waits at the crosswalk from step 0.
+        /// </summary>
+        private static ControllerHarness ScrambleCase(bool divert, bool withScramble)
+        {
+            var config = ControllerConfig.Default(ControlMode.Actuated);
+            config.DivertPedestrians = divert;
+            PhaseData vehiclesAndCrossing = ControllerHarness.Phase(5, 30, 20, PhaseFlags.Pedestrian);
+            vehiclesAndCrossing.WalkGreen = (ushort)SimTime.ToSteps(12f);
+            PhaseData scramble = ControllerHarness.Phase(5, 30, 20, PhaseFlags.Pedestrian | PhaseFlags.Scramble);
+            scramble.WalkGreen = (ushort)SimTime.ToSteps(12f);
+            PhaseData[] phases = withScramble
+                ? new[] { vehiclesAndCrossing, ControllerHarness.Phase(5, 30, 20), scramble }
+                : new[] { vehiclesAndCrossing, ControllerHarness.Phase(5, 30, 20) };
+            var h = new ControllerHarness(config, phases);
+            h.Run(0, 800, (s, p) =>
+            {
+                p[0].Demand = 2f;
+                p[0].Pressure = 2f;
+                p[0].PedestrianCall = true;
+                p[1].Demand = 2f;
+                p[1].Pressure = 2f;
+                if (p.Length > 2)
+                    p[2].PedestrianCall = true;
+            });
+            return h;
+        }
+
+        [Fact]
+        public void ScrambleStaysDarkWhilePedestriansCrossWithTheVehicles()
+        {
+            ControllerHarness h = ScrambleCase(divert: false, withScramble: true);
+            Assert.DoesNotContain(h.GreenStarts(), g => g.phase == 2);
+            Assert.Contains(h.Trace, r => r.Stage == Stage.Green && r.Phase == 0 && r.Walk);
+        }
+
+        [Fact]
+        public void DivertedPedestriansWalkOnlyInTheScramble()
+        {
+            ControllerHarness h = ScrambleCase(divert: true, withScramble: true);
+            Assert.Contains(h.GreenStarts(), g => g.phase == 2);
+            Assert.DoesNotContain(h.Trace, r => r.Stage == Stage.Green && r.Phase == 0 && r.Walk);
+            Assert.Contains(h.Trace, r => r.Stage == Stage.Green && r.Phase == 2 && r.Walk);
+        }
+
+        [Fact]
+        public void DivertWithoutScramblePhaseChangesNothing()
+        {
+            ControllerHarness h = ScrambleCase(divert: true, withScramble: false);
+            Assert.Contains(h.Trace, r => r.Stage == Stage.Green && r.Phase == 0 && r.Walk);
+        }
+
         [Fact]
         public void FixedTimeWalksInEveryCycle()
         {

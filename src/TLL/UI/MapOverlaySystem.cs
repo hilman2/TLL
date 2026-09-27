@@ -33,7 +33,8 @@ namespace TLL.UI
         private static readonly Color kFill = new Color(0.15f, 0.76f, 1f, 0.08f);
         private static readonly Color kGo = new Color(0.24f, 0.75f, 0.42f, 0.95f);
         private static readonly Color kYield = new Color(0.96f, 0.72f, 0.24f, 0.95f);
-        private static readonly Color kStop = new Color(0.9f, 0.28f, 0.3f, 0.45f);
+        /// <summary>Width of a lane line in metres: a thin line on a 3 m lane.</summary>
+        private const float kLaneWidth = 0.35f;
         private static readonly Color kProblem = new Color(0.9f, 0.2f, 0.2f, 1f);
 
         /// <summary>
@@ -135,7 +136,7 @@ namespace TLL.UI
         private void DrawSelected(OverlayRenderSystem.Buffer buffer, Entity node)
         {
             float3 position = EntityManager.GetComponentData<Node>(node).m_Position;
-            buffer.DrawCircle(kRing, kFill, 2f, OverlayRenderSystem.StyleFlags.Projected, new float2(0f, 1f), position, 40f);
+            buffer.DrawCircle(kRing, kFill, 0.8f, OverlayRenderSystem.StyleFlags.Projected, new float2(0f, 1f), position, 40f);
             if (!EntityManager.HasBuffer<JunctionLane>(node))
                 return;
             DynamicBuffer<JunctionLane> lanes = EntityManager.GetBuffer<JunctionLane>(node, true);
@@ -144,15 +145,17 @@ namespace TLL.UI
                 Entity lane = lanes[i].Lane;
                 if (!EntityManager.HasComponent<LaneSignal>(lane) || !EntityManager.HasComponent<Curve>(lane))
                     continue;
+                // Only the lanes that may go: with every red lane drawn too,
+                // a large junction turns into a tangle.
                 LaneSignalType signal = EntityManager.GetComponentData<LaneSignal>(lane).m_Signal;
-                bool open = signal == LaneSignalType.Go || signal == LaneSignalType.Yield;
-                Color color = signal == LaneSignalType.Go ? kGo : signal == LaneSignalType.Yield ? kYield : kStop;
+                if (signal != LaneSignalType.Go && signal != LaneSignalType.Yield)
+                    continue;
+                Color color = signal == LaneSignalType.Go ? kGo : kYield;
                 Bezier4x3 curve = EntityManager.GetComponentData<Curve>(lane).m_Bezier;
-                float width = open ? 1.6f : 0.8f;
                 if ((lanes[i].Flags & JunctionLaneFlags.Pedestrian) != 0)
-                    buffer.DrawDashedCurve(color, color, 0f, OverlayRenderSystem.StyleFlags.Projected, curve, width, 1.5f, 1f);
+                    buffer.DrawDashedCurve(color, color, 0f, OverlayRenderSystem.StyleFlags.Projected, curve, kLaneWidth, 1.2f, 0.8f);
                 else
-                    buffer.DrawCurve(color, color, 0f, OverlayRenderSystem.StyleFlags.Projected, curve, width, new float2(1f, 1f));
+                    buffer.DrawCurve(color, color, 0f, OverlayRenderSystem.StyleFlags.Projected, curve, kLaneWidth, new float2(1f, 1f));
             }
         }
 

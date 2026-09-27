@@ -184,6 +184,7 @@ export const actions = {
   manage: () => trigger(group, "manage"),
   toggleTool: () => trigger(group, "toggleTool"),
   rebuildGreenWaves: () => trigger(group, "rebuildGreenWaves"),
+  diagnose: () => trigger(group, "diagnose"),
   toggleShowProblems: () => trigger(group, "toggleShowProblems"),
   toggleShowCongestion: () => trigger(group, "toggleShowCongestion"),
 };

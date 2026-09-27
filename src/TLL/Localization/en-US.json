@@ -106,6 +106,8 @@
   "Panel.ProblemsHint": "Junctions where queues build up in the rush hour, measured over game days. Click one to go there.",
   "Panel.Vehicles": "vehicles",
   "Panel.Walking": "Pedestrians walk",
+  "Panel.Diagnose": "Write diagnostics to the log",
+  "Panel.DiagnoseHint": "Writes every lane, its signal, and why the first vehicle waits, to Logs/TLL.log. Useful when vehicles stand at green.",
   "Panel.WalkOnCall": "Crosswalk on request",
   "ModeHint.Adaptive": "The phase with the most pressure goes next. Green adapts to traffic and holds for arriving platoons.",
   "ModeHint.Actuated": "Fixed order. Phases without demand are skipped, green ends when the queue is gone.",

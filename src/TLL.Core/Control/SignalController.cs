@@ -57,6 +57,13 @@ namespace TLL.Core.Control
         /// <summary>Adaptive mode: after this many steps of waiting a phase is served regardless of pressure.</summary>
         public ushort MaxWait;
 
+        /// <summary>
+        /// Pedestrians cross in the scramble phase instead of alongside the
+        /// vehicles: set while turning vehicles keep being held up by people
+        /// on the crosswalks. Without a scramble phase it has no effect.
+        /// </summary>
+        public bool DivertPedestrians;
+
         public static ControllerConfig Default(ControlMode mode)
         {
             return new ControllerConfig
@@ -120,7 +127,28 @@ namespace TLL.Core.Control
     public static class SignalController
     {
         /// <returns>True if the signals shown change with this step.</returns>
-        public static bool Step<TPhases>(ref ControllerState s, in ControllerConfig c, ref TPhases phases, long globalStep)
+        public static bool Step<TPhases>(ref ControllerState s, in ControllerConfig config, ref TPhases phases, long globalStep)
+            where TPhases : struct, IPhaseAccess
+        {
+            // Diverting pedestrians needs a phase to divert them into; below,
+            // the flag means both.
+            ControllerConfig c = config;
+            c.DivertPedestrians = config.DivertPedestrians && HasScramble(ref phases);
+            return StepWith(ref s, in c, ref phases, globalStep);
+        }
+
+        private static bool HasScramble<TPhases>(ref TPhases phases)
+            where TPhases : struct, IPhaseAccess
+        {
+            for (int i = 0; i < phases.Count; i++)
+            {
+                if (phases[i].HasFlag(PhaseFlags.Scramble))
+                    return true;
+            }
+            return false;
+        }
+
+        private static bool StepWith<TPhases>(ref ControllerState s, in ControllerConfig c, ref TPhases phases, long globalStep)
             where TPhases : struct, IPhaseAccess
         {
             int count = phases.Count;
@@ -136,7 +164,7 @@ namespace TLL.Core.Control
             if (s.Next >= count)
                 s.Next = 0;
 
-            UpdateWaiting(ref s, ref phases);
+            UpdateWaiting(ref s, in c, ref phases);
 
             if (c.Mode == ControlMode.Flashing)
             {
@@ -185,14 +213,14 @@ namespace TLL.Core.Control
             return s.Stage != stageBefore || s.Phase != phaseBefore || s.Next != nextBefore;
         }
 
-        private static void UpdateWaiting<TPhases>(ref ControllerState s, ref TPhases phases)
+        private static void UpdateWaiting<TPhases>(ref ControllerState s, in ControllerConfig c, ref TPhases phases)
             where TPhases : struct, IPhaseAccess
         {
             for (int i = 0; i < phases.Count; i++)
             {
                 ref PhaseData p = ref phases[i];
                 bool served = s.Stage == Stage.Green && s.Phase == i;
-                if (served || !Requested(ref p))
+                if (served || !Requested(in c, ref p))
                     p.WaitSteps = 0;
                 else if (p.WaitSteps < ushort.MaxValue)
                     p.WaitSteps++;
@@ -234,7 +262,7 @@ namespace TLL.Core.Control
                     next = TimedDecision(ref s, in c, ref phases, globalStep, pastMin);
                     break;
                 case ControlMode.Actuated:
-                    next = ActuatedDecision(ref s, ref phases, pastMin);
+                    next = ActuatedDecision(ref s, in c, ref phases, pastMin);
                     break;
                 case ControlMode.Adaptive:
                     next = AdaptiveDecision(ref s, in c, ref phases, pastMin);
@@ -266,7 +294,7 @@ namespace TLL.Core.Control
             return next == s.Phase ? -1 : next;
         }
 
-        private static int ActuatedDecision<TPhases>(ref ControllerState s, ref TPhases phases, bool pastMin)
+        private static int ActuatedDecision<TPhases>(ref ControllerState s, in ControllerConfig c, ref TPhases phases, bool pastMin)
             where TPhases : struct, IPhaseAccess
         {
             ref PhaseData current = ref phases[s.Phase];
@@ -281,7 +309,7 @@ namespace TLL.Core.Control
             for (int k = 1; k < count; k++)
             {
                 int candidate = (s.Phase + k) % count;
-                if (Requested(ref phases[candidate]))
+                if (Requested(in c, ref phases[candidate]))
                 {
                     CountEnd(ref current, maxedOut, gappedOut);
                     return candidate;
@@ -306,7 +334,7 @@ namespace TLL.Core.Control
                 if (i == s.Phase)
                     continue;
                 ref PhaseData p = ref phases[i];
-                if (!Requested(ref p))
+                if (!Requested(in c, ref p))
                     continue;
                 bool starved = p.WaitSteps >= c.MaxWait;
                 // A starved phase beats any unstarved one; among equals the
@@ -338,17 +366,27 @@ namespace TLL.Core.Control
         /// the push button. A call asks for the green but does not keep it
         /// going; that is what the walk time does once the walk has begun.
         /// </summary>
-        private static bool Requested(ref PhaseData phase)
+        private static bool Requested(in ControllerConfig c, ref PhaseData phase)
         {
-            return phase.Demand > 0f || phase.PedestrianCall;
+            return phase.Demand > 0f || CallCounts(in c, ref phase);
         }
 
-        private static bool OthersRequested<TPhases>(ref TPhases phases, int current)
+        /// <summary>
+        /// Whether the phase's pedestrian call is answered in this phase: in
+        /// the scramble phase only while pedestrians are diverted there, in
+        /// the others only while they are not.
+        /// </summary>
+        private static bool CallCounts(in ControllerConfig c, ref PhaseData phase)
+        {
+            return phase.PedestrianCall && phase.HasFlag(PhaseFlags.Scramble) == c.DivertPedestrians;
+        }
+
+        private static bool OthersRequested<TPhases>(in ControllerConfig c, ref TPhases phases, int current)
             where TPhases : struct, IPhaseAccess
         {
             for (int i = 0; i < phases.Count; i++)
             {
-                if (i != current && Requested(ref phases[i]))
+                if (i != current && Requested(in c, ref phases[i]))
                     return true;
             }
             return false;
@@ -370,11 +408,11 @@ namespace TLL.Core.Control
             where TPhases : struct, IPhaseAccess
         {
             ref PhaseData current = ref phases[s.Phase];
-            if (s.Walk || !current.PedestrianCall || !current.HasFlag(PhaseFlags.Pedestrian))
+            if (s.Walk || !CallCounts(in c, ref current) || !current.HasFlag(PhaseFlags.Pedestrian))
                 return;
             int walk = WalkGreenOf(ref current);
             bool timed = c.Mode == ControlMode.FixedTime || c.Mode == ControlMode.Coordinated;
-            bool room = timed ? s.GreenLeft >= walk : s.StageSteps + walk <= current.MaxGreen || !OthersRequested(ref phases, s.Phase);
+            bool room = timed ? s.GreenLeft >= walk : s.StageSteps + walk <= current.MaxGreen || !OthersRequested(in c, ref phases, s.Phase);
             if (!room)
                 return;
             s.Walk = true;
@@ -465,7 +503,7 @@ namespace TLL.Core.Control
             s.Preempting = p.Preempt;
             // Push button: pedestrians walk only when someone asked, except
             // in fixed-time mode, which serves them in every cycle.
-            s.Walk = p.HasFlag(PhaseFlags.Pedestrian) && (c.Mode == ControlMode.FixedTime || p.PedestrianCall);
+            s.Walk = p.HasFlag(PhaseFlags.Pedestrian) && (c.Mode == ControlMode.FixedTime || CallCounts(in c, ref p));
             s.WalkSince = 0;
             s.GreenLeft = 0;
             if (c.Mode == ControlMode.FixedTime || c.Mode == ControlMode.Coordinated)
@@ -484,7 +522,7 @@ namespace TLL.Core.Control
                 return NextTimedPhase(in c, ref phases, globalStep, -1);
             for (int i = 0; i < phases.Count; i++)
             {
-                if (Requested(ref phases[i]))
+                if (Requested(in c, ref phases[i]))
                     return i;
             }
             return 0;
@@ -523,7 +561,7 @@ namespace TLL.Core.Control
                     continue;
                 ref PhaseData p = ref phases[i];
                 bool coordinated = p.HasFlag(PhaseFlags.Coordinated);
-                if (c.Mode == ControlMode.Coordinated && !coordinated && !Requested(ref p))
+                if (c.Mode == ControlMode.Coordinated && !coordinated && !Requested(in c, ref p))
                     continue;
                 int room = SimTime.Mod(EndOf(in c, ref phases, i) - t, cycle);
                 if (room >= p.MinGreen || coordinated)

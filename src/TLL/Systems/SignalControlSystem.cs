@@ -59,6 +59,13 @@ namespace TLL.Systems
         /// <summary>Exit lane fill above which traffic sent there would only block the junction.</summary>
         private const float kBlockedOccupancy = 0.85f;
 
+        /// <summary>
+        /// Weight of a tram against a car in the adaptive mode's pressure,
+        /// roughly their passengers at typical loads. The maximum wait keeps
+        /// the cars from being starved by a busy tram line.
+        /// </summary>
+        private const float kTramWeight = 10f;
+
         /// <summary>The game's vehicles ask for green with priority 100, emergency vehicles with 108.</summary>
         private const int kEmergencyPriority = 108;
 
@@ -295,6 +302,7 @@ namespace TLL.Systems
                 bool* busy = stackalloc bool[movementCount];
                 bool* preempt = stackalloc bool[movementCount];
                 bool* call = stackalloc bool[movementCount];
+                bool* track = stackalloc bool[movementCount];
                 for (int m = 0; m < movementCount; m++)
                 {
                     waiting[m] = 0f;
@@ -305,6 +313,7 @@ namespace TLL.Systems
                     busy[m] = false;
                     preempt[m] = false;
                     call[m] = false;
+                    track[m] = false;
                 }
 
                 for (int l = 0; l < lanes.Length; l++)
@@ -313,6 +322,7 @@ namespace TLL.Systems
                     int m = lane.Movement;
                     if (m >= movementCount || !LaneSignals.HasComponent(lane.Lane))
                         continue;
+                    track[m] |= (lane.Flags & JunctionLaneFlags.Track) != 0;
 
                     // Requests the game's road users made since the last step.
                     // Reading them uses them up, as the game's own system does.
@@ -422,6 +432,11 @@ namespace TLL.Systems
                         // way. Green for a movement whose exit is full moves
                         // nobody, so it hardly counts.
                         float own = waiting[m] + soon[m] + 0.5f * arriving[m];
+                        // A tram carries the passengers of many cars, and on
+                        // its own track it is not held up by the cars' jam,
+                        // which only lowers the cars' own share.
+                        if (track[m])
+                            own *= kTramWeight;
                         pressure += blocked[m] ? own * 0.1f : own;
                         // A platoon held for is only worth it if it can leave.
                         if (!blocked[m])

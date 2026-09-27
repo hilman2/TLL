@@ -106,6 +106,8 @@
   "Panel.ProblemsHint": "Kreuzungen, an denen sich im Berufsverkehr Schlangen bilden, gemessen über Spieltage. Anklicken, um hinzuspringen.",
   "Panel.Vehicles": "Fahrzeuge",
   "Panel.Walking": "Fußgänger gehen",
+  "Panel.Diagnose": "Diagnose ins Log schreiben",
+  "Panel.DiagnoseHint": "Schreibt jede Spur, ihr Signal und warum das vorderste Fahrzeug wartet nach Logs/TLL.log. Hilfreich, wenn Fahrzeuge bei Grün stehen.",
   "Panel.WalkOnCall": "Überweg auf Anforderung",
   "ModeHint.Adaptive": "Die Phase mit dem größten Druck kommt als Nächstes. Grün passt sich dem Verkehr an und hält für ankommende Kolonnen.",
   "ModeHint.Actuated": "Feste Reihenfolge. Phasen ohne Bedarf werden übersprungen, Grün endet, wenn die Schlange abgebaut ist.",

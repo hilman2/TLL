@@ -12,6 +12,13 @@ namespace TLL.Core.Control
 
         /// <summary>The phase contains a crosswalk. Its minimum green covers the walk.</summary>
         Pedestrian = 2,
+
+        /// <summary>
+        /// A phase of crosswalks only, run on demand: it is asked for only
+        /// while the controller diverts pedestrians into it
+        /// (<see cref="ControllerConfig.DivertPedestrians"/>).
+        /// </summary>
+        Scramble = 4,
     }
 
     /// <summary>

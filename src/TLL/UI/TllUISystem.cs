@@ -146,6 +146,7 @@ namespace TLL.UI
             AddBinding(new TriggerBinding<bool>(kGroup, "setPanelOpen", open => m_PanelOpen = open));
             AddBinding(new TriggerBinding(kGroup, "rebuildGreenWaves", () => Requests.RebuildGreenWaves = true));
             AddBinding(new TriggerBinding(kGroup, "toggleTool", () => m_Tool.Toggle()));
+            AddBinding(new TriggerBinding(kGroup, "diagnose", OnDiagnose));
             AddBinding(new TriggerBinding(kGroup, "toggleShowProblems", () => ChangeSetting(s => s.ShowProblems = !s.ShowProblems)));
             AddBinding(new TriggerBinding(kGroup, "toggleShowCongestion", () => ChangeSetting(s => s.ShowCongestion = !s.ShowCongestion)));
             AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "toolActive", () => m_Tool.IsActive));
@@ -465,6 +466,13 @@ namespace TLL.UI
         private void OnToggleAutomation()
         {
             ChangeSetting(s => s.AutoManageAll = !s.AutoManageAll);
+        }
+
+        private void OnDiagnose()
+        {
+            if (m_Selected == Entity.Null || !EntityManager.Exists(m_Selected))
+                return;
+            Mod.Log.Info(JunctionDiagnostics.Describe(EntityManager, m_Selected));
         }
 
         /// <summary>Changes a setting from the panel, saves it, and refreshes the overview at once.</summary>
