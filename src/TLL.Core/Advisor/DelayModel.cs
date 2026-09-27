@@ -26,6 +26,9 @@ namespace TLL.Core.Advisor
         /// <summary>Analysis period of the HCM incremental delay, in hours.</summary>
         public float Period;
 
+        /// <summary>Short turns may go on red where PhasePlanner.TurnOnRed allows it.</summary>
+        public bool TurnOnRed;
+
         public static DelayParameters Default => new DelayParameters
         {
             SaturationPerLane = 1800f,
@@ -83,6 +86,13 @@ namespace TLL.Core.Advisor
         private const float CriticalGap = 4.5f;
         private const float FollowUp = 2.5f;
 
+        /// <summary>
+        /// Critical gap and follow-up time of a turn on red, which starts from
+        /// a stop like a side road turning right at a stop sign (HCM).
+        /// </summary>
+        private const float OnRedCriticalGap = 6.2f;
+        private const float OnRedFollowUp = 3.3f;
+
         /// <summary>Pedestrians per hour on a crosswalk at which turning traffic across it comes to a stand.</summary>
         private const float PedestrianBlockage = 2000f;
 
@@ -104,10 +114,28 @@ namespace TLL.Core.Advisor
                 {
                     if (!phase.Has(m) || junction.Movements[m].IsPedestrian)
                         continue;
-                    float s = p.SaturationPerLane * junction.Movements[m].LaneCount * LaneShare(junction, m, volumes);
+                    float s = Nominal(junction, m, volumes, p);
                     if ((phase.Permitted & (1UL << m)) != 0)
-                        s *= YieldFactor(junction, phase, m, volumes, p);
+                        s *= YieldFactor(junction, phase, m, volumes, p, CriticalGap, FollowUp);
                     saturation[ph, m] = s;
+                }
+            }
+
+            // Turn on red: a short turn with red in a phase goes through the
+            // gaps in what that phase lets run. It adds to the turn's capacity
+            // but asks for no green time; the greens are planned as without it.
+            var onRed = new float[phases, n];
+            if (p.TurnOnRed)
+            {
+                for (int ph = 0; ph < phases; ph++)
+                {
+                    Phase phase = plan.Phases[ph];
+                    ulong allowed = PhasePlanner.TurnOnRed(junction, phase.Green);
+                    for (int m = 0; m < n; m++)
+                    {
+                        if ((allowed & (1UL << m)) != 0)
+                            onRed[ph, m] = Nominal(junction, m, volumes, p) * YieldFactor(junction, phase, m, volumes, p, OnRedCriticalGap, OnRedFollowUp);
+                    }
                 }
             }
 
@@ -156,10 +184,18 @@ namespace TLL.Core.Advisor
                 float capacity = 0f;
                 for (int ph = 0; ph < phases; ph++)
                 {
-                    if (!plan.Phases[ph].Has(m))
-                        continue;
-                    effective += green[ph];
-                    capacity += saturation[ph, m] * green[ph] / cycle;
+                    if (plan.Phases[ph].Has(m))
+                    {
+                        effective += green[ph];
+                        capacity += saturation[ph, m] * green[ph] / cycle;
+                    }
+                    else if (onRed[ph, m] > 0f)
+                    {
+                        // Counts as that part of a green, for the uniform
+                        // delay, as its flow is of the full one.
+                        effective += green[ph] * onRed[ph, m] / Nominal(junction, m, volumes, p);
+                        capacity += onRed[ph, m] * green[ph] / cycle;
+                    }
                 }
                 float delay;
                 if (junction.Movements[m].IsPedestrian)
@@ -205,7 +241,7 @@ namespace TLL.Core.Advisor
         /// Share of its saturation flow a movement keeps while giving way to
         /// the other movements green in the same phase.
         /// </summary>
-        private static float YieldFactor(JunctionModel junction, Phase phase, int m, float[] volumes, DelayParameters p)
+        private static float YieldFactor(JunctionModel junction, Phase phase, int m, float[] volumes, DelayParameters p, float criticalGap, float followUp)
         {
             float opposing = 0f;
             float pedestrians = 0f;
@@ -222,7 +258,7 @@ namespace TLL.Core.Advisor
             // with nobody to give way to, a turning vehicle follows at the
             // follow-up headway, not at the saturation headway, as the HCM
             // also discounts unopposed turns.
-            float gaps = GapCapacity(opposing, CriticalGap, FollowUp) / p.SaturationPerLane;
+            float gaps = GapCapacity(opposing, criticalGap, followUp) / p.SaturationPerLane;
             float walk = 1f - pedestrians / PedestrianBlockage;
             return Clamp(Math.Min(gaps, 1f) * walk, 0.05f, 1f);
         }
@@ -235,6 +271,12 @@ namespace TLL.Core.Advisor
         /// full, so without this a lane for left, straight and right would
         /// count as three.
         /// </summary>
+        /// <summary>Saturation flow of a movement on green with nobody to give way to, in vehicles per hour.</summary>
+        private static float Nominal(JunctionModel junction, int m, float[] volumes, DelayParameters p)
+        {
+            return p.SaturationPerLane * junction.Movements[m].LaneCount * LaneShare(junction, m, volumes);
+        }
+
         private static float LaneShare(JunctionModel junction, int m, float[] volumes)
         {
             ulong partners = junction.SharesLaneWith(m);

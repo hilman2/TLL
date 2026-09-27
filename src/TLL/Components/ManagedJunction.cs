@@ -34,6 +34,13 @@ namespace TLL.Components
         /// vehicles keep being held up by pedestrians (see PedestrianConflicts).
         /// </summary>
         ScrambleOnDemand = 4,
+
+        /// <summary>
+        /// Short turns may go on red where they meet only traffic they give
+        /// way to (PhasePlanner.TurnOnRed). The autopilot sets it where its
+        /// estimate says it saves time, if the setting TurnOnRed allows it.
+        /// </summary>
+        TurnOnRed = 8,
     }
 
     /// <summary>

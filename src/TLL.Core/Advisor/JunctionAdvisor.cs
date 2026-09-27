@@ -67,6 +67,20 @@ namespace TLL.Core.Advisor
             return ClearlyBetter(estimates[best], estimates[currentIndex]) ? Strategies[best] : current;
         }
 
+        /// <summary>A turn on red must save at least this share of the total delay to be set.</summary>
+        public const float TurnOnRedMargin = 0.02f;
+
+        /// <summary>
+        /// Whether turning on red is worth setting at a junction, from the
+        /// estimates of its layout without and with it
+        /// (<see cref="DelayParameters.TurnOnRed"/>). Where no short turn
+        /// has traffic and red time, it changes nothing and stays off.
+        /// </summary>
+        public static bool WantsTurnOnRed(PlanEstimate without, PlanEstimate with)
+        {
+            return with.TotalDelay < without.TotalDelay * (1f - TurnOnRedMargin);
+        }
+
         private static bool Copes(PlanEstimate e)
         {
             return e.WorstSaturation <= Capacity;

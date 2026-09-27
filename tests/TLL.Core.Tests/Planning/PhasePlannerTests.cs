@@ -287,6 +287,19 @@ namespace TLL.Core.Tests.Planning
             Assert.NotEqual(0UL, onRed & (1UL << northRight));
         }
 
+        [Fact]
+        public void NoTurnOnRedIntoAPedestrianScramble()
+        {
+            // Turning vehicles only give way to the crosswalks, so by the
+            // relations alone they could turn on red while everyone walks.
+            // That would bring back the very clash the scramble is there for.
+            JunctionModel m = ChordModel.Build(Cross, false);
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.ExclusivePedestrian);
+            Phase walk = plan.Phases[plan.Phases.Count - 1];
+
+            Assert.Equal(0UL, PhasePlanner.TurnOnRed(m, walk.Green));
+        }
+
         private static int IndexOfPhaseWith(PhasePlan plan, int movement)
         {
             for (int i = 0; i < plan.Phases.Count; i++)

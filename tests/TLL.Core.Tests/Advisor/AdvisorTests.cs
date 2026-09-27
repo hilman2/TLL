@@ -106,6 +106,40 @@ namespace TLL.Core.Tests.Advisor
         }
 
         [Fact]
+        public void TurnOnRedShortensTheWaitOfRightTurns()
+        {
+            // Split phasing keeps every right turn red for three phases out
+            // of four; on red it can still use the gaps.
+            JunctionModel m = ChordModel.Build(Cross, false, crosswalks: false);
+            float[] v = Volumes(m, 300f, 60f, 200f, 0f);
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.Split);
+            PlanEstimate without = DelayModel.Estimate(m, plan, v, P);
+            DelayParameters onRed = P;
+            onRed.TurnOnRed = true;
+            PlanEstimate with = DelayModel.Estimate(m, plan, v, onRed);
+
+            int right = m.IndexOf(1, 2, MovementKind.Right);
+            Assert.True(with.Delay[right] < 0.8f * without.Delay[right], $"right turn waits {with.Delay[right]:0.0} s with, {without.Delay[right]:0.0} s without");
+            int straight = m.IndexOf(0, 2, MovementKind.Straight);
+            Assert.Equal(without.Delay[straight], with.Delay[straight], 3);
+        }
+
+        [Fact]
+        public void TheAutopilotSetsTurnOnRedWhereItHelps()
+        {
+            JunctionModel m = ChordModel.Build(Cross, false, crosswalks: false);
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.Split);
+            DelayParameters onRed = P;
+            onRed.TurnOnRed = true;
+
+            float[] turning = Volumes(m, 300f, 60f, 200f, 0f);
+            Assert.True(JunctionAdvisor.WantsTurnOnRed(DelayModel.Estimate(m, plan, turning, P), DelayModel.Estimate(m, plan, turning, onRed)));
+
+            float[] noRightTurns = Volumes(m, 300f, 60f, 0f, 0f);
+            Assert.False(JunctionAdvisor.WantsTurnOnRed(DelayModel.Estimate(m, plan, noRightTurns, P), DelayModel.Estimate(m, plan, noRightTurns, onRed)));
+        }
+
+        [Fact]
         public void CrowdedCrosswalksWithHeavyTurningGetAPedestrianPhase()
         {
             JunctionModel m = ChordModel.Build(Cross, false);

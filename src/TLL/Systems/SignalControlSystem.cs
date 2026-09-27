@@ -208,7 +208,6 @@ namespace TLL.Systems
                 Creatures = GetComponentLookup<Game.Creatures.Creature>(true),
                 GlobalStep = SimTime.StepOfFrame(m_Simulation.frameIndex),
                 LeftHandTraffic = m_CityConfiguration.leftHandTraffic,
-                TurnOnRed = Mod.Settings != null && Mod.Settings.TurnOnRed,
                 KeepClear = Mod.Settings == null || Mod.Settings.KeepClear,
             };
             Dependency = job.ScheduleParallel(m_Query, Dependency);
@@ -241,7 +240,6 @@ namespace TLL.Systems
 
             public long GlobalStep;
             public bool LeftHandTraffic;
-            public bool TurnOnRed;
             public bool KeepClear;
 
             public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -288,7 +286,7 @@ namespace TLL.Systems
                     if (scramble)
                         CountConflicts(ref runtime, phases, movements, stageBefore, phaseBefore, conflict);
 
-                    Show(runtime.State, phases, lanes, movements, ref light);
+                    Show(runtime.State, phases, lanes, movements, (junction.Options & JunctionOptions.TurnOnRed) != 0, ref light);
                     if (hasPoles)
                         ShowOnPoles(subObjects[i], light, runtime.State.Stage == Stage.Flashing);
 
@@ -682,7 +680,7 @@ namespace TLL.Systems
 
             /// <summary>Translates the controller stage into the game's signal states on every junction lane.</summary>
             private void Show(ControllerState state, DynamicBuffer<JunctionPhase> phases, DynamicBuffer<JunctionLane> lanes,
-                DynamicBuffer<JunctionMovement> movements, ref TrafficLights light)
+                DynamicBuffer<JunctionMovement> movements, bool turnOnRedAllowed, ref TrafficLights light)
             {
                 if (state.Stage == Stage.Flashing)
                 {
@@ -728,7 +726,7 @@ namespace TLL.Systems
                 ulong permittedNow = phases[state.Phase].Permitted;
                 ulong permittedNext = phases[state.Next].Permitted;
                 ulong movementsNext = phases[state.Next].Movements;
-                ulong turnOnRed = TurnOnRed && state.Stage == Stage.Green ? phases[state.Phase].TurnOnRed : 0UL;
+                ulong turnOnRed = turnOnRedAllowed && state.Stage == Stage.Green ? phases[state.Phase].TurnOnRed : 0UL;
                 for (int l = 0; l < lanes.Length; l++)
                 {
                     JunctionLane lane = lanes[l];

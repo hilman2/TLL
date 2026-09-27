@@ -193,6 +193,14 @@ namespace TLL.Core.Planning
             ConflictMatrix conflicts = junction.Conflicts;
             MovementKind shortTurn = junction.LeftHandTraffic ? MovementKind.Left : MovementKind.Right;
             ulong allowed = 0;
+            // A phase of crosswalks only is there to keep turning vehicles
+            // off them. They would only give way to the people, so the
+            // relations below would let them turn.
+            bool vehicles = false;
+            for (int m = 0; m < junction.Movements.Count; m++)
+                vehicles |= (green & (1UL << m)) != 0 && !junction.Movements[m].IsPedestrian;
+            if (!vehicles)
+                return 0;
             for (int m = 0; m < junction.Movements.Count; m++)
             {
                 if ((green & (1UL << m)) != 0 || junction.Movements[m].Kind != shortTurn)

@@ -104,6 +104,7 @@ const managed = {
   ],
   walk: true,
   scrambleOnDemand: true,
+  turnOnRed: true,
   scrambleActive: false,
   conflicts: 3,
   reviewMinutes: 44.6,

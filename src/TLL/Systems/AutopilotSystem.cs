@@ -314,7 +314,7 @@ namespace TLL.Systems
                 m_ReviewTime.Start();
                 try
                 {
-                    ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, layoutRound, ref rebuild);
+                    ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, layoutRound, ref changed, ref rebuild);
                 }
                 catch (Exception e)
                 {
@@ -349,10 +349,11 @@ namespace TLL.Systems
         /// <summary>
         /// Estimates every layout from the peak traffic for the panel, and
         /// with <paramref name="decide"/> set, a regular review, changes the
-        /// layout where the setting leaves it to the autopilot.
+        /// layout where the setting leaves it to the autopilot, and sets
+        /// turning on red where it pays.
         /// </summary>
         private void ReviewLayout(Entity node, ref ManagedJunction junction, ref AutopilotState state, Setting settings,
-            DynamicBuffer<MovementStatistics> statistics, float[] peakByApproach, int[] opposite, bool decide, ref bool rebuild)
+            DynamicBuffer<MovementStatistics> statistics, float[] peakByApproach, int[] opposite, bool decide, ref bool changed, ref bool rebuild)
         {
             if (decide && settings.AutoLayout != AutoLayout.Automatic)
             {
@@ -379,7 +380,11 @@ namespace TLL.Systems
             if (state.TooQuiet)
                 return;
 
-            PlanEstimate[] estimates = JunctionAdvisor.EvaluateAll(layout.Model, volumes, DelayParameters.Default);
+            // With turning on red allowed, the layouts are compared as the
+            // junction would run them, with it wherever it pays.
+            DelayParameters parameters = DelayParameters.Default;
+            parameters.TurnOnRed = settings.TurnOnRed;
+            PlanEstimate[] estimates = JunctionAdvisor.EvaluateAll(layout.Model, volumes, parameters);
             state.HasEstimate = true;
             m_Estimated++;
             state.LayoutDelay = new float4(estimates[0].AverageDelay, estimates[1].AverageDelay, estimates[2].AverageDelay, estimates[3].AverageDelay);
@@ -390,7 +395,20 @@ namespace TLL.Systems
             Road(peakByApproach, opposite, out _, out float major, out float minor, out _);
             state.SignalAdvice = SignalAdvisor.Decide(true, major, minor, best.AverageDelay);
 
-            if (!decide || settings.AutoLayout != AutoLayout.Automatic)
+            if (!decide)
+                return;
+            // Turning on red for the layout the junction runs from now on.
+            PlanStrategy running = settings.AutoLayout == AutoLayout.Automatic ? choice : junction.Strategy;
+            bool turnOnRed = settings.TurnOnRed && JunctionAdvisor.WantsTurnOnRed(
+                DelayModel.Estimate(layout.Model, PhasePlanner.Build(layout.Model, running), volumes, DelayParameters.Default),
+                estimates[Array.IndexOf(JunctionAdvisor.Strategies, running)]);
+            if (turnOnRed != ((junction.Options & JunctionOptions.TurnOnRed) != 0))
+            {
+                junction.Options ^= JunctionOptions.TurnOnRed;
+                changed = true;
+            }
+
+            if (settings.AutoLayout != AutoLayout.Automatic)
                 return;
             if (choice == junction.Strategy)
             {

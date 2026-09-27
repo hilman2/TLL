@@ -281,6 +281,12 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
           onSelect={actions.toggleScramble}
         />
       )}
+      <Switch
+        label={t("Panel.TurnOnRed", "Turn on red")}
+        hint={t("Panel.TurnOnRedHint", "")}
+        on={junction.turnOnRed}
+        onSelect={actions.toggleTurnOnRed}
+      />
     </div>
 
     <div className={styles.card}>

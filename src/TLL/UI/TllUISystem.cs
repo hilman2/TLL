@@ -165,6 +165,7 @@ namespace TLL.UI
             AddBinding(new TriggerBinding<int>(kGroup, "setMode", OnSetMode));
             AddBinding(new TriggerBinding<int>(kGroup, "setStrategy", OnSetStrategy));
             AddBinding(new TriggerBinding(kGroup, "toggleScramble", OnToggleScramble));
+            AddBinding(new TriggerBinding(kGroup, "toggleTurnOnRed", OnToggleTurnOnRed));
             AddBinding(new TriggerBinding(kGroup, "makeAutomatic", OnMakeAutomatic));
             AddBinding(new TriggerBinding(kGroup, "release", OnRelease));
             AddBinding(new TriggerBinding(kGroup, "manage", OnManage));
@@ -329,6 +330,8 @@ namespace TLL.UI
             writer.Write(d.State.Walk);
             writer.PropertyName("scrambleOnDemand");
             writer.Write((d.Junction.Options & JunctionOptions.ScrambleOnDemand) != 0);
+            writer.PropertyName("turnOnRed");
+            writer.Write((d.Junction.Options & JunctionOptions.TurnOnRed) != 0);
             writer.PropertyName("scrambleActive");
             writer.Write(d.Conflicts.Divert);
             writer.PropertyName("conflicts");
@@ -635,6 +638,17 @@ namespace TLL.UI
             EntityManager.SetComponentData(m_Selected, junction);
             EntityManager.GetBuffer<JunctionPhase>(m_Selected).Clear();
             EntityManager.AddComponent<RebuildRequest>(m_Selected);
+            m_DetailTime = default;
+        }
+
+        /// <summary>Switches turning on red at the selected junction. It takes effect at once, without a new plan.</summary>
+        private void OnToggleTurnOnRed()
+        {
+            if (!TryGetSelected(out ManagedJunction junction))
+                return;
+            junction.Options ^= JunctionOptions.TurnOnRed;
+            TakeOverByPlayer(ref junction);
+            EntityManager.SetComponentData(m_Selected, junction);
             m_DetailTime = default;
         }
 

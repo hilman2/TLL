@@ -18,8 +18,8 @@
   "Settings.AutoFlash.Description": "When a junction is quiet enough for priority rules, its signals flash yellow: the main road passes, the side roads give way. Signals come back as traffic grows. Separate thresholds for on and off keep it from flickering.",
 
   "Settings.Group.Rules": "Traffic rules at TLL junctions",
-  "Settings.TurnOnRed.Label": "Turn on red",
-  "Settings.TurnOnRed.Description": "Right turns (left turns in left-hand traffic) stop at red and may then go when the way is clear. Only where they meet nothing but traffic they give way to. As in the US, Canada, and with the German green arrow.",
+  "Settings.TurnOnRed.Label": "Turn on red by the autopilot",
+  "Settings.TurnOnRed.Description": "The autopilot allows turning on red at automatic junctions where its estimate says it saves time. Right turns (left turns in left-hand traffic) then stop at red and go when the way is clear; only where they meet nothing but traffic they give way to, and never during a pedestrian scramble. At your own junctions, switch it in the panel.",
   "Settings.KeepClear.Label": "Keep junctions clear",
   "Settings.KeepClear.Description": "A lane stays red while its exit is backed up to the junction, so nobody gets stuck in the middle and blocks the cross traffic.",
 
@@ -126,6 +126,8 @@
   "Panel.ScrambleWaiting": "standby",
   "Panel.ScrambleHint": "A phase only for pedestrians. It starts once turning vehicles had to stop for pedestrians in 5 of the last 8 vehicle greens, and stays until the next review. While it runs, pedestrians no longer cross alongside the vehicles; whoever presses the button gets it once per cycle. The review ends it if, in the last 8 greens, pedestrians had to wait at most once while turning vehicles used their crosswalk. The number shows where it stands.",
   "Panel.NextReview": "Next review in",
+  "Panel.TurnOnRed": "Turn on red",
+  "Panel.TurnOnRedHint": "Right turns (left turns in left-hand traffic) stop at red and go when the way is clear. Only where they meet nothing but traffic they give way to, and never during a pedestrian scramble. At automatic junctions the autopilot decides, if the setting allows it.",
   "Panel.MakeAutomatic": "Back to automatic",
   "Panel.MakeAutomaticHint": "The junction gets the automatic control and a generated phase plan again, the autopilot tunes it, and it can join a green wave again. Measured traffic is kept.",
   "Panel.NothingSelected": "Pick a junction to see and change its signals.",
