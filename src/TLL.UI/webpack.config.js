@@ -17,6 +17,17 @@ if (!OUTPUT_DIR) {
   throw "Set TLL_UI_OUT, or install the game's modding toolchain so that CSII_USERDATAPATH is set.";
 }
 
+// The game reads the module's id, author and version from this comment at
+// the top of the bundle. Without it the module registers with an empty id.
+const banner = `
+ * Cities: Skylines II UI Module
+ *
+ * Id: ${MOD.id}
+ * Author: ${MOD.author}
+ * Version: ${MOD.version}
+ * Dependencies: ${MOD.dependencies.join(",")}
+`;
+
 module.exports = {
   mode: "production",
   stats: "errors-warnings",
@@ -89,7 +100,13 @@ module.exports = {
   },
   optimization: {
     minimize: true,
-    minimizer: [new TerserPlugin({ extractComments: false })],
+    minimizer: [
+      new TerserPlugin({
+        extractComments: {
+          banner: () => banner,
+        },
+      }),
+    ],
   },
   experiments: {
     outputModule: true,

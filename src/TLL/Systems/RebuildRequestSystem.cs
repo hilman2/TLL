@@ -18,7 +18,7 @@ namespace TLL.Systems
     /// else in Modification1, adds Updated where the whole modification pass
     /// of that frame sees it.
     /// </summary>
-    public class RebuildRequestSystem : TllSystemBase
+    public partial class RebuildRequestSystem : TllSystemBase
     {
         private EntityQuery m_Query;
 

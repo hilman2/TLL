@@ -21,7 +21,7 @@ namespace TLL.UI
     /// junction under the cursor gets a white one. A click selects it in the
     /// panel; cancel (right click, Escape) returns to the default tool.
     /// </summary>
-    public class JunctionToolSystem : ToolBaseSystem
+    public partial class JunctionToolSystem : ToolBaseSystem
     {
         public const string kToolID = "TLL.JunctionTool";
 

@@ -10,7 +10,7 @@ namespace TLL.Systems
     /// once and only the failing system is switched off; the junctions it
     /// served keep their last signal state or return to the game.
     /// </summary>
-    public abstract class TllSystemBase : GameSystemBase
+    public abstract partial class TllSystemBase : GameSystemBase
     {
         protected sealed override void OnUpdate()
         {

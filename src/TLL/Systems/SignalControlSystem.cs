@@ -26,7 +26,7 @@ namespace TLL.Systems
     /// stage into the game's own signal states, so vehicles, pedestrians and
     /// signal poles behave exactly as at a vanilla junction.
     /// </summary>
-    public class SignalControlSystem : TllSystemBase
+    public partial class SignalControlSystem : TllSystemBase
     {
         /// <summary>Distance before the stop line in which waiting and approaching vehicles count as demand.</summary>
         private const float kDetectionDistance = 60f;

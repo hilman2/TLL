@@ -31,7 +31,7 @@ namespace TLL.Systems
     /// This runs on the main thread. It only touches junctions that changed,
     /// which is rare compared with the per-step control.
     /// </summary>
-    public class JunctionInitSystem : TllSystemBase
+    public partial class JunctionInitSystem : TllSystemBase
     {
         private EntityQuery m_ChangedQuery;
         private EntityQuery m_UnbuiltQuery;

@@ -25,7 +25,7 @@ namespace TLL.Systems
     /// minutes, and when the player asks for it. Manual junctions are never
     /// touched.
     /// </summary>
-    public class CoordinationSystem : TllSystemBase
+    public partial class CoordinationSystem : TllSystemBase
     {
         /// <summary>Junctions further apart than this along the road are not coordinated; platoons disperse on the way.</summary>
         private const float kMaxSpacing = 800f;

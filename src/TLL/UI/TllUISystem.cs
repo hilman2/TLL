@@ -26,7 +26,7 @@ namespace TLL.UI
     /// buffers waits for the running control job. The panel talks back
     /// through triggers, all in the binding group "tll".
     /// </summary>
-    public class TllUISystem : UISystemBase
+    public partial class TllUISystem : UISystemBase
     {
         private const string kGroup = "tll";
 

@@ -20,3 +20,8 @@ npm run typecheck
 rm -rf /out/dist
 TLL_UI_OUT=/out/dist npm run build
 ls -l /out/dist
+
+# Render the bundle against the game's real module exports before anything
+# ships (tests/ui/smoke.mjs). A failure here would otherwise surface in the
+# game as a missing interface.
+node /src/tests/ui/smoke.mjs /out/dist/TLL.mjs

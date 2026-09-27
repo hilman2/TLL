@@ -20,7 +20,7 @@ namespace TLL.Systems
     /// Rounds with too little data are skipped, so a junction is only
     /// retimed from a meaningful sample.
     /// </summary>
-    public class OptimizerSystem : TllSystemBase
+    public partial class OptimizerSystem : TllSystemBase
     {
         /// <summary>Statistics must cover at least this long before they are used.</summary>
         private static readonly int kMinimumSample = SimTime.ToSteps(120f);

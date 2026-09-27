@@ -18,7 +18,7 @@ namespace TLL.Systems
     /// components; the plan is built by <see cref="JunctionInitSystem"/> on
     /// the following frame.
     /// </summary>
-    public class AutoManageSystem : TllSystemBase
+    public partial class AutoManageSystem : TllSystemBase
     {
         private EntityQuery m_UnmanagedQuery;
         private EntityQuery m_ManagedQuery;
