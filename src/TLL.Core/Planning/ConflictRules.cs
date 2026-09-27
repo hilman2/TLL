@@ -6,9 +6,10 @@ namespace TLL.Core.Planning
     /// The rules follow what the game already does at a vanilla junction:
     /// vanilla lets everything from two opposite approaches run together and
     /// relies on the lane priorities inside the junction to sort out who goes
-    /// first. TLL keeps that for oncoming traffic, and only forbids what the
-    /// game cannot resolve: paths from perpendicular approaches that cross,
-    /// straight traffic over a crosswalk, and anything involving tracks.
+    /// first. TLL keeps that for oncoming traffic, trams included, and only
+    /// forbids what the game cannot resolve: paths from perpendicular
+    /// approaches that cross, straight traffic over a crosswalk, and trams
+    /// that would have to wait inside the junction (see ClassifyTram).
     /// </summary>
     public static class ConflictRules
     {
@@ -37,10 +38,10 @@ namespace TLL.Core.Planning
             if (a.Source == b.Source)
                 return Relation.Compatible;
 
-            if (a.Kind == MovementKind.Track || b.Kind == MovementKind.Track)
-                return Relation.Hard;
-
             bool oncoming = IsOpposite(a.Source, b.Source, oppositeOf);
+            if (a.Kind == MovementKind.Track || b.Kind == MovementKind.Track)
+                return ClassifyTram(a, b, contact, oppositeOf);
+
             int rankA = Rank(a.Kind, leftHandTraffic);
             int rankB = Rank(b.Kind, leftHandTraffic);
 
@@ -57,6 +58,39 @@ namespace TLL.Core.Planning
             if (rankA == rankB)
                 return Relation.Hard;
             return rankA < rankB ? Relation.Yields : Relation.HasPriority;
+        }
+
+        /// <summary>
+        /// A tram against another vehicle. Oncoming, the game sorts them out
+        /// by lane priority as it does for cars, and so does TLL: whoever
+        /// turns across the other's path gives way, a tram going straight
+        /// has priority. Where both turn across each other, where paths
+        /// cross from the side, and where they merge, they stay apart: a
+        /// tram waiting inside the junction blocks everything around it.
+        /// </summary>
+        /// <remarks>
+        /// Treating every tram contact as hard made a turn from a lane shared
+        /// with straight traffic keep the whole approach from running with
+        /// the oncoming one: on streets with trams, every layout became one
+        /// approach at a time, and green waves had no band.
+        /// </remarks>
+        private static Relation ClassifyTram(Movement a, Movement b, PathContact contact, int[] oppositeOf)
+        {
+            if (contact != PathContact.Cross || !IsOpposite(a.Source, b.Source, oppositeOf))
+                return Relation.Hard;
+            bool aTurns = Turns(a, oppositeOf);
+            bool bTurns = Turns(b, oppositeOf);
+            if (aTurns == bTurns)
+                return Relation.Hard;
+            return aTurns ? Relation.Yields : Relation.HasPriority;
+        }
+
+        /// <summary>Whether a vehicle movement leaves by another road than the one straight across.</summary>
+        private static bool Turns(Movement m, int[] oppositeOf)
+        {
+            if (m.Kind != MovementKind.Track)
+                return m.Kind != MovementKind.Straight;
+            return !IsOpposite(m.Source, m.Target, oppositeOf);
         }
 
         private static Relation ClassifyPedestrian(Movement a, Movement b)

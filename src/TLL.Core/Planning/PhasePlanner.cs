@@ -59,10 +59,14 @@ namespace TLL.Core.Planning
                 phases.Add(new Phase { Green = members });
             }
 
+            // What the junction allows once shared lanes are taken into
+            // account, without what the strategy adds.
+            ConflictMatrix physical = junction.Conflicts.Clone();
+            ShareHardConflicts(junction, physical);
             for (int p = 0; p < phases.Count; p++)
             {
                 Phase widened = Widen(phases[p], conflicts, n);
-                widened.Green = AddFreeOverlaps(widened.Green, junction, strategy);
+                widened.Green = AddFreeOverlaps(widened.Green, junction, physical, strategy);
                 phases[p] = widened;
             }
 
@@ -236,7 +240,13 @@ namespace TLL.Core.Planning
         /// With an exclusive pedestrian phase, crosswalks stay out of the
         /// vehicle phases, since keeping them there is the point of it.
         /// </summary>
-        private static ulong AddFreeOverlaps(ulong green, JunctionModel junction, PlanStrategy strategy)
+        /// <param name="physical">
+        /// The junction's relations with the hard conflicts passed on along
+        /// shared lanes, but none a strategy adds: a movement whose lane
+        /// partner cannot run in the phase is not free either, since the
+        /// partner at the front of the lane would block it.
+        /// </param>
+        private static ulong AddFreeOverlaps(ulong green, JunctionModel junction, ConflictMatrix physical, PlanStrategy strategy)
         {
             int n = junction.Movements.Count;
             for (int candidate = 0; candidate < n; candidate++)
@@ -249,7 +259,8 @@ namespace TLL.Core.Planning
                 for (int member = 0; member < n && free; member++)
                 {
                     if ((green & (1UL << member)) != 0)
-                        free = junction.Conflicts.Get(candidate, member) == Relation.Compatible;
+                        free = junction.Conflicts.Get(candidate, member) == Relation.Compatible
+                            && physical.Get(candidate, member) != Relation.Hard;
                 }
                 if (free)
                     green |= 1UL << candidate;
