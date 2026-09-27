@@ -64,6 +64,9 @@ export interface PhaseInfo {
 
 export interface JunctionInfo extends EntityRef {
   name: string;
+  /** False for a junction TLL does not control; the fields below are then meaningless. */
+  managed: boolean;
+  hasSignals: boolean;
   mode: ControlMode;
   strategy: PlanStrategy;
   manual: boolean;
@@ -81,6 +84,7 @@ const emptySummary: Summary = { available: true, automation: false, managed: 0, 
 
 export const summary$ = bindValue<Summary>(group, "summary", emptySummary);
 export const selected$ = bindValue<JunctionInfo | null>(group, "selected", null);
+export const toolActive$ = bindValue<boolean>(group, "toolActive", false);
 
 /** Whether the panel is open. Lives only in the UI; the button and the panel share it. */
 export const panelOpen$ = bindLocalValue(false);
@@ -92,4 +96,6 @@ export const actions = {
   setMode: (mode: ControlMode) => trigger(group, "setMode", mode),
   setStrategy: (strategy: PlanStrategy) => trigger(group, "setStrategy", strategy),
   release: () => trigger(group, "release"),
+  manage: () => trigger(group, "manage"),
+  toggleTool: () => trigger(group, "toggleTool"),
 };

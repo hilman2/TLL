@@ -38,6 +38,7 @@ namespace TLL
             updateSystem.UpdateAt<AutoManageSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<OptimizerSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<UI.TllUISystem>(SystemUpdatePhase.UIUpdate);
+            updateSystem.UpdateAt<UI.JunctionToolSystem>(SystemUpdatePhase.ToolUpdate);
         }
 
         public void OnDispose()

@@ -40,6 +40,7 @@ namespace TLL.UI
         private NameSystem m_NameSystem;
         private CameraUpdateSystem m_CameraSystem;
         private SignalControlSystem m_Control;
+        private JunctionToolSystem m_Tool;
 
         private Entity m_Selected;
         private DateTime m_SummaryTime;
@@ -68,6 +69,8 @@ namespace TLL.UI
         {
             public Entity Node;
             public string Name;
+            public bool Managed;
+            public bool HasSignals;
             public ManagedJunction Junction;
             public ControllerState State;
             public int Cycle;
@@ -88,6 +91,7 @@ namespace TLL.UI
             m_NameSystem = World.GetOrCreateSystemManaged<NameSystem>();
             m_CameraSystem = World.GetOrCreateSystemManaged<CameraUpdateSystem>();
             m_Control = World.GetOrCreateSystemManaged<SignalControlSystem>();
+            m_Tool = World.GetOrCreateSystemManaged<JunctionToolSystem>();
             m_ManagedQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[] { ComponentType.ReadOnly<ManagedJunction>(), ComponentType.ReadOnly<JunctionPhase>() },
@@ -102,6 +106,9 @@ namespace TLL.UI
             AddBinding(new TriggerBinding<int>(kGroup, "setMode", OnSetMode));
             AddBinding(new TriggerBinding<int>(kGroup, "setStrategy", OnSetStrategy));
             AddBinding(new TriggerBinding(kGroup, "release", OnRelease));
+            AddBinding(new TriggerBinding(kGroup, "manage", OnManage));
+            AddBinding(new TriggerBinding(kGroup, "toggleTool", () => m_Tool.Toggle()));
+            AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "toolActive", () => m_Tool.IsActive));
         }
 
         protected override void OnUpdate()
@@ -221,6 +228,10 @@ namespace TLL.UI
             WriteEntity(writer, d.Node);
             writer.PropertyName("name");
             writer.Write(d.Name);
+            writer.PropertyName("managed");
+            writer.Write(d.Managed);
+            writer.PropertyName("hasSignals");
+            writer.Write(d.HasSignals);
             writer.PropertyName("mode");
             writer.Write((int)d.Junction.Mode);
             writer.PropertyName("strategy");
@@ -276,16 +287,19 @@ namespace TLL.UI
         private Detail CollectDetail()
         {
             Entity node = m_Selected;
-            if (node == Entity.Null || !EntityManager.Exists(node) || !EntityManager.HasComponent<ManagedJunction>(node)
-                || !EntityManager.HasBuffer<JunctionPhase>(node))
+            if (node == Entity.Null || !EntityManager.Exists(node) || !EntityManager.HasComponent<Node>(node))
                 return null;
 
             var detail = new Detail
             {
                 Node = node,
                 Name = JunctionName(node),
-                Junction = EntityManager.GetComponentData<ManagedJunction>(node),
+                HasSignals = EntityManager.HasComponent<TrafficLights>(node),
+                Managed = EntityManager.HasComponent<ManagedJunction>(node) && EntityManager.HasBuffer<JunctionPhase>(node),
             };
+            if (!detail.Managed)
+                return detail;
+            detail.Junction = EntityManager.GetComponentData<ManagedJunction>(node);
             if (EntityManager.HasComponent<JunctionRuntime>(node))
                 detail.State = EntityManager.GetComponentData<JunctionRuntime>(node).State;
 
@@ -317,7 +331,8 @@ namespace TLL.UI
             m_SummaryTime = default;
         }
 
-        private void Select(Entity node, bool moveCamera)
+        /// <summary>Shows a junction in the panel, managed or not; optionally moves the camera there.</summary>
+        public void Select(Entity node, bool moveCamera)
         {
             m_Selected = node;
             m_DetailTime = default;
@@ -351,6 +366,24 @@ namespace TLL.UI
             EntityManager.GetBuffer<JunctionPhase>(m_Selected).Clear();
             EntityManager.AddComponent<RebuildRequest>(m_Selected);
             m_DetailTime = default;
+        }
+
+        /// <summary>Takes over the selected signalled junction as one the player configures.</summary>
+        private void OnManage()
+        {
+            Entity node = m_Selected;
+            if (node == Entity.Null || !EntityManager.Exists(node) || !EntityManager.HasComponent<TrafficLights>(node)
+                || EntityManager.HasComponent<ManagedJunction>(node))
+                return;
+            Setting settings = Mod.Settings;
+            ManagedJunction junction = ManagedJunction.Create(JunctionOrigin.Manual,
+                settings != null ? settings.AutoControl : ControlMode.Adaptive,
+                settings != null ? settings.AutoStrategy : PlanStrategy.Permissive);
+            EntityManager.RemoveComponent<JunctionExcluded>(node);
+            EntityManager.AddComponentData(node, junction);
+            EntityManager.AddComponent<RebuildRequest>(node);
+            m_DetailTime = default;
+            m_SummaryTime = default;
         }
 
         private void OnRelease()

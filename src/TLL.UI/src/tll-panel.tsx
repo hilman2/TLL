@@ -12,6 +12,7 @@ import {
   selected$,
   Stage,
   summary$,
+  toolActive$,
 } from "bindings";
 import { useTranslate } from "localization";
 import styles from "tll-panel.module.scss";
@@ -25,6 +26,7 @@ export const TllPanel = () => {
   const open = useValue(panelOpen$);
   const summary = useValue(summary$);
   const selected = useValue(selected$);
+  const toolActive = useValue(toolActive$);
   const t = useTranslate();
   if (!open) return null;
 
@@ -47,6 +49,11 @@ export const TllPanel = () => {
           </span>
           <Button variant="flat" className={styles.toggle} selected={summary.automation} onSelect={actions.toggleAutomation}>
             {summary.automation ? t("Panel.AutomationOn", "Automation on") : t("Panel.AutomationOff", "Automation off")}
+          </Button>
+        </div>
+        <div className={styles.row}>
+          <Button variant="flat" className={styles.toggle} selected={toolActive} onSelect={actions.toggleTool}>
+            {toolActive ? t("Panel.PickingJunction", "Click a junction…") : t("Panel.PickJunction", "Pick a junction on the map")}
           </Button>
         </div>
 
@@ -72,7 +79,26 @@ const ProblemRow = ({ problem, t, selected }: { problem: Problem; t: Translate; 
   </Button>
 );
 
-const JunctionDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }) => (
+const JunctionDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }) =>
+  junction.managed ? <ManagedDetail junction={junction} t={t} /> : <UnmanagedDetail junction={junction} t={t} />;
+
+const UnmanagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }) => (
+  <div className={styles.detail}>
+    <div className={styles.heading}>{junction.name}</div>
+    {junction.hasSignals ? (
+      <>
+        <div className={styles.muted}>{t("Panel.VanillaSignals", "The game controls these traffic lights.")}</div>
+        <Button variant="flat" className={styles.release} onSelect={actions.manage}>
+          {t("Panel.Manage", "Control with TLL")}
+        </Button>
+      </>
+    ) : (
+      <div className={styles.muted}>{t("Panel.NoSignals", "This junction has no traffic lights. Add them with the game's intersection upgrade.")}</div>
+    )}
+  </div>
+);
+
+const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }) => (
   <div className={styles.detail}>
     <div className={styles.heading}>{junction.name}</div>
     <div className={styles.muted}>

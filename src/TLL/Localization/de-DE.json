@@ -60,6 +60,11 @@
   "Panel.Waiting": "wartet",
   "Panel.Yield": "wartepflichtig",
   "Panel.Release": "Ans Spiel zurückgeben",
+  "Panel.PickJunction": "Kreuzung auf der Karte wählen",
+  "Panel.PickingJunction": "Kreuzung anklicken …",
+  "Panel.VanillaSignals": "Diese Ampeln steuert das Spiel.",
+  "Panel.Manage": "Mit TLL steuern",
+  "Panel.NoSignals": "Diese Kreuzung hat keine Ampeln. Du kannst sie mit der Kreuzungsaufwertung des Spiels hinzufügen.",
 
   "Mode.Adaptive": "Adaptiv",
   "Mode.Actuated": "Verkehrsabhängig",

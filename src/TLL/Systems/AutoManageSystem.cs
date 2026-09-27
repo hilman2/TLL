@@ -97,7 +97,9 @@ namespace TLL.Systems
                 ManagedJunction auto = ManagedJunction.Create(JunctionOrigin.Auto, settings.AutoControl, settings.AutoStrategy);
                 foreach (Entity node in nodes)
                     EntityManager.SetComponentData(node, auto);
-                EntityManager.AddComponent<JunctionDirty>(nodes);
+                // A full rebuild, not just JunctionDirty: the signal poles get
+                // their heads from the lane groups only when the node is updated.
+                EntityManager.AddComponent<RebuildRequest>(nodes);
                 Mod.Log.Info($"Automation took over {nodes.Length} junction(s).");
             }
         }

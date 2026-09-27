@@ -60,6 +60,11 @@
   "Panel.Waiting": "waiting",
   "Panel.Yield": "yields",
   "Panel.Release": "Return to the game's control",
+  "Panel.PickJunction": "Pick a junction on the map",
+  "Panel.PickingJunction": "Click a junction…",
+  "Panel.VanillaSignals": "The game controls these traffic lights.",
+  "Panel.Manage": "Control with TLL",
+  "Panel.NoSignals": "This junction has no traffic lights. Add them with the game's intersection upgrade.",
 
   "Mode.Adaptive": "Adaptive",
   "Mode.Actuated": "Actuated",
