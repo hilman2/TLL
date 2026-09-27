@@ -42,7 +42,6 @@ namespace TLL.Systems
         public const int kLayoutEvery = 4;
         public const int kRoundFrames = 4096;
         private const int kConfirmRounds = 2;
-        private const int kMinFlashRounds = 2;
 
         /// <summary>Share of the new round in the recent figure: the last three or so rounds, about a game hour, count.</summary>
         private const float kRecentWeight = 0.3f;
@@ -203,6 +202,7 @@ namespace TLL.Systems
                 // Recent: one jammed round alone does not make a problem spot.
                 s.RecentQueue = fresh ? queue : s.RecentQueue + kRecentWeight * (queue - s.RecentQueue);
                 s.PeakQueue = math.max(s.PeakQueue * kPeakDecay, s.RecentQueue);
+                s.LastQueue = queue;
             }
         }
 
@@ -229,7 +229,7 @@ namespace TLL.Systems
         {
             AutopilotState state = EntityManager.HasComponent<AutopilotState>(node)
                 ? EntityManager.GetComponentData<AutopilotState>(node)
-                : new AutopilotState { RoundsSinceFlashChange = kMinFlashRounds };
+                : new AutopilotState { Flash = FlashSchedule.Start };
             DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node, true);
             DynamicBuffer<JunctionMovement> movements = EntityManager.GetBuffer<JunctionMovement>(node, true);
             List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
@@ -237,6 +237,7 @@ namespace TLL.Systems
 
             var recent = new float[edges.Count];
             var peak = new float[edges.Count];
+            var queue = new float[edges.Count];
             for (int m = 0; m < movements.Length && m < statistics.Length; m++)
             {
                 if (movements[m].Kind == MovementKind.Pedestrian)
@@ -246,6 +247,7 @@ namespace TLL.Systems
                     continue;
                 recent[source] += statistics[m].Recent;
                 peak[source] += statistics[m].Peak;
+                queue[source] += statistics[m].LastQueue;
             }
             Road(recent, opposite, out int majorApproach, out float major, out float minor, out float minorTotal);
             state.MajorVolume = major;
@@ -259,11 +261,12 @@ namespace TLL.Systems
 
             // Flashing yellow at low traffic.
             bool flashing = junction.Mode == ControlMode.Flashing;
-            if (state.RoundsSinceFlashChange < ushort.MaxValue)
-                state.RoundsSinceFlashChange++;
-            bool wantFlash = settings.AutoFlash && majorApproach >= 0 && FlashAdvisor.Decide(flashing, major, minor, minorTotal);
-            if (wantFlash != flashing && state.RoundsSinceFlashChange >= kMinFlashRounds)
+            float worstQueue = WorstQueuePerLane(node, movements, edges, queue);
+            bool wantFlash = state.Flash.Round(flashing, settings.AutoFlash && majorApproach >= 0, major, minor, minorTotal, worstQueue);
+            if (wantFlash != flashing)
             {
+                if (!wantFlash && worstQueue >= FlashSchedule.BacklogQueue && settings.VerboseLogging)
+                    Mod.Log.Info($"Autopilot: junction {node} stops flashing, {worstQueue:0.#} vehicles waiting per lane.");
                 if (wantFlash)
                 {
                     junction.Mode = ControlMode.Flashing;
@@ -282,7 +285,6 @@ namespace TLL.Systems
                     // the next coordination round takes it back in if it fits.
                     junction.Mode = settings.AutoControl();
                 }
-                state.RoundsSinceFlashChange = 0;
                 changed = true;
             }
 
@@ -412,6 +414,32 @@ namespace TLL.Systems
             junction.Strategy = choice;
             state.PendingRounds = 0;
             rebuild = true;
+        }
+
+        /// <summary>
+        /// Mean vehicles waiting per lane over the last round, on the
+        /// approach where it is highest. <paramref name="queueByApproach"/>
+        /// sums the whole approach; its lanes are counted from the junction's
+        /// lanes, each approach lane once.
+        /// </summary>
+        private float WorstQueuePerLane(Entity node, DynamicBuffer<JunctionMovement> movements, List<Entity> edges, float[] queueByApproach)
+        {
+            DynamicBuffer<JunctionLane> lanes = EntityManager.GetBuffer<JunctionLane>(node, true);
+            var laneCount = new int[edges.Count];
+            var seen = new HashSet<Entity>();
+            for (int l = 0; l < lanes.Length; l++)
+            {
+                JunctionLane lane = lanes[l];
+                if (lane.Approach == Entity.Null || lane.Movement >= movements.Length || !seen.Add(lane.Approach))
+                    continue;
+                int source = edges.IndexOf(movements[lane.Movement].Source);
+                if (source >= 0)
+                    laneCount[source]++;
+            }
+            float worst = 0f;
+            for (int a = 0; a < edges.Count; a++)
+                worst = math.max(worst, queueByApproach[a] / math.max(1, laneCount[a]));
+            return worst;
         }
 
         /// <summary>

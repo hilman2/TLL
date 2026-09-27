@@ -37,6 +37,12 @@ namespace TLL.Components
         /// </summary>
         public float PeakQueue;
 
+        /// <summary>
+        /// Mean number of vehicles waiting in the last round alone, unsmoothed,
+        /// for decisions that cannot wait for the average. Not saved.
+        /// </summary>
+        public float LastQueue;
+
         public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
         {
             writer.Write(kVersion);

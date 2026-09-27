@@ -14,14 +14,13 @@ namespace TLL.Components
     /// </summary>
     public struct AutopilotState : IComponentData, ISerializable
     {
-        private const byte kVersion = 1;
+        private const byte kVersion = 2;
 
         /// <summary>A layout recommended but not yet applied, and in how many reviews in a row.</summary>
         public PlanStrategy Pending;
         public byte PendingRounds;
 
-        /// <summary>Rounds since the junction last started or stopped flashing.</summary>
-        public ushort RoundsSinceFlashChange;
+        public FlashSchedule Flash;
 
         /// <summary>From the last layout round, per JunctionAdvisor.Strategies: mean delay in seconds and worst saturation.</summary>
         public float4 LayoutDelay;
@@ -42,7 +41,8 @@ namespace TLL.Components
             writer.Write(kVersion);
             writer.Write((byte)Pending);
             writer.Write(PendingRounds);
-            writer.Write(RoundsSinceFlashChange);
+            writer.Write(Flash.RoundsSinceChange);
+            writer.Write(Flash.EndedByBacklog);
         }
 
         public void Deserialize<TReader>(TReader reader) where TReader : IReader
@@ -50,7 +50,9 @@ namespace TLL.Components
             reader.Read(out byte version);
             reader.Read(out byte pending);
             reader.Read(out PendingRounds);
-            reader.Read(out RoundsSinceFlashChange);
+            reader.Read(out Flash.RoundsSinceChange);
+            if (version >= 2)
+                reader.Read(out Flash.EndedByBacklog);
             Pending = (PlanStrategy)pending;
         }
     }
