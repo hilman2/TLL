@@ -30,6 +30,31 @@ export enum PlanStrategy {
   ExclusivePedestrian = 3,
 }
 
+/** Numbers as in TLL.Core.Planning.MovementKind. */
+export enum MovementKind {
+  Straight = 0,
+  Left = 1,
+  Right = 2,
+  UTurn = 3,
+  Pedestrian = 4,
+  Track = 5,
+}
+
+export interface Approach {
+  /** Unit direction from the junction out along the road, world x and z. */
+  x: number;
+  z: number;
+  name: string;
+}
+
+export interface Movement {
+  kind: MovementKind;
+  /** Approach index the traffic comes from; for a crosswalk, the approach it crosses. */
+  source: number;
+  /** Approach index it leaves by; -1 for a crosswalk. */
+  target: number;
+}
+
 export interface EntityRef {
   index: number;
   version: number;
@@ -79,8 +104,11 @@ export interface JunctionInfo extends EntityRef {
   next: number;
   stageSeconds: number;
   cycleSeconds: number;
-  /** One entry per movement: "Kind|source road|target road". */
-  movements: string[];
+  leftHandTraffic: boolean;
+  /** Camera heading in degrees, so the diagram can face the way the player looks. */
+  cameraYaw: number;
+  approaches: Approach[];
+  movements: Movement[];
   phases: PhaseInfo[];
 }
 

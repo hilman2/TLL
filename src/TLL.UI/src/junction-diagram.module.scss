@@ -1,0 +1,46 @@
+.diagram {
+  width: 110rem;
+  height: 110rem;
+  flex-shrink: 0;
+}
+
+.road {
+  stroke: #4a515c;
+  stroke-width: 20;
+  stroke-linecap: round;
+}
+
+.junction {
+  fill: #4a515c;
+}
+
+.arrow {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.crosswalk {
+  stroke-width: 4;
+  stroke-dasharray: 2 2;
+}
+
+// Colour classes set both stroke and fill, so they work for lines and heads.
+.protected {
+  stroke: #3dbf6b;
+  fill: #3dbf6b;
+}
+
+.permitted {
+  stroke: #f5b83d;
+  fill: #f5b83d;
+}
+
+.track {
+  stroke: #7aa7ff;
+  fill: #7aa7ff;
+}
+
+.head {
+  stroke: none;
+}

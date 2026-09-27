@@ -63,6 +63,8 @@
   "Panel.Waiting": "wartet",
   "Panel.Yield": "wartepflichtig",
   "Panel.Release": "Ans Spiel zurückgeben",
+  "Panel.Of": "von",
+  "Panel.CoordinatedNote": "Läuft in einer grünen Welle. Wähle einen anderen Modus, um sie herauszunehmen.",
   "Panel.GreenWaves": "Grüne Wellen",
   "Panel.Junctions": "Kreuzungen",
   "Panel.RebuildGreenWaves": "Neu berechnen",

@@ -14,6 +14,7 @@ using TLL.Core.Planning;
 using TLL.Systems;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Mathematics;
 
 namespace TLL.UI
 {
@@ -42,6 +43,7 @@ namespace TLL.UI
         private SignalControlSystem m_Control;
         private JunctionToolSystem m_Tool;
         private CoordinationSystem m_Coordination;
+        private Game.City.CityConfigurationSystem m_CityConfiguration;
 
         private Entity m_Selected;
         private DateTime m_SummaryTime;
@@ -76,7 +78,24 @@ namespace TLL.UI
             public ControllerState State;
             public int Cycle;
             public readonly List<PhaseRow> Phases = new List<PhaseRow>();
-            public readonly List<string> Movements = new List<string>();
+            public readonly List<MovementRow> Movements = new List<MovementRow>();
+            public readonly List<ApproachRow> Approaches = new List<ApproachRow>();
+            public bool LeftHandTraffic;
+            public float CameraYaw;
+        }
+
+        private struct MovementRow
+        {
+            public MovementKind Kind;
+            public int Source;
+            public int Target;
+        }
+
+        private struct ApproachRow
+        {
+            /// <summary>Unit direction from the junction out along the road, in the ground plane (x, z).</summary>
+            public float2 Direction;
+            public string Name;
         }
 
         private struct PhaseRow
@@ -94,6 +113,7 @@ namespace TLL.UI
             m_Control = World.GetOrCreateSystemManaged<SignalControlSystem>();
             m_Tool = World.GetOrCreateSystemManaged<JunctionToolSystem>();
             m_Coordination = World.GetOrCreateSystemManaged<CoordinationSystem>();
+            m_CityConfiguration = World.GetOrCreateSystemManaged<Game.City.CityConfigurationSystem>();
             m_ManagedQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[] { ComponentType.ReadOnly<ManagedJunction>(), ComponentType.ReadOnly<JunctionPhase>() },
@@ -257,10 +277,37 @@ namespace TLL.UI
             writer.Write(SimTime.ToSeconds(d.State.StageSteps));
             writer.PropertyName("cycleSeconds");
             writer.Write(SimTime.ToSeconds(d.Cycle));
+            writer.PropertyName("leftHandTraffic");
+            writer.Write(d.LeftHandTraffic);
+            writer.PropertyName("cameraYaw");
+            writer.Write(d.CameraYaw);
+            writer.PropertyName("approaches");
+            writer.ArrayBegin((uint)d.Approaches.Count);
+            foreach (ApproachRow a in d.Approaches)
+            {
+                writer.TypeBegin("tll.Approach");
+                writer.PropertyName("x");
+                writer.Write(a.Direction.x);
+                writer.PropertyName("z");
+                writer.Write(a.Direction.y);
+                writer.PropertyName("name");
+                writer.Write(a.Name);
+                writer.TypeEnd();
+            }
+            writer.ArrayEnd();
             writer.PropertyName("movements");
             writer.ArrayBegin((uint)d.Movements.Count);
-            foreach (string m in d.Movements)
-                writer.Write(m);
+            foreach (MovementRow m in d.Movements)
+            {
+                writer.TypeBegin("tll.Movement");
+                writer.PropertyName("kind");
+                writer.Write((int)m.Kind);
+                writer.PropertyName("source");
+                writer.Write(m.Source);
+                writer.PropertyName("target");
+                writer.Write(m.Target);
+                writer.TypeEnd();
+            }
             writer.ArrayEnd();
             writer.PropertyName("phases");
             writer.ArrayBegin((uint)d.Phases.Count);
@@ -320,11 +367,25 @@ namespace TLL.UI
                 detail.Cycle += phases[i].Data.Green + intergreen;
             }
 
+            detail.LeftHandTraffic = m_CityConfiguration.leftHandTraffic;
+            IGameCameraController camera = m_CameraSystem.activeCameraController;
+            detail.CameraYaw = camera != null ? camera.rotation.y : 0f;
+
+            List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
+            foreach (Entity edge in edges)
+                detail.Approaches.Add(new ApproachRow { Direction = NetGeometry.Outward(EntityManager, node, edge), Name = RoadName(edge) });
             if (EntityManager.HasBuffer<JunctionMovement>(node))
             {
                 DynamicBuffer<JunctionMovement> movements = EntityManager.GetBuffer<JunctionMovement>(node, true);
                 for (int i = 0; i < movements.Length; i++)
-                    detail.Movements.Add(MovementLabel(movements[i]));
+                {
+                    detail.Movements.Add(new MovementRow
+                    {
+                        Kind = movements[i].Kind,
+                        Source = edges.IndexOf(movements[i].Source),
+                        Target = edges.IndexOf(movements[i].Target),
+                    });
+                }
             }
             return detail;
         }
@@ -426,25 +487,28 @@ namespace TLL.UI
             DynamicBuffer<ConnectedEdge> edges = EntityManager.GetBuffer<ConnectedEdge>(node, true);
             for (int i = 0; i < edges.Length && names.Count < 3; i++)
             {
-                string name = m_NameSystem.GetRenderedLabelName(edges[i].m_Edge);
+                string name = RoadName(edges[i].m_Edge);
                 if (!string.IsNullOrEmpty(name) && !names.Contains(name))
                     names.Add(name);
             }
             return names.Count > 0 ? string.Join(" / ", names) : node.ToString();
         }
 
-        private string MovementLabel(JunctionMovement movement)
-        {
-            string source = RoadName(movement.Source);
-            if (movement.Kind == MovementKind.Pedestrian)
-                return $"{movement.Kind}|{source}|";
-            return $"{movement.Kind}|{source}|{RoadName(movement.Target)}";
-        }
-
+        /// <summary>
+        /// The street name of a road segment. The name belongs to the street
+        /// the segment is part of (its aggregate); the segment itself only
+        /// carries the name of its road type.
+        /// </summary>
         private string RoadName(Entity edge)
         {
             if (edge == Entity.Null || !EntityManager.Exists(edge))
                 return "";
+            if (EntityManager.HasComponent<Aggregated>(edge))
+            {
+                Entity street = EntityManager.GetComponentData<Aggregated>(edge).m_Aggregate;
+                if (street != Entity.Null && EntityManager.Exists(street))
+                    return m_NameSystem.GetRenderedLabelName(street) ?? "";
+            }
             return m_NameSystem.GetRenderedLabelName(edge) ?? "";
         }
 

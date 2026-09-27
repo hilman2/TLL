@@ -14,13 +14,28 @@ import {
   summary$,
   toolActive$,
 } from "bindings";
+import { JunctionDiagram } from "junction-diagram";
 import { useTranslate } from "localization";
 import styles from "tll-panel.module.scss";
+
+// Layout note: the game's UI engine (Coherent Gameface) lays out every text
+// node as its own flex item, so "{a} · {b}" in JSX renders as separate blocks
+// under each other. Texts are therefore built as one string, and every row
+// states its flex direction. Wrapping flex rows overlap, so choices are laid
+// out in fixed rows of two.
 
 type Translate = ReturnType<typeof useTranslate>;
 
 const modes = [ControlMode.Adaptive, ControlMode.Actuated, ControlMode.FixedTime, ControlMode.Flashing];
 const strategies = [PlanStrategy.Permissive, PlanStrategy.ProtectedTurns, PlanStrategy.Split, PlanStrategy.ExclusivePedestrian];
+
+const seconds = (s: number) => `${Math.round(s)} s`;
+
+function pairs<T>(items: T[]): T[][] {
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += 2) rows.push(items.slice(i, i + 2));
+  return rows;
+}
 
 export const TllPanel = () => {
   const open = useValue(panelOpen$);
@@ -29,6 +44,9 @@ export const TllPanel = () => {
   const toolActive = useValue(toolActive$);
   const t = useTranslate();
   if (!open) return null;
+
+  const managedText = `${t("Panel.Managed", "Junctions controlled by TLL")}: ${summary.managed}`;
+  const wavesText = `${t("Panel.GreenWaves", "Green waves")}: ${summary.greenWaves} (${summary.coordinated} ${t("Panel.Junctions", "junctions")})`;
 
   return (
     <Panel
@@ -43,27 +61,26 @@ export const TllPanel = () => {
             {t("Panel.Unavailable", "The game has changed in a way TLL does not recognise. All traffic lights are left to the game.")}
           </div>
         )}
+
         <div className={styles.row}>
-          <span>
-            {t("Panel.Managed", "Junctions controlled by TLL")}: <b>{summary.managed}</b>
-          </span>
-          <Button variant="flat" className={styles.toggle} selected={summary.automation} onSelect={actions.toggleAutomation}>
+          <div className={styles.grow}>{managedText}</div>
+          <Button variant="flat" className={styles.small} selected={summary.automation} onSelect={actions.toggleAutomation}>
             {summary.automation ? t("Panel.AutomationOn", "Automation on") : t("Panel.AutomationOff", "Automation off")}
           </Button>
         </div>
         <div className={styles.row}>
-          <span>
-            {t("Panel.GreenWaves", "Green waves")}: <b>{summary.greenWaves}</b> ({summary.coordinated} {t("Panel.Junctions", "junctions")})
-          </span>
-          <Button variant="flat" className={styles.toggle} onSelect={actions.rebuildGreenWaves}>
+          <div className={styles.grow}>{wavesText}</div>
+          <Button variant="flat" className={styles.small} onSelect={actions.rebuildGreenWaves}>
             {t("Panel.RebuildGreenWaves", "Recalculate")}
           </Button>
         </div>
         <div className={styles.row}>
-          <Button variant="flat" className={styles.toggle} selected={toolActive} onSelect={actions.toggleTool}>
+          <Button variant="flat" className={styles.wide} selected={toolActive} onSelect={actions.toggleTool}>
             {toolActive ? t("Panel.PickingJunction", "Click a junction…") : t("Panel.PickJunction", "Pick a junction on the map")}
           </Button>
         </div>
+
+        {selected && <JunctionDetail junction={selected} t={t} />}
 
         <div className={styles.heading}>{t("Panel.Problems", "Needs attention")}</div>
         {summary.problems.length === 0 ? (
@@ -71,8 +88,6 @@ export const TllPanel = () => {
         ) : (
           summary.problems.map((p) => <ProblemRow key={p.index} problem={p} t={t} selected={selected?.index === p.index} />)
         )}
-
-        {selected && <JunctionDetail junction={selected} t={t} />}
       </Scrollable>
     </Panel>
   );
@@ -80,10 +95,8 @@ export const TllPanel = () => {
 
 const ProblemRow = ({ problem, t, selected }: { problem: Problem; t: Translate; selected: boolean }) => (
   <Button variant="flat" className={classNames(styles.problem, selected && styles.selected)} onSelect={() => actions.goto(problem)}>
-    <span className={styles.problemName}>{problem.name}</span>
-    <span className={styles.problemStats}>
-      {Math.round(problem.longestWait)} s · {problem.maxOuts}× {t("Panel.MaxOut", "maxed")}
-    </span>
+    <div className={styles.problemName}>{problem.name}</div>
+    <div className={styles.problemStats}>{`${seconds(problem.longestWait)} · ${problem.maxOuts}× ${t("Panel.MaxOut", "maxed")}`}</div>
   </Button>
 );
 
@@ -96,9 +109,11 @@ const UnmanagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate
     {junction.hasSignals ? (
       <>
         <div className={styles.muted}>{t("Panel.VanillaSignals", "The game controls these traffic lights.")}</div>
-        <Button variant="flat" className={styles.release} onSelect={actions.manage}>
-          {t("Panel.Manage", "Control with TLL")}
-        </Button>
+        <div className={styles.row}>
+          <Button variant="flat" className={styles.wide} onSelect={actions.manage}>
+            {t("Panel.Manage", "Control with TLL")}
+          </Button>
+        </div>
       </>
     ) : (
       <div className={styles.muted}>{t("Panel.NoSignals", "This junction has no traffic lights. Add them with the game's intersection upgrade.")}</div>
@@ -106,43 +121,53 @@ const UnmanagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate
   </div>
 );
 
-const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }) => (
-  <div className={styles.detail}>
-    <div className={styles.heading}>{junction.name}</div>
-    <div className={styles.muted}>
-      {junction.manual ? t("Panel.Manual", "Set by you") : t("Panel.Automatic", "Automatic")} · {t("Panel.Cycle", "cycle")}{" "}
-      {Math.round(junction.cycleSeconds)} s
-      {junction.group > 0 && ` · ${t("Panel.GreenWave", "green wave")} #${junction.group}`}
-    </div>
+const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }) => {
+  const origin = junction.manual ? t("Panel.Manual", "Set by you") : t("Panel.Automatic", "Automatic");
+  const wave = junction.group > 0 ? ` · ${t("Panel.GreenWave", "green wave")} #${junction.group}` : "";
+  const info = `${origin} · ${t("Panel.Cycle", "cycle")} ${seconds(junction.cycleSeconds)}${wave}`;
+  return (
+    <div className={styles.detail}>
+      <div className={styles.heading}>{junction.name}</div>
+      <div className={styles.muted}>{info}</div>
 
-    <div className={styles.label}>{t("Panel.Mode", "Control")}</div>
-    <div className={styles.choices}>
-      {modes.map((m) => (
-        <Button key={m} variant="flat" className={styles.choice} selected={junction.mode === m} onSelect={() => actions.setMode(m)}>
-          {t("Mode." + ControlMode[m], ControlMode[m])}
-        </Button>
+      <div className={styles.label}>{t("Panel.Mode", "Control")}</div>
+      {junction.mode === ControlMode.Coordinated && (
+        <div className={styles.note}>{t("Panel.CoordinatedNote", "Runs in a green wave. Choose another mode to take it out.")}</div>
+      )}
+      {pairs(modes).map((row, i) => (
+        <div key={i} className={styles.row}>
+          {row.map((m) => (
+            <Button key={m} variant="flat" className={styles.choice} selected={junction.mode === m} onSelect={() => actions.setMode(m)}>
+              {t("Mode." + ControlMode[m], ControlMode[m])}
+            </Button>
+          ))}
+        </div>
       ))}
-    </div>
 
-    <div className={styles.label}>{t("Panel.Strategy", "Phase layout")}</div>
-    <div className={styles.choices}>
-      {strategies.map((s) => (
-        <Button key={s} variant="flat" className={styles.choice} selected={junction.strategy === s} onSelect={() => actions.setStrategy(s)}>
-          {t("Strategy." + PlanStrategy[s], PlanStrategy[s])}
-        </Button>
+      <div className={styles.label}>{t("Panel.Strategy", "Phase layout")}</div>
+      {pairs(strategies).map((row, i) => (
+        <div key={i} className={styles.row}>
+          {row.map((s) => (
+            <Button key={s} variant="flat" className={styles.choice} selected={junction.strategy === s} onSelect={() => actions.setStrategy(s)}>
+              {t("Strategy." + PlanStrategy[s], PlanStrategy[s])}
+            </Button>
+          ))}
+        </div>
       ))}
+
+      <div className={styles.label}>{t("Panel.Phases", "Phases")}</div>
+      {junction.phases.map((phase, i) => (
+        <PhaseCard key={i} index={i} phase={phase} junction={junction} t={t} />
+      ))}
+
+      <div className={styles.row}>
+        <Button variant="flat" className={styles.wide} onSelect={actions.release}>
+          {t("Panel.Release", "Return to the game's control")}
+        </Button>
+      </div>
     </div>
-
-    <div className={styles.label}>{t("Panel.Phases", "Phases")}</div>
-    {junction.phases.map((phase, i) => (
-      <PhaseCard key={i} index={i} phase={phase} junction={junction} t={t} />
-    ))}
-
-    <Button variant="flat" className={styles.release} onSelect={actions.release}>
-      {t("Panel.Release", "Return to the game's control")}
-    </Button>
-  </div>
-);
+  );
+};
 
 /** Colour of a phase's lamp: what drivers of its movements see right now. */
 function lampOf(i: number, junction: JunctionInfo): string {
@@ -155,39 +180,30 @@ function lampOf(i: number, junction: JunctionInfo): string {
 
 const PhaseCard = ({ index, phase, junction, t }: { index: number; phase: PhaseInfo; junction: JunctionInfo; t: Translate }) => {
   const active = junction.phase === index && junction.stage === Stage.Green;
+  const title = `${t("Panel.Phase", "Phase")} ${index + 1}`;
+  const timing = active
+    ? `${seconds(junction.stageSeconds)} ${t("Panel.Of", "of")} ${Math.round(phase.minGreen)}–${seconds(phase.maxGreen)}`
+    : `${Math.round(phase.minGreen)}–${seconds(phase.maxGreen)}`;
   return (
     <div className={classNames(styles.phase, active && styles.phaseActive)}>
-      <div className={styles.phaseHeader}>
-        <span className={classNames(styles.lamp, lampOf(index, junction))} />
-        <b>
-          {t("Panel.Phase", "Phase")} {index + 1}
-        </b>
-        <span className={styles.muted}>
-          {active ? `${Math.round(junction.stageSeconds)} s / ` : ""}
-          {Math.round(phase.minGreen)}–{Math.round(phase.maxGreen)} s
-        </span>
-        {phase.preempt && <span className={styles.preempt}>{t("Panel.Emergency", "Emergency")}</span>}
+      <JunctionDiagram
+        approaches={junction.approaches}
+        movements={junction.movements}
+        green={phase.movements}
+        permitted={phase.permitted}
+        leftHandTraffic={junction.leftHandTraffic}
+        cameraYaw={junction.cameraYaw}
+      />
+      <div className={styles.phaseInfo}>
+        <div className={styles.phaseTitleRow}>
+          <div className={classNames(styles.lamp, lampOf(index, junction))} />
+          <div className={styles.phaseTitle}>{title}</div>
+        </div>
+        <div className={styles.phaseLine}>{timing}</div>
+        <div className={styles.phaseLine}>{`${t("Panel.Demand", "Demand")}: ${phase.demand.toFixed(0)}`}</div>
+        <div className={styles.phaseLine}>{`${t("Panel.Waiting", "waiting")}: ${seconds(phase.wait)}`}</div>
+        {phase.preempt && <div className={styles.preempt}>{t("Panel.Emergency", "Emergency")}</div>}
       </div>
-      <div className={styles.phaseStats}>
-        {t("Panel.Demand", "Demand")} {phase.demand.toFixed(1)} · {t("Panel.Waiting", "waiting")} {Math.round(phase.wait)} s
-      </div>
-      <div className={styles.movements}>
-        {phase.movements.map((m) => (
-          <MovementLabel key={m} label={junction.movements[m]} permitted={phase.permitted.includes(m)} t={t} />
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const MovementLabel = ({ label, permitted, t }: { label: string | undefined; permitted: boolean; t: Translate }) => {
-  const [kind, source, target] = (label ?? "||").split("|");
-  const kindText = t("Movement." + kind, kind);
-  const text = kind === "Pedestrian" ? `${kindText}: ${source}` : `${source || "?"} → ${target || "?"} (${kindText})`;
-  return (
-    <div className={classNames(styles.movement, permitted && styles.permitted)}>
-      {text}
-      {permitted && <span className={styles.yield}> {t("Panel.Yield", "yields")}</span>}
     </div>
   );
 };

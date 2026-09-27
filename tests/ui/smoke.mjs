@@ -88,8 +88,20 @@ const phase = (movements, permitted = []) => ({
 const managed = {
   index: 7, version: 1, name: "Main Street / Oak Avenue", managed: true, hasSignals: true,
   mode: 2, strategy: 0, group: 3, manual: false, stage: 0, phase: 1, next: 1, stageSeconds: 8.5, cycleSeconds: 64,
-  movements: ["Straight|Main Street|Main Street", "Left|Main Street|Oak Avenue", "Pedestrian|Oak Avenue|"],
-  phases: [phase([0, 1], [1]), phase([2])],
+  leftHandTraffic: false, cameraYaw: 35,
+  approaches: [
+    { x: 1, z: 0, name: "Main Street" },
+    { x: 0, z: 1, name: "Oak Avenue" },
+    { x: -1, z: 0, name: "Main Street" },
+  ],
+  movements: [
+    { kind: 0, source: 0, target: 2 },
+    { kind: 1, source: 2, target: 1 },
+    { kind: 4, source: 1, target: -1 },
+    { kind: 5, source: 0, target: 2 },
+    { kind: 0, source: 7, target: 9 },
+  ],
+  phases: [phase([0, 1, 3], [1]), phase([2, 4])],
 };
 const scenarios = {
   "empty city": {},
@@ -109,13 +121,15 @@ const scenarios = {
 };
 
 let failures = 0;
+const preview = [];
 for (const [label, data] of Object.entries(scenarios)) {
   for (const open of [false, true]) {
     scenario = data;
     for (const b of localBindings) b.value = open;
     for (const { target, component } of appended) {
       try {
-        renderToString(React.createElement(component));
+        const html = renderToString(React.createElement(component));
+        if (open && target === "Game") preview.push(`<h3>${label}</h3><div class="stage">${html}</div>`);
       } catch (e) {
         failures++;
         console.error(`FAIL ${target}, ${label}, panel ${open ? "open" : "closed"}: ${e.message}`);
@@ -126,5 +140,18 @@ for (const [label, data] of Object.entries(scenarios)) {
 if (failures > 0) {
   console.error(`${failures} render(s) failed.`);
   process.exit(1);
+}
+
+// With a second argument, write the open panel of every scenario to an HTML
+// page for a look in a normal browser. Layout there differs from the game's
+// engine, but drawings and texts can be checked.
+if (process.argv[3]) {
+  const { writeFileSync } = await import("node:fs");
+  const css = readFileSync(join(dirname(bundle), "TLL.css"), "utf8");
+  const page = `<!doctype html><meta charset="utf-8"><style>${css}</style>
+<style>html{font-size:1px}body{font-size:16rem;background:#1b1f26;color:#e8e8e8;font-family:sans-serif}
+.stage{position:relative;height:900px;margin-bottom:20px}section{position:absolute}</style>
+${preview.join("\n")}`;
+  writeFileSync(process.argv[3], page);
 }
 console.log(`Smoke test passed: ${appended.length} component(s), ${Object.keys(scenarios).length} scenarios.`);

@@ -63,6 +63,8 @@
   "Panel.Waiting": "waiting",
   "Panel.Yield": "yields",
   "Panel.Release": "Return to the game's control",
+  "Panel.Of": "of",
+  "Panel.CoordinatedNote": "Runs in a green wave. Choose another mode to take it out.",
   "Panel.GreenWaves": "Green waves",
   "Panel.Junctions": "junctions",
   "Panel.RebuildGreenWaves": "Recalculate",

@@ -1,10 +1,12 @@
-// Sizes in rem follow the game's UI scale.
+// Sizes in rem follow the game's UI scale. Every container states its flex
+// direction; the game's layout engine does not wrap inline text like a
+// browser (see tll-panel.tsx).
 
 .panel {
   position: absolute;
   top: 120rem;
   left: 20rem;
-  width: 460rem;
+  width: 440rem;
 }
 
 .title {
@@ -12,37 +14,64 @@
 }
 
 .scroll {
-  max-height: 720rem;
+  max-height: 760rem;
 }
 
 .row {
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
   align-items: center;
-  padding: 8rem 12rem;
+  padding: 4rem 12rem;
 }
 
-.toggle {
+.grow {
+  flex: 1;
+}
+
+.small {
+  flex-shrink: 0;
   padding: 4rem 10rem;
+  white-space: nowrap;
+}
+
+.wide {
+  flex: 1;
+  padding: 6rem 10rem;
+  white-space: nowrap;
+}
+
+.choice {
+  flex: 1;
+  margin: 0 3rem;
+  padding: 4rem 6rem;
+  white-space: nowrap;
+  font-size: 14rem;
+  justify-content: center;
 }
 
 .heading {
   font-weight: bold;
-  padding: 12rem 12rem 4rem 12rem;
+  padding: 14rem 12rem 4rem 12rem;
+  font-size: 14rem;
   text-transform: uppercase;
-  font-size: 13rem;
 }
 
 .label {
-  padding: 10rem 12rem 4rem 12rem;
+  padding: 10rem 12rem 2rem 12rem;
   font-size: 13rem;
   opacity: 0.8;
 }
 
 .muted {
   padding: 0 12rem;
-  opacity: 0.65;
+  opacity: 0.7;
+  font-size: 14rem;
+}
+
+.note {
+  padding: 2rem 12rem 4rem 12rem;
+  font-size: 13rem;
+  color: #c9a8ff;
 }
 
 .warning {
@@ -54,9 +83,9 @@
 .problem {
   display: flex;
   flex-direction: row;
-  justify-content: space-between;
+  align-items: center;
   width: 100%;
-  padding: 6rem 12rem;
+  padding: 5rem 12rem;
 }
 
 .selected {
@@ -68,34 +97,32 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 14rem;
 }
 
 .problemStats {
-  opacity: 0.8;
+  flex-shrink: 0;
   padding-left: 8rem;
+  font-size: 13rem;
+  opacity: 0.8;
+  white-space: nowrap;
 }
 
 .detail {
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  margin-top: 8rem;
-  padding-bottom: 12rem;
-}
-
-.choices {
   display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  padding: 0 8rem;
-}
-
-.choice {
-  margin: 2rem 4rem;
-  padding: 4rem 8rem;
+  flex-direction: column;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  margin-top: 8rem;
+  padding-bottom: 10rem;
 }
 
 .phase {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   margin: 4rem 12rem;
-  padding: 6rem 8rem;
+  padding: 6rem;
   background-color: rgba(255, 255, 255, 0.05);
 }
 
@@ -103,14 +130,28 @@
   background-color: rgba(61, 191, 107, 0.18);
 }
 
-.phaseHeader {
+.phaseInfo {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding-left: 12rem;
+}
+
+.phaseTitleRow {
   display: flex;
   flex-direction: row;
   align-items: center;
+  padding-bottom: 4rem;
+}
 
-  > * {
-    margin-right: 8rem;
-  }
+.phaseTitle {
+  font-weight: bold;
+  padding-left: 8rem;
+}
+
+.phaseLine {
+  font-size: 13rem;
+  opacity: 0.8;
 }
 
 .lamp {
@@ -134,31 +175,5 @@
 .preempt {
   color: #f5b83d;
   font-weight: bold;
-}
-
-.phaseStats {
-  font-size: 12rem;
-  opacity: 0.75;
-  padding-top: 2rem;
-}
-
-.movements {
-  padding-top: 4rem;
-}
-
-.movement {
-  font-size: 12rem;
-}
-
-.permitted {
-  opacity: 0.85;
-}
-
-.yield {
-  color: #f5b83d;
-}
-
-.release {
-  margin: 12rem 12rem 0 12rem;
-  padding: 6rem 10rem;
+  font-size: 13rem;
 }
