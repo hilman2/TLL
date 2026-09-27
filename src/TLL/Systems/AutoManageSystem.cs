@@ -79,6 +79,13 @@ namespace TLL.Systems
                 Requests.RebuildVanilla = false;
                 RebuildVanilla();
             }
+            if (Requests.ResetAllToAutomatic)
+            {
+                Requests.ResetAllToAutomatic = false;
+                settings.AutoManageAll = true;
+                settings.ApplyAndSave();
+                ResetAllToAutomatic(settings);
+            }
 
             if (settings.AutoManageAll)
                 TakeOverNew(settings);
@@ -123,6 +130,39 @@ namespace TLL.Systems
             }
             if (released > 0)
                 Mod.Log.Info($"Returned {released} junction(s) to the game.");
+        }
+
+        /// <summary>
+        /// Puts every junction back under the automation: the ones set by
+        /// the player get the automatic settings and a generated plan, and the
+        /// ones handed back to the game are taken over again. The traffic
+        /// measured so far stays, so the autopilot decides from it at once.
+        /// </summary>
+        private void ResetAllToAutomatic(Setting settings)
+        {
+            int reset = 0;
+            using (NativeArray<Entity> nodes = m_AllSignalsQuery.ToEntityArray(Allocator.Temp))
+            {
+                foreach (Entity node in nodes)
+                {
+                    // Excluded junctions are taken over by TakeOverNew right
+                    // after; one the planner cannot handle is excluded again.
+                    if (EntityManager.HasComponent<JunctionExcluded>(node))
+                        EntityManager.RemoveComponent<JunctionExcluded>(node);
+                    if (!EntityManager.HasComponent<ManagedJunction>(node))
+                        continue;
+                    if (EntityManager.GetComponentData<ManagedJunction>(node).Origin == JunctionOrigin.Auto)
+                        continue;
+                    EntityManager.SetComponentData(node, ManagedJunction.Create(JunctionOrigin.Auto, settings.AutoControl(), settings.InitialStrategy()));
+                    if (EntityManager.HasBuffer<JunctionPhase>(node))
+                        EntityManager.GetBuffer<JunctionPhase>(node).Clear();
+                    EntityManager.RemoveComponent<AutopilotState>(node);
+                    EntityManager.AddComponent<RebuildRequest>(node);
+                    reset++;
+                }
+            }
+            Requests.RebuildGreenWaves = true;
+            Mod.Log.Info($"Reset {reset} junction(s) set by the player to automatic.");
         }
 
         /// <summary>

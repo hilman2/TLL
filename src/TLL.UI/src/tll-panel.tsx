@@ -1,7 +1,7 @@
 import { useValue } from "cs2/api";
 import { Button, Panel, Scrollable, Tooltip } from "cs2/ui";
 import classNames from "classnames";
-import { ReactElement } from "react";
+import { ReactElement, useState } from "react";
 import {
   actions,
   AutopilotInfo,
@@ -317,6 +317,8 @@ const CityTab = ({ summary, t }: { summary: Summary; t: Translate }) => {
         </Button>
       </div>
 
+      <ResetAll t={t} />
+
       <div className={styles.label}>{t("Settings.Group.Map", "Map")}</div>
       <Toggle
         label={t("Settings.ShowProblems.Label", "Mark problem junctions")}
@@ -331,6 +333,32 @@ const CityTab = ({ summary, t }: { summary: Summary; t: Translate }) => {
         onSelect={actions.toggleShowCongestion}
       />
     </>
+  );
+};
+
+/** Resets every junction to automatic; the first click asks, the second does it. */
+const ResetAll = ({ t }: { t: Translate }) => {
+  const [asking, setAsking] = useState(false);
+  return (
+    <div className={styles.row}>
+      {asking ? (
+        <>
+          <div className={styles.grow}>{t("Panel.ResetAllQuestion", "Your own settings are lost.")}</div>
+          <Button variant="flat" className={styles.small} onSelect={() => { actions.resetAllToAutomatic(); setAsking(false); }}>
+            {t("Panel.ResetAllConfirm", "Reset")}
+          </Button>
+          <Button variant="flat" className={styles.small} onSelect={() => setAsking(false)}>
+            {t("Panel.Cancel", "Cancel")}
+          </Button>
+        </>
+      ) : (
+        <Hint text={t("Settings.ResetAllToAutomatic.Description", "")}>
+          <Button variant="flat" className={styles.wide} onSelect={() => setAsking(true)}>
+            {t("Settings.ResetAllToAutomatic.Label", "Reset all junctions to automatic")}
+          </Button>
+        </Hint>
+      )}
+    </div>
   );
 };
 

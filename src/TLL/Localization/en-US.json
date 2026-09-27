@@ -32,6 +32,10 @@
   "Settings.ShowCongestion.Label": "Mark congestion",
   "Settings.ShowCongestion.Description": "Colours roads red where traffic flows slowly over the day, from the game's own traffic flow data.",
 
+  "Settings.ResetAllToAutomatic.Label": "Reset all junctions to automatic",
+  "Settings.ResetAllToAutomatic.Description": "Junctions you set yourself, and ones you returned to the game, get the automatic control and a generated phase plan again. The traffic measured so far is kept, so the autopilot decides with it at once. Switches the city-wide automation on.",
+  "Settings.ResetAllToAutomatic.Warning": "Reset all junctions to automatic? Your own settings and phase plans are lost.",
+
   "Settings.ReleaseAll.Label": "Return all junctions to the game",
   "Settings.ReleaseAll.Description": "Removes TLL's control from every junction, including the ones you configured. The game rebuilds its own signal groups.",
   "Settings.ReleaseAll.Warning": "Return all junctions to the game's control? Your own phase plans are lost.",
@@ -106,6 +110,9 @@
   "Panel.ProblemsHint": "Junctions where queues build up in the rush hour, measured over game days. Click one to go there.",
   "Panel.Vehicles": "vehicles",
   "Panel.Walking": "Pedestrians walk",
+  "Panel.ResetAllQuestion": "Your own settings are lost.",
+  "Panel.ResetAllConfirm": "Reset",
+  "Panel.Cancel": "Cancel",
   "Panel.Diagnose": "Write diagnostics to the log",
   "Panel.DiagnoseHint": "Writes every lane, its signal, and why the first vehicle waits, to Logs/TLL.log. Useful when vehicles stand at green.",
   "Panel.WalkOnCall": "Crosswalk on request",

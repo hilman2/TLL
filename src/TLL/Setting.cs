@@ -74,6 +74,14 @@ namespace TLL
         [SettingsUIButton]
         [SettingsUIConfirmation]
         [SettingsUISection(kSection, kMaintenance)]
+        public bool ResetAllToAutomatic
+        {
+            set { Requests.ResetAllToAutomatic = true; }
+        }
+
+        [SettingsUIButton]
+        [SettingsUIConfirmation]
+        [SettingsUISection(kSection, kMaintenance)]
         public bool ReleaseAll
         {
             set { Requests.ReleaseAll = true; }
@@ -149,5 +157,6 @@ namespace TLL
         public static volatile bool ReleaseAll;
         public static volatile bool RebuildVanilla;
         public static volatile bool RebuildGreenWaves;
+        public static volatile bool ResetAllToAutomatic;
     }
 }

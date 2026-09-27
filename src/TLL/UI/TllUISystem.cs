@@ -147,6 +147,7 @@ namespace TLL.UI
             AddBinding(new TriggerBinding(kGroup, "rebuildGreenWaves", () => Requests.RebuildGreenWaves = true));
             AddBinding(new TriggerBinding(kGroup, "toggleTool", () => m_Tool.Toggle()));
             AddBinding(new TriggerBinding(kGroup, "diagnose", OnDiagnose));
+            AddBinding(new TriggerBinding(kGroup, "resetAllToAutomatic", () => Requests.ResetAllToAutomatic = true));
             AddBinding(new TriggerBinding(kGroup, "toggleShowProblems", () => ChangeSetting(s => s.ShowProblems = !s.ShowProblems)));
             AddBinding(new TriggerBinding(kGroup, "toggleShowCongestion", () => ChangeSetting(s => s.ShowCongestion = !s.ShowCongestion)));
             AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "toolActive", () => m_Tool.IsActive));

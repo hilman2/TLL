@@ -69,6 +69,7 @@ namespace TLL.UI
         private readonly List<Mark> m_Problems = new List<Mark>();
         private readonly List<Mark> m_Congestion = new List<Mark>();
         private DateTime m_Collected;
+        private bool m_CongestionReported;
 
         protected override void OnCreate()
         {
@@ -92,6 +93,8 @@ namespace TLL.UI
             Setting settings = Mod.Settings;
             bool problems = settings != null && settings.ShowProblems;
             bool congestion = settings != null && settings.ShowCongestion;
+            if (!congestion)
+                m_CongestionReported = false;
             Entity selected = m_UI.PanelOpen ? m_UI.Selected : Entity.Null;
             if (selected != Entity.Null && (!EntityManager.Exists(selected) || !EntityManager.HasComponent<Node>(selected)))
                 selected = Entity.Null;
@@ -174,28 +177,69 @@ namespace TLL.UI
             }
         }
 
+        /// <summary>
+        /// Share of the roads with traffic that can be marked at most: the
+        /// ones losing the most travel time. Every road that ends at a signal
+        /// is slowed by its red phases; only the worst of them are jams.
+        /// </summary>
+        private const float kWorstShare = 0.1f;
+
+        /// <summary>
+        /// Below this a time-of-day slot of a road carried no traffic worth
+        /// the name. Its duration and distance have both decayed towards
+        /// zero, and their ratio says nothing.
+        /// </summary>
+        private const float kMinFlow = 1e-3f;
+
         private void CollectCongestion()
         {
+            var candidates = new List<(float lost, Mark mark)>();
+            int withTraffic = 0;
             using (NativeArray<Entity> edges = m_RoadQuery.ToEntityArray(Allocator.Temp))
             using (NativeArray<Road> roads = m_RoadQuery.ToComponentDataArray<Road>(Allocator.Temp))
             using (NativeArray<Curve> curves = m_RoadQuery.ToComponentDataArray<Curve>(Allocator.Temp))
             {
                 for (int i = 0; i < roads.Length; i++)
                 {
-                    // The same measure the game's traffic flow view colours
-                    // roads by: the mean over the day plus the worst part of
-                    // it, 1 for free flow.
-                    float4 speed = NetUtils.GetTrafficFlowSpeed(roads[i]);
-                    float level = math.csum(speed) * 0.125f + math.cmin(speed) * 0.5f;
+                    // Per time-of-day slot, the game sums over the road's lanes
+                    // the time its vehicles spent, as the distance they would
+                    // have covered at full speed, and the distance they did
+                    // cover; both per metre of lane.
+                    float4 duration = roads[i].m_TrafficFlowDuration0 + roads[i].m_TrafficFlowDuration1;
+                    float4 distance = roads[i].m_TrafficFlowDistance0 + roads[i].m_TrafficFlowDistance1;
+                    bool4 used = duration > kMinFlow;
+                    int slots = math.csum(math.select(int4.zero, new int4(1), used));
+                    if (slots == 0)
+                        continue;
+                    withTraffic++;
+                    // The measure of the game's traffic flow view, half the
+                    // mean and half the worst slot, over the slots with traffic.
+                    float4 speed = math.select(1f, math.saturate(distance / duration), used);
+                    float mean = math.csum(math.select(0f, speed, used)) / slots;
+                    float level = 0.5f * mean + 0.5f * math.cmin(speed);
                     if (math.isnan(level) || level >= kCongested)
                         continue;
-                    m_Congestion.Add(new Mark
+                    // What the difference costs: distance not covered, in the
+                    // same units, which grows with the number of vehicles held.
+                    float lost = math.csum(math.select(0f, math.max(0f, duration - distance), used));
+                    candidates.Add((lost, new Mark
                     {
                         Curve = curves[i].m_Bezier,
                         Width = RoadWidth(edges[i]),
                         Strength = math.saturate((kCongested - level) / kCongested),
-                    });
+                    }));
                 }
+            }
+            candidates.Sort((a, b) => b.lost.CompareTo(a.lost));
+            int keep = Math.Min(candidates.Count, (int)Math.Ceiling(withTraffic * kWorstShare));
+            for (int i = 0; i < keep; i++)
+                m_Congestion.Add(candidates[i].mark);
+            if (!m_CongestionReported)
+            {
+                // Once per switching on: the thresholds are derived from the
+                // game's code, and these figures show how they fit a city.
+                m_CongestionReported = true;
+                Mod.Log.Info($"Congestion marks: {withTraffic} roads with traffic, {candidates.Count} slow, {keep} marked; lost travel of the worst {(keep > 0 ? candidates[0].lost : 0f):0.###}, of the last marked {(keep > 0 ? candidates[keep - 1].lost : 0f):0.###}.");
             }
         }
 

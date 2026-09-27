@@ -32,6 +32,10 @@
   "Settings.ShowCongestion.Label": "Staus markieren",
   "Settings.ShowCongestion.Description": "Färbt Straßen rot, auf denen der Verkehr über den Tag zäh fließt. Aus den Verkehrsflussdaten des Spiels.",
 
+  "Settings.ResetAllToAutomatic.Label": "Alle Kreuzungen auf Automatik zurücksetzen",
+  "Settings.ResetAllToAutomatic.Description": "Auch selbst eingestellte Kreuzungen und solche, die du ans Spiel zurückgegeben hast, bekommen wieder die automatische Steuerung und einen erzeugten Phasenplan. Der bisher gemessene Verkehr bleibt, der Autopilot entscheidet sofort damit. Schaltet die stadtweite Automatik ein.",
+  "Settings.ResetAllToAutomatic.Warning": "Alle Kreuzungen auf Automatik zurücksetzen? Deine eigenen Einstellungen und Phasenpläne gehen verloren.",
+
   "Settings.ReleaseAll.Label": "Alle Kreuzungen an das Spiel zurückgeben",
   "Settings.ReleaseAll.Description": "Beendet die Steuerung durch TLL an allen Kreuzungen, auch an selbst eingestellten. Das Spiel baut seine eigenen Signalgruppen neu auf.",
   "Settings.ReleaseAll.Warning": "Alle Kreuzungen an das Spiel zurückgeben? Deine eigenen Phasenpläne gehen verloren.",
@@ -106,6 +110,9 @@
   "Panel.ProblemsHint": "Kreuzungen, an denen sich im Berufsverkehr Schlangen bilden, gemessen über Spieltage. Anklicken, um hinzuspringen.",
   "Panel.Vehicles": "Fahrzeuge",
   "Panel.Walking": "Fußgänger gehen",
+  "Panel.ResetAllQuestion": "Deine eigenen Einstellungen gehen verloren.",
+  "Panel.ResetAllConfirm": "Zurücksetzen",
+  "Panel.Cancel": "Abbrechen",
   "Panel.Diagnose": "Diagnose ins Log schreiben",
   "Panel.DiagnoseHint": "Schreibt jede Spur, ihr Signal und warum das vorderste Fahrzeug wartet nach Logs/TLL.log. Hilfreich, wenn Fahrzeuge bei Grün stehen.",
   "Panel.WalkOnCall": "Überweg auf Anforderung",
