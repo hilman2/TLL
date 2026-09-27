@@ -113,6 +113,41 @@ namespace TLL.Core.Planning
             return m;
         }
 
+        /// <summary>
+        /// Movements that may turn on red while <paramref name="green"/> has
+        /// green: short turns (right in right-hand traffic) that have red in
+        /// this phase and meet nothing in it that they could not give way to.
+        /// They then get the game's yield signal instead of red.
+        /// </summary>
+        /// <remarks>
+        /// This uses the junction's geometric relations, not those a strategy
+        /// tightened: split phasing forbids different approaches to share a
+        /// green, but a right turn that only merges behind the one approach
+        /// that has green can still go.
+        /// </remarks>
+        public static ulong TurnOnRed(JunctionModel junction, ulong green)
+        {
+            ConflictMatrix conflicts = junction.Conflicts;
+            MovementKind shortTurn = junction.LeftHandTraffic ? MovementKind.Left : MovementKind.Right;
+            ulong allowed = 0;
+            for (int m = 0; m < junction.Movements.Count; m++)
+            {
+                if ((green & (1UL << m)) != 0 || junction.Movements[m].Kind != shortTurn)
+                    continue;
+                bool fits = true;
+                for (int other = 0; other < junction.Movements.Count && fits; other++)
+                {
+                    if ((green & (1UL << other)) == 0)
+                        continue;
+                    Relation r = conflicts.Get(m, other);
+                    fits = r == Relation.Compatible || r == Relation.Yields;
+                }
+                if (fits)
+                    allowed |= 1UL << m;
+            }
+            return allowed;
+        }
+
         private static bool IsLongTurn(Movement m, bool leftHandTraffic)
         {
             if (m.Kind == MovementKind.UTurn)

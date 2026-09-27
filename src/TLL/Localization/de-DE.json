@@ -14,6 +14,12 @@
   "Settings.AutoStrategy.Label": "Phasenaufbau automatischer Kreuzungen",
   "Settings.AutoStrategy.Description": "Bedingt verträglich: Gegenverkehr fährt gemeinsam, Abbieger warten. Geschützt abbiegen: Abbieger über den Gegenverkehr bekommen eigenes Grün. Getrennt: eine Zufahrt nach der anderen. Rundum-Grün für Fußgänger: eine zusätzliche Phase nur für Fußgänger.",
 
+  "Settings.Group.Rules": "Verkehrsregeln an TLL-Kreuzungen",
+  "Settings.TurnOnRed.Label": "Rechts abbiegen bei Rot",
+  "Settings.TurnOnRed.Description": "Rechtsabbieger (bei Linksverkehr Linksabbieger) dürfen bei Rot fahren, wenn sie nur Verkehr kreuzen, dem sie Vorrang geben müssen. Wie in den USA und Kanada, ähnlich dem Grünpfeil.",
+  "Settings.KeepClear.Label": "Kreuzung freihalten",
+  "Settings.KeepClear.Description": "Eine Spur bleibt rot, solange ihre Ausfahrt bis zur Kreuzung zurückgestaut ist. So bleibt niemand mitten auf der Kreuzung stehen und blockiert den Querverkehr.",
+
   "Settings.ReleaseAll.Label": "Alle Kreuzungen an das Spiel zurückgeben",
   "Settings.ReleaseAll.Description": "Beendet die Steuerung durch TLL an allen Kreuzungen, auch an selbst eingestellten. Das Spiel baut seine eigenen Signalgruppen neu auf.",
   "Settings.ReleaseAll.Warning": "Alle Kreuzungen an das Spiel zurückgeben? Deine eigenen Phasenpläne gehen verloren.",

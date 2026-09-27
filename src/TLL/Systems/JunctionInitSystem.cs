@@ -192,6 +192,13 @@ namespace TLL.Systems
                 phases = NewPlan(model, junction.Strategy);
             }
 
+            for (int p = 0; p < phases.Count; p++)
+            {
+                JunctionPhase phase = phases[p];
+                phase.TurnOnRed = PhasePlanner.TurnOnRed(model, phase.Movements);
+                phases[p] = phase;
+            }
+
             MarkMajorRoad(lanes, model, edges, node, junction.MajorApproach);
             WriteBuffers(node, storedMovements, phases, lanes, keys);
             WriteSignalGroups(node, phases, lanes, keys, ref lights);

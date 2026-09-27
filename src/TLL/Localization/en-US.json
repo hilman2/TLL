@@ -14,6 +14,12 @@
   "Settings.AutoStrategy.Label": "Phase layout for automatic junctions",
   "Settings.AutoStrategy.Description": "Permissive: oncoming traffic runs together, turning traffic gives way. Protected turns: turns across oncoming traffic get their own green. Split: one approach at a time. Pedestrian scramble: an extra phase in which only pedestrians walk.",
 
+  "Settings.Group.Rules": "Traffic rules at TLL junctions",
+  "Settings.TurnOnRed.Label": "Turn on red",
+  "Settings.TurnOnRed.Description": "Right turns (left turns in left-hand traffic) may go on red if they only meet traffic they give way to. As in the US and Canada.",
+  "Settings.KeepClear.Label": "Keep junctions clear",
+  "Settings.KeepClear.Description": "A lane stays red while its exit is backed up to the junction, so nobody gets stuck in the middle and blocks the cross traffic.",
+
   "Settings.ReleaseAll.Label": "Return all junctions to the game",
   "Settings.ReleaseAll.Description": "Removes TLL's control from every junction, including the ones you configured. The game rebuilds its own signal groups.",
   "Settings.ReleaseAll.Warning": "Return all junctions to the game's control? Your own phase plans are lost.",

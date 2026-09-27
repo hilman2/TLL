@@ -40,6 +40,18 @@ namespace TLL.Systems
         /// <summary>The game's vehicles ask for green with priority 100, emergency vehicles with 108.</summary>
         private const int kEmergencyPriority = 108;
 
+        /// <summary>
+        /// Keep clear: an exit whose last vehicle stands within this distance
+        /// of the lane start has no room for one more car.
+        /// </summary>
+        private const float kKeepClearGap = kVehicleSpacing * 1.2f;
+
+        /// <summary>A held lane is released once its exit has this much room, so it does not flicker.</summary>
+        private const float kKeepClearRelease = kVehicleSpacing * 2.5f;
+
+        /// <summary>Below this speed in m/s a vehicle counts as standing.</summary>
+        private const float kStandingSpeed = 1.5f;
+
         private SimulationSystem m_Simulation;
         private CityConfigurationSystem m_CityConfiguration;
         private EntityQuery m_Query;
@@ -64,7 +76,7 @@ namespace TLL.Systems
                     ComponentType.ReadWrite<JunctionRuntime>(),
                     ComponentType.ReadWrite<TrafficLights>(),
                     ComponentType.ReadWrite<JunctionPhase>(),
-                    ComponentType.ReadOnly<JunctionLane>(),
+                    ComponentType.ReadWrite<JunctionLane>(),
                     ComponentType.ReadOnly<JunctionMovement>(),
                 },
                 None = new[]
@@ -90,15 +102,18 @@ namespace TLL.Systems
                 RuntimeType = GetComponentTypeHandle<JunctionRuntime>(false),
                 LightsType = GetComponentTypeHandle<TrafficLights>(false),
                 PhaseType = GetBufferTypeHandle<JunctionPhase>(false),
-                LaneType = GetBufferTypeHandle<JunctionLane>(true),
+                LaneType = GetBufferTypeHandle<JunctionLane>(false),
                 MovementType = GetBufferTypeHandle<JunctionMovement>(true),
                 SubObjectType = GetBufferTypeHandle<Game.Objects.SubObject>(true),
                 LaneSignals = GetComponentLookup<LaneSignal>(false),
                 Poles = GetComponentLookup<Game.Objects.TrafficLight>(false),
                 LaneObjects = GetBufferLookup<LaneObject>(true),
                 Curves = GetComponentLookup<Curve>(true),
+                Movings = GetComponentLookup<Game.Objects.Moving>(true),
                 GlobalStep = SimTime.StepOfFrame(m_Simulation.frameIndex),
                 LeftHandTraffic = m_CityConfiguration.leftHandTraffic,
+                TurnOnRed = Mod.Settings != null && Mod.Settings.TurnOnRed,
+                KeepClear = Mod.Settings == null || Mod.Settings.KeepClear,
             };
             Dependency = job.ScheduleParallel(m_Query, Dependency);
         }
@@ -111,7 +126,7 @@ namespace TLL.Systems
             public ComponentTypeHandle<JunctionRuntime> RuntimeType;
             public ComponentTypeHandle<TrafficLights> LightsType;
             public BufferTypeHandle<JunctionPhase> PhaseType;
-            [ReadOnly] public BufferTypeHandle<JunctionLane> LaneType;
+            public BufferTypeHandle<JunctionLane> LaneType;
             [ReadOnly] public BufferTypeHandle<JunctionMovement> MovementType;
             [ReadOnly] public BufferTypeHandle<Game.Objects.SubObject> SubObjectType;
 
@@ -121,9 +136,12 @@ namespace TLL.Systems
             [NativeDisableParallelForRestriction] public ComponentLookup<Game.Objects.TrafficLight> Poles;
             [ReadOnly] public BufferLookup<LaneObject> LaneObjects;
             [ReadOnly] public ComponentLookup<Curve> Curves;
+            [ReadOnly] public ComponentLookup<Game.Objects.Moving> Movings;
 
             public long GlobalStep;
             public bool LeftHandTraffic;
+            public bool TurnOnRed;
+            public bool KeepClear;
 
             public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
             {
@@ -315,6 +333,7 @@ namespace TLL.Systems
                 ulong permittedNow = phases[state.Phase].Permitted;
                 ulong permittedNext = phases[state.Next].Permitted;
                 ulong movementsNext = phases[state.Next].Movements;
+                ulong turnOnRed = TurnOnRed && state.Stage == Stage.Green ? phases[state.Phase].TurnOnRed : 0UL;
                 for (int l = 0; l < lanes.Length; l++)
                 {
                     JunctionLane lane = lanes[l];
@@ -322,17 +341,78 @@ namespace TLL.Systems
                         continue;
                     LaneSignal signal = LaneSignals[lane.Lane];
                     TrafficLightSystem.UpdateLaneSignal(light, ref signal);
+                    ulong bit = 1UL << lane.Movement;
+                    bool vehicle = (lane.Flags & (JunctionLaneFlags.Pedestrian | JunctionLaneFlags.Track)) == 0;
                     if (signal.m_Signal == LaneSignalType.Go)
                     {
-                        ulong bit = 1UL << lane.Movement;
                         bool continuing = state.Stage != Stage.Green && (movementsNext & bit) != 0;
                         ulong permitted = continuing ? permittedNext : permittedNow;
                         if ((permitted & bit) != 0)
                             signal.m_Signal = LaneSignalType.Yield;
                     }
+                    else if (vehicle && signal.m_Signal == LaneSignalType.Stop && (turnOnRed & bit) != 0)
+                    {
+                        signal.m_Signal = LaneSignalType.Yield;
+                    }
+
+                    if (vehicle && lane.Exit != Entity.Null)
+                    {
+                        bool held = KeepClear && Hold(ref lane);
+                        if (!KeepClear)
+                            lane.Flags &= ~JunctionLaneFlags.KeepClear;
+                        lanes[l] = lane;
+                        // SafeStop stops only vehicles that can still brake in
+                        // time; one already at the line goes on.
+                        if (held && (signal.m_Signal == LaneSignalType.Go || signal.m_Signal == LaneSignalType.Yield))
+                            signal.m_Signal = LaneSignalType.SafeStop;
+                    }
                     signal.m_Blocker = Entity.Null;
                     LaneSignals[lane.Lane] = signal;
                 }
+            }
+
+            /// <summary>
+            /// Keep clear: whether traffic entering this lane would get stuck
+            /// in the junction because its exit is backed up to the start.
+            /// Holding and releasing use different gaps, so a lane on the edge
+            /// does not switch every step.
+            /// </summary>
+            private bool Hold(ref JunctionLane lane)
+            {
+                float free = FreeSpaceAtStart(lane.Exit);
+                bool held = (lane.Flags & JunctionLaneFlags.KeepClear) != 0;
+                held = held ? free < kKeepClearRelease : free < kKeepClearGap;
+                if (held)
+                    lane.Flags |= JunctionLaneFlags.KeepClear;
+                else
+                    lane.Flags &= ~JunctionLaneFlags.KeepClear;
+                return held;
+            }
+
+            /// <summary>
+            /// Distance from the start of a lane to its rearmost vehicle, if
+            /// that vehicle is standing. A moving vehicle makes room, so the
+            /// lane then counts as free.
+            /// </summary>
+            private float FreeSpaceAtStart(Entity lane)
+            {
+                if (!LaneObjects.TryGetBuffer(lane, out DynamicBuffer<LaneObject> objects) || objects.Length == 0 || !Curves.HasComponent(lane))
+                    return float.MaxValue;
+                float length = Curves[lane].m_Length;
+                float nearest = float.MaxValue;
+                Entity rear = Entity.Null;
+                for (int i = 0; i < objects.Length; i++)
+                {
+                    float distance = math.cmin(objects[i].m_CurvePosition) * length;
+                    if (distance < nearest)
+                    {
+                        nearest = distance;
+                        rear = objects[i].m_LaneObject;
+                    }
+                }
+                if (Movings.TryGetComponent(rear, out Game.Objects.Moving moving) && math.length(moving.m_Velocity) > kStandingSpeed)
+                    return float.MaxValue;
+                return nearest;
             }
 
             private bool IsLongTurn(MovementKind kind)

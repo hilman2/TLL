@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using TLL.Core.Planning;
 using Xunit;
 
@@ -146,6 +147,50 @@ namespace TLL.Core.Tests.Planning
             foreach (Phase p in plan.Phases)
                 phases += p.Has(stemRight) ? 1 : 0;
             Assert.True(phases >= 2, $"stem right turn is green in {phases} phase(s)");
+        }
+
+        [Theory]
+        [MemberData(nameof(Junctions))]
+        public void TurnOnRedNeverMeetsAnythingItCannotYieldTo(float[] angles, bool lht, bool uTurns, PlanStrategy strategy)
+        {
+            JunctionModel m = ChordModel.Build(angles, lht, uTurns);
+            ConflictMatrix rules = m.Conflicts;
+            PhasePlan plan = PhasePlanner.Build(m, strategy);
+            MovementKind shortTurn = lht ? MovementKind.Left : MovementKind.Right;
+            foreach (Phase p in plan.Phases)
+            {
+                ulong onRed = PhasePlanner.TurnOnRed(m, p.Green);
+                for (int x = 0; x < m.Movements.Count; x++)
+                {
+                    if ((onRed & (1UL << x)) == 0)
+                        continue;
+                    Assert.Equal(shortTurn, m.Movements[x].Kind);
+                    Assert.False(p.Has(x), $"{m.Movements[x]} already has green");
+                    for (int y = 0; y < m.Movements.Count; y++)
+                    {
+                        Relation r = rules.Get(x, y);
+                        if (p.Has(y))
+                            Assert.True(r == Relation.Compatible || r == Relation.Yields, $"{m.Movements[x]} turns on red against {m.Movements[y]} ({r})");
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void RightTurnMayGoOnRedWhileOnlyTheApproachItMergesWithHasGreen()
+        {
+            // Split phasing gives the east approach a phase of its own. The
+            // right turn from the north has red then, but it only merges into
+            // the westbound traffic from the east, which it can yield to.
+            JunctionModel m = ChordModel.Build(Cross, false, crosswalks: false);
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.Split);
+            int northRight = m.IndexOf(1, 2, MovementKind.Right);
+            Phase east = plan.Phases.First(p => p.Has(m.IndexOf(0, 2, MovementKind.Straight)));
+            Assert.False(east.Has(northRight));
+
+            ulong onRed = PhasePlanner.TurnOnRed(m, east.Green);
+
+            Assert.NotEqual(0UL, onRed & (1UL << northRight));
         }
 
         private static int IndexOfPhaseWith(PhasePlan plan, int movement)
