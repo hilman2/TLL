@@ -4,6 +4,7 @@ using Game.Net;
 using Game.Objects;
 using TLL.Components;
 using TLL.Core;
+using TLL.Core.Advisor;
 using TLL.Core.Control;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -41,6 +42,28 @@ namespace TLL.UI
                 for (int b = 0; b < PedestrianConflicts.Window; b++)
                     history += (runtime.Conflicts.History & (1 << b)) != 0 ? 'x' : '.';
                 text.Append($"  scramble on demand {(junction.Options & JunctionOptions.ScrambleOnDemand) != 0}, diverting {runtime.Conflicts.Divert}, conflicts {runtime.Conflicts.Count}/{PedestrianConflicts.Window} [{history}], this green {runtime.ConflictThisGreen}\n");
+            }
+            text.Append($"  turn on red {(junction.Options & JunctionOptions.TurnOnRed) != 0}\n");
+            if (em.HasComponent<AutopilotState>(node))
+            {
+                // What the autopilot decides flashing on: it starts below
+                // both thresholds of FlashAdvisor and ends above either.
+                AutopilotState a = em.GetComponentData<AutopilotState>(node);
+                float load = FlashAdvisor.SideLoad(a.MajorVolume, a.MinorVolume);
+                text.Append($"  autopilot: main road {a.MajorVolume:0}/h, busiest side road {a.MinorVolume:0}/h, side road load {load:0.00}"
+                    + $" (flashing starts below {FlashAdvisor.StartBelow:0}/h in total and load {FlashAdvisor.StartSaturation:0.00}, ends above {FlashAdvisor.EndAbove:0}/h or {FlashAdvisor.EndSaturation:0.00}),"
+                    + $" {a.Flash.RoundsSinceChange} rounds since the last change, last flashing ended in a backlog {a.Flash.EndedByBacklog}\n");
+            }
+            if (em.HasBuffer<MovementStatistics>(node))
+            {
+                DynamicBuffer<MovementStatistics> stats = em.GetBuffer<MovementStatistics>(node, true);
+                DynamicBuffer<JunctionMovement> moves = em.GetBuffer<JunctionMovement>(node, true);
+                var roads = Systems.NetGeometry.ConnectedEdges(em, node);
+                for (int m = 0; m < stats.Length && m < moves.Length; m++)
+                {
+                    MovementStatistics st = stats[m];
+                    text.Append($"  movement {m} [{roads.IndexOf(moves[m].Source)}->{roads.IndexOf(moves[m].Target)} {moves[m].Kind}]: recent {st.Recent:0}/h, peak {st.Peak:0}/h, queue {st.RecentQueue:0.0} (last round {st.LastQueue:0.0}, peak {st.PeakQueue:0.0})\n");
+                }
             }
 
             DynamicBuffer<JunctionMovement> movements = em.GetBuffer<JunctionMovement>(node, true);

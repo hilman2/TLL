@@ -129,10 +129,16 @@ namespace TLL.Core.Advisor
         public static bool Decide(bool flashing, float major, float minor, float totalMinor)
         {
             float total = major + totalMinor;
-            float load = minor / Math.Max(1f, DelayModel.GapCapacity(major, CriticalGap, FollowUp));
+            float load = SideLoad(major, minor);
             if (flashing)
                 return total <= EndAbove && load <= EndSaturation;
             return total < StartBelow && load < StartSaturation;
+        }
+
+        /// <summary>Busiest side road approach over the capacity the gaps in the main road give it.</summary>
+        public static float SideLoad(float major, float minor)
+        {
+            return minor / Math.Max(1f, DelayModel.GapCapacity(major, CriticalGap, FollowUp));
         }
     }
 
