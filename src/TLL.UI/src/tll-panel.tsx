@@ -185,6 +185,19 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
         </div>
       ))}
 
+      {junction.strategy !== PlanStrategy.ExclusivePedestrian && (
+        <Toggle
+          label={
+            junction.scrambleOnDemand
+              ? `${t("Panel.ScrambleOnDemand", "Scramble on demand")}: ${junction.scrambleActive ? t("Panel.ScrambleActive", "active") : t("Panel.ScrambleWaiting", "standby")} (${junction.conflicts}/8)`
+              : t("Panel.ScrambleOnDemand", "Scramble on demand")
+          }
+          hint={t("Panel.ScrambleHint", "")}
+          on={junction.scrambleOnDemand}
+          onSelect={actions.toggleScramble}
+        />
+      )}
+
       <div className={styles.label}>{t("Panel.Phases", "Phases")}</div>
       {junction.phases.map((phase, i) => (
         <PhaseCard key={i} index={i} phase={phase} junction={junction} t={t} />

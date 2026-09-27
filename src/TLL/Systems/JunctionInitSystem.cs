@@ -136,13 +136,14 @@ namespace TLL.Systems
             // automatic plan is always generated afresh, so automatic junctions
             // follow the current planner; the timing learnt so far is kept
             // where a phase stays the same.
-            List<JunctionPhase> existing = ExistingPlan(node, storedMovements, model, out string misfit);
+            int[] savedToCurrent = SavedToCurrent(node, storedMovements, out string changed);
+            List<JunctionPhase> existing = ExistingPlan(node, savedToCurrent, changed, model, out string misfit);
             List<JunctionPhase> phases = junction.Origin == JunctionOrigin.Manual ? existing : null;
             if (phases == null)
             {
                 if (junction.Origin == JunctionOrigin.Manual && misfit != null)
                     Mod.Log.Warn($"Junction {node}: the saved plan was replaced by a generated one, because {misfit}.");
-                phases = NewPlan(model, junction.Strategy);
+                phases = NewPlan(model, junction.Strategy, (junction.Options & JunctionOptions.ScrambleOnDemand) != 0);
                 KeepTiming(existing, phases);
             }
 
@@ -155,10 +156,9 @@ namespace TLL.Systems
             }
 
             MarkMajorRoad(lanes, model, edges, node, junction.MajorApproach);
-            bool sameMovements = SameMovements(node, storedMovements);
             WriteBuffers(node, storedMovements, phases, lanes, keys);
             WriteDetectors(node, JunctionAnalysis.DetectorChain(EntityManager, node, layout, SignalControlSystem.kDetectionRange));
-            WriteMeasurement(node, lanes, keys, keepStatistics: sameMovements);
+            WriteMeasurement(node, lanes, keys, savedToCurrent);
             WriteSignalGroups(node, phases, lanes, keys, ref lights);
 
             if (EntityManager.HasComponent<JunctionDirty>(node))
@@ -232,27 +232,69 @@ namespace TLL.Systems
         }
 
         /// <summary>Whether the junction's saved movements are the ones just found, in the same order.</summary>
-        private bool SameMovements(Entity node, List<JunctionMovement> movements)
+        /// <summary>
+        /// Where each saved movement is in the list just found: element i is
+        /// the new index of saved movement i. Null if the junction does not
+        /// have the same movements any more, or had none saved.
+        /// </summary>
+        /// <remarks>
+        /// Movements are matched by their roads and kind, not by position.
+        /// Their order follows the node's list of connected roads, and the
+        /// game may hand that list out in another order after loading.
+        /// </remarks>
+        private int[] SavedToCurrent(Entity node, List<JunctionMovement> movements, out string reason)
         {
+            reason = null;
             if (!EntityManager.HasBuffer<JunctionMovement>(node))
-                return false;
+                return null;
             DynamicBuffer<JunctionMovement> stored = EntityManager.GetBuffer<JunctionMovement>(node, true);
+            if (stored.Length == 0)
+                return null;
             if (stored.Length != movements.Count)
-                return false;
+            {
+                reason = $"the junction now has {movements.Count} movements instead of {stored.Length}";
+                return null;
+            }
+            var map = new int[stored.Length];
             for (int i = 0; i < stored.Length; i++)
             {
-                if (stored[i].Source != movements[i].Source || stored[i].Target != movements[i].Target || stored[i].Kind != movements[i].Kind)
-                    return false;
+                map[i] = -1;
+                for (int j = 0; j < movements.Count; j++)
+                {
+                    if (stored[i].Source == movements[j].Source && stored[i].Target == movements[j].Target && stored[i].Kind == movements[j].Kind)
+                    {
+                        map[i] = j;
+                        break;
+                    }
+                }
+                if (map[i] < 0)
+                {
+                    reason = $"its {stored[i].Kind} movement {i} no longer exists";
+                    return null;
+                }
             }
-            return true;
+            return map;
+        }
+
+        /// <summary>Moves the bits of a movement mask from saved to current movement indices.</summary>
+        private static ulong Remap(ulong mask, int[] map)
+        {
+            ulong result = 0;
+            for (int i = 0; i < map.Length; i++)
+            {
+                if ((mask & (1UL << i)) != 0)
+                    result |= 1UL << map[i];
+            }
+            return result;
         }
 
         /// <summary>
         /// Sets up the per-movement counters and statistics. Statistics from
-        /// earlier days stay as long as the movements are the same ones;
-        /// after a change to the road layout they start over.
+        /// earlier days stay as long as the movements are the same ones
+        /// (<paramref name="savedToCurrent"/> not null); after a change to the
+        /// road layout they start over.
         /// </summary>
-        private void WriteMeasurement(Entity node, List<LaneInfo> lanes, List<MovementKey> keys, bool keepStatistics)
+        private void WriteMeasurement(Entity node, List<LaneInfo> lanes, List<MovementKey> keys, int[] savedToCurrent)
         {
             DynamicBuffer<MovementCounter> counters = EntityManager.HasBuffer<MovementCounter>(node)
                 ? EntityManager.GetBuffer<MovementCounter>(node)
@@ -272,41 +314,37 @@ namespace TLL.Systems
             DynamicBuffer<MovementStatistics> statistics = has
                 ? EntityManager.GetBuffer<MovementStatistics>(node)
                 : EntityManager.AddBuffer<MovementStatistics>(node);
-            if (!keepStatistics || statistics.Length != keys.Count)
-            {
-                statistics.Clear();
-                for (int i = 0; i < keys.Count; i++)
-                    statistics.Add(new MovementStatistics());
-            }
+            var saved = new MovementStatistics[statistics.Length];
+            for (int i = 0; i < saved.Length; i++)
+                saved[i] = statistics[i];
+            statistics.Clear();
+            for (int i = 0; i < keys.Count; i++)
+                statistics.Add(new MovementStatistics());
+            if (savedToCurrent == null || saved.Length != savedToCurrent.Length)
+                return;
+            for (int i = 0; i < saved.Length; i++)
+                statistics[savedToCurrent[i]] = saved[i];
         }
 
-        /// <summary>The saved plan, if it still matches the junction's movements and gives every movement green.</summary>
         /// <summary>
-        /// The saved plan, if it still fits the junction, else null with the
-        /// reason in <paramref name="reason"/> (null when there was no plan).
+        /// The saved plan, moved to the current movement order, if it still
+        /// fits the junction; else null with the reason in
+        /// <paramref name="reason"/> (null when there was no plan).
         /// </summary>
-        private List<JunctionPhase> ExistingPlan(Entity node, List<JunctionMovement> movements, JunctionModel model, out string reason)
+        private List<JunctionPhase> ExistingPlan(Entity node, int[] savedToCurrent, string misfit, JunctionModel model, out string reason)
         {
             reason = null;
-            if (!EntityManager.HasBuffer<JunctionMovement>(node) || !EntityManager.HasBuffer<JunctionPhase>(node))
+            if (!EntityManager.HasBuffer<JunctionPhase>(node))
                 return null;
             DynamicBuffer<JunctionPhase> storedPhases = EntityManager.GetBuffer<JunctionPhase>(node, true);
             if (storedPhases.Length == 0)
                 return null;
-            DynamicBuffer<JunctionMovement> stored = EntityManager.GetBuffer<JunctionMovement>(node, true);
-            if (stored.Length != movements.Count)
+            if (savedToCurrent == null)
             {
-                reason = $"the junction now has {movements.Count} movements instead of {stored.Length}";
+                reason = misfit ?? "its movements were not saved";
                 return null;
             }
-            for (int i = 0; i < stored.Length; i++)
-            {
-                if (stored[i].Source != movements[i].Source || stored[i].Target != movements[i].Target || stored[i].Kind != movements[i].Kind)
-                {
-                    reason = $"movement {i} is now {movements[i].Kind} instead of {stored[i].Kind}, or connects other roads";
-                    return null;
-                }
-            }
+            int movementCount = savedToCurrent.Length;
             if (storedPhases.Length > PhasePlanner.MaxPhases)
             {
                 reason = $"it has {storedPhases.Length} phases, at most {PhasePlanner.MaxPhases} are allowed";
@@ -317,10 +355,13 @@ namespace TLL.Systems
             var result = new List<JunctionPhase>();
             for (int i = 0; i < storedPhases.Length; i++)
             {
-                plan.Phases.Add(new Phase { Green = storedPhases[i].Movements, Permitted = storedPhases[i].Permitted });
-                result.Add(storedPhases[i]);
+                JunctionPhase phase = storedPhases[i];
+                phase.Movements = Remap(phase.Movements, savedToCurrent);
+                phase.Permitted = Remap(phase.Permitted, savedToCurrent);
+                plan.Phases.Add(new Phase { Green = phase.Movements, Permitted = phase.Permitted });
+                result.Add(phase);
             }
-            if (plan.Uncovered(movements.Count) != 0)
+            if (plan.Uncovered(movementCount) != 0)
             {
                 reason = "some movements never get green in it";
                 return null;
@@ -329,9 +370,9 @@ namespace TLL.Systems
             // must never run together is not kept, whoever made it.
             foreach (Phase phase in plan.Phases)
             {
-                for (int a = 0; a < movements.Count; a++)
+                for (int a = 0; a < movementCount; a++)
                 {
-                    for (int b = a + 1; b < movements.Count; b++)
+                    for (int b = a + 1; b < movementCount; b++)
                     {
                         if (phase.Has(a) && phase.Has(b) && !model.Conflicts.CanShare(a, b))
                         {
@@ -389,6 +430,42 @@ namespace TLL.Systems
             int walk = SimTime.ToSteps(kWalkInterval);
             int clearance = SimTime.ToSteps(longest / DelayModel.WalkingSpeed) - junction.Yellow - junction.AllRed;
             return (ushort)(walk + Math.Max(0, clearance));
+        }
+
+        /// <param name="scrambleOnDemand">
+        /// Adds a phase of all crosswalks at the end, run only while
+        /// pedestrians are diverted into it. The pedestrian scramble layout has
+        /// such a phase already, as its only pedestrian phase.
+        /// </param>
+        private static List<JunctionPhase> NewPlan(JunctionModel model, PlanStrategy strategy, bool scrambleOnDemand)
+        {
+            List<JunctionPhase> result = NewPlan(model, strategy);
+            if (!scrambleOnDemand || strategy == PlanStrategy.ExclusivePedestrian || result.Count >= PhasePlanner.MaxPhases)
+                return result;
+            ulong crosswalks = 0;
+            bool turns = false;
+            for (int i = 0; i < model.Movements.Count; i++)
+            {
+                MovementKind kind = model.Movements[i].Kind;
+                if (kind == MovementKind.Pedestrian)
+                    crosswalks |= 1UL << i;
+                turns |= kind == MovementKind.Left || kind == MovementKind.Right;
+            }
+            // Without turning traffic nobody has to wait for pedestrians.
+            if (crosswalks == 0 || !turns)
+                return result;
+            result.Add(new JunctionPhase
+            {
+                Movements = crosswalks,
+                Data = new PhaseData
+                {
+                    MinGreen = (ushort)SimTime.ToSteps(5f),
+                    MaxGreen = (ushort)SimTime.ToSteps(30f),
+                    Green = (ushort)SimTime.ToSteps(10f),
+                    Flags = PhaseFlags.Pedestrian | PhaseFlags.Scramble,
+                },
+            });
+            return result;
         }
 
         private static List<JunctionPhase> NewPlan(JunctionModel model, PlanStrategy strategy)

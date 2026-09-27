@@ -21,11 +21,13 @@ namespace TLL.Systems
     /// junctions, decides how they are run: phase layout, control mode and
     /// flashing yellow at low traffic.
     ///
-    /// A round runs every 4096 simulation frames, about one game hour. Each
-    /// round turns the counters of the control job into rates and updates the
-    /// recent, daily and peak figures. The layout is reviewed every 16 rounds
-    /// against the peak figures, the traffic the junction must cope with, and
-    /// changes only when two reviews in a row agree.
+    /// A round runs every 4096 simulation frames. A game day has 262144
+    /// (TimeSystem.kTicksPerDay), so that is 64 rounds a day, one every 22.5
+    /// minutes on the game clock. Each round turns the counters of the
+    /// control job into rates and updates the recent, daily and peak figures.
+    /// The layout is reviewed every 16 rounds (6 game hours) against the peak
+    /// figures, the traffic the junction must cope with, and changes only
+    /// when two reviews in a row agree.
     /// </summary>
     public partial class AutopilotSystem : TllSystemBase
     {
@@ -33,13 +35,13 @@ namespace TLL.Systems
         private const int kConfirmRounds = 2;
         private const int kMinFlashRounds = 2;
 
-        /// <summary>Share of the new round in the recent figure: about the last three rounds count.</summary>
+        /// <summary>Share of the new round in the recent figure: the last three or so rounds, about a game hour, count.</summary>
         private const float kRecentWeight = 0.3f;
 
-        /// <summary>Share of the new round in the daily figure: about one game day (64 rounds) counts.</summary>
+        /// <summary>Share of the new round in the daily figure: about the last 50 rounds, most of a game day, count.</summary>
         private const float kDailyWeight = 0.02f;
 
-        /// <summary>Per round the peak falls back by this factor, so an old peak fades over about a day.</summary>
+        /// <summary>Per round the peak falls back by this factor: to half in 46 rounds, about 17 game hours.</summary>
         private const float kPeakDecay = 0.985f;
 
         /// <summary>A layout review needs at least this much traffic, in vehicles per hour, to mean anything.</summary>
@@ -246,6 +248,14 @@ namespace TLL.Systems
             {
                 junction.Mode = wanted;
                 changed = true;
+            }
+
+            // Junctions taken over before scrambles on demand existed get one.
+            // It costs nothing until pedestrians and turning vehicles clash.
+            if ((junction.Options & JunctionOptions.ScrambleOnDemand) == 0)
+            {
+                junction.Options |= JunctionOptions.ScrambleOnDemand;
+                rebuild = true;
             }
 
             if (layoutRound)

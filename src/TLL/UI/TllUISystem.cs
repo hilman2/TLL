@@ -85,6 +85,7 @@ namespace TLL.UI
             public bool Roundabout;
             public ManagedJunction Junction;
             public ControllerState State;
+            public PedestrianConflicts Conflicts;
             public int Cycle;
             public readonly List<PhaseRow> Phases = new List<PhaseRow>();
             public readonly List<MovementRow> Movements = new List<MovementRow>();
@@ -141,6 +142,7 @@ namespace TLL.UI
             AddBinding(new TriggerBinding<int, int>(kGroup, "goto", (index, version) => Select(ToEntity(index, version), true)));
             AddBinding(new TriggerBinding<int>(kGroup, "setMode", OnSetMode));
             AddBinding(new TriggerBinding<int>(kGroup, "setStrategy", OnSetStrategy));
+            AddBinding(new TriggerBinding(kGroup, "toggleScramble", OnToggleScramble));
             AddBinding(new TriggerBinding(kGroup, "release", OnRelease));
             AddBinding(new TriggerBinding(kGroup, "manage", OnManage));
             AddBinding(new TriggerBinding<bool>(kGroup, "setPanelOpen", open => m_PanelOpen = open));
@@ -293,6 +295,12 @@ namespace TLL.UI
             writer.Write((int)d.State.Next);
             writer.PropertyName("walk");
             writer.Write(d.State.Walk);
+            writer.PropertyName("scrambleOnDemand");
+            writer.Write((d.Junction.Options & JunctionOptions.ScrambleOnDemand) != 0);
+            writer.PropertyName("scrambleActive");
+            writer.Write(d.Conflicts.Divert);
+            writer.PropertyName("conflicts");
+            writer.Write(d.Conflicts.Count);
             writer.PropertyName("stageSeconds");
             writer.Write(SimTime.ToSeconds(d.State.StageSteps));
             writer.PropertyName("cycleSeconds");
@@ -420,7 +428,11 @@ namespace TLL.UI
                 return detail;
             detail.Junction = EntityManager.GetComponentData<ManagedJunction>(node);
             if (EntityManager.HasComponent<JunctionRuntime>(node))
-                detail.State = EntityManager.GetComponentData<JunctionRuntime>(node).State;
+            {
+                JunctionRuntime runtime = EntityManager.GetComponentData<JunctionRuntime>(node);
+                detail.State = runtime.State;
+                detail.Conflicts = runtime.Conflicts;
+            }
 
             DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(node, true);
             int intergreen = detail.Junction.Yellow + detail.Junction.AllRed + detail.Junction.Prepare;
@@ -518,6 +530,19 @@ namespace TLL.UI
             // An empty plan makes JunctionInitSystem generate a new one. The
             // node is rebuilt as a whole, so the signal poles follow the new
             // phase count.
+            EntityManager.GetBuffer<JunctionPhase>(m_Selected).Clear();
+            EntityManager.AddComponent<RebuildRequest>(m_Selected);
+            m_DetailTime = default;
+        }
+
+        /// <summary>Switches the scramble on demand of the selected junction; the plan is generated anew.</summary>
+        private void OnToggleScramble()
+        {
+            if (!TryGetSelected(out ManagedJunction junction))
+                return;
+            junction.Options ^= JunctionOptions.ScrambleOnDemand;
+            junction.Origin = JunctionOrigin.Manual;
+            EntityManager.SetComponentData(m_Selected, junction);
             EntityManager.GetBuffer<JunctionPhase>(m_Selected).Clear();
             EntityManager.AddComponent<RebuildRequest>(m_Selected);
             m_DetailTime = default;

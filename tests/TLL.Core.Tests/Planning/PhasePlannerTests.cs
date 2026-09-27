@@ -54,6 +54,49 @@ namespace TLL.Core.Tests.Planning
             }
         }
 
+        [Fact]
+        public void ProtectedTurnFromASharedLaneRunsWithItsStraight()
+        {
+            // Approach 0 has one lane for straight on and left: a left turn
+            // waiting for its own arrow would block the straight traffic.
+            JunctionModel m = ChordModel.Build(Cross, false);
+            int left = m.Movements.FindIndex(x => x.Source == 0 && x.Kind == MovementKind.Left);
+            int straight = m.Movements.FindIndex(x => x.Source == 0 && x.Kind == MovementKind.Straight);
+            Assert.True(left >= 0 && straight >= 0, "model has no left or straight from approach 0");
+            m.ShareLane(left, straight);
+
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.ProtectedTurns);
+
+            Assert.Contains(plan.Phases, p => p.Has(left) && p.Has(straight));
+        }
+
+        [Theory]
+        [MemberData(nameof(Junctions))]
+        public void MovementsSharingALaneGetGreenTogether(float[] angles, bool lht, bool uTurns, PlanStrategy strategy)
+        {
+            // Every approach has one lane for all its vehicle movements, the
+            // hardest case: whatever is at the front must be able to go.
+            JunctionModel m = ChordModel.Build(angles, lht, uTurns);
+            for (int a = 0; a < m.Movements.Count; a++)
+            {
+                for (int b = a + 1; b < m.Movements.Count; b++)
+                {
+                    if (!m.Movements[a].IsPedestrian && !m.Movements[b].IsPedestrian && m.Movements[a].Source == m.Movements[b].Source)
+                        m.ShareLane(a, b);
+                }
+            }
+            PhasePlan plan = PhasePlanner.Build(m, strategy);
+            for (int a = 0; a < m.Movements.Count; a++)
+            {
+                for (int b = a + 1; b < m.Movements.Count; b++)
+                {
+                    if ((m.SharesLaneWith(a) & (1UL << b)) == 0 || !m.Conflicts.CanShare(a, b))
+                        continue;
+                    Assert.True(plan.Phases.Any(p => p.Has(a) && p.Has(b)), $"{m.Movements[a]} and {m.Movements[b]} share a lane but never have green together ({strategy})");
+                }
+            }
+        }
+
         [Theory]
         [MemberData(nameof(Junctions))]
         public void EveryMovementGetsGreen(float[] angles, bool lht, bool uTurns, PlanStrategy strategy)

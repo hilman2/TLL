@@ -139,6 +139,12 @@ export interface JunctionInfo extends EntityRef {
   next: number;
   /** The crosswalks of the green phase show walk (someone pressed the button, or fixed time). */
   walk: boolean;
+  /** The plan has a scramble phase that runs while turning traffic keeps meeting pedestrians. */
+  scrambleOnDemand: boolean;
+  /** Pedestrians are diverted into the scramble right now. */
+  scrambleActive: boolean;
+  /** Vehicle greens with such a clash among the last eight. */
+  conflicts: number;
   stageSeconds: number;
   cycleSeconds: number;
   leftHandTraffic: boolean;
@@ -185,6 +191,7 @@ export const actions = {
   toggleTool: () => trigger(group, "toggleTool"),
   rebuildGreenWaves: () => trigger(group, "rebuildGreenWaves"),
   diagnose: () => trigger(group, "diagnose"),
+  toggleScramble: () => trigger(group, "toggleScramble"),
   resetAllToAutomatic: () => trigger(group, "resetAllToAutomatic"),
   toggleShowProblems: () => trigger(group, "toggleShowProblems"),
   toggleShowCongestion: () => trigger(group, "toggleShowCongestion"),

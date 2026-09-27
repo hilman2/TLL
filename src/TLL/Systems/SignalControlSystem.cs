@@ -38,20 +38,10 @@ namespace TLL.Systems
         internal const float kDetectionRange = 250f;
 
         /// <summary>
-        /// Passage time in seconds: a vehicle this close to the line keeps
-        /// the green, as the gap setting of an actuated controller.
+        /// Most vehicles read per approach lane with its detector lanes; more
+        /// than 250 m of queue at the vehicle spacing, over two lanes.
         /// </summary>
-        private const float kPassageTime = 3f;
-
-        /// <summary>Planning horizon in seconds: arrivals within it count towards pressure.</summary>
-        private const float kHorizon = 15f;
-
-        /// <summary>
-        /// Arrivals within this many seconds may hold a green in the adaptive
-        /// mode (see PhaseData.Approaching): about what one more phase change
-        /// would cost them in yellow and all-red.
-        /// </summary>
-        private const float kHoldHorizon = 8f;
+        private const int kMaxSamples = 96;
 
         /// <summary>Road length a queued vehicle takes up, including the gap to the next one.</summary>
         private const float kVehicleSpacing = 7f;
@@ -66,6 +56,9 @@ namespace TLL.Systems
         /// </summary>
         private const float kTramWeight = 10f;
 
+        /// <summary>Pressure of a crosswalk with someone waiting, in vehicles.</summary>
+        private const float kPedestrianCallWeight = 4f;
+
         /// <summary>The game's vehicles ask for green with priority 100, emergency vehicles with 108.</summary>
         private const int kEmergencyPriority = 108;
 
@@ -78,11 +71,10 @@ namespace TLL.Systems
         /// <summary>A held lane is released once its exit has this much room, so it does not flicker.</summary>
         private const float kKeepClearRelease = kVehicleSpacing * 2.5f;
 
-        /// <summary>Below this speed in m/s a vehicle counts as standing.</summary>
-        private const float kStandingSpeed = 1.5f;
+        private const float kStandingSpeed = ApproachSensor.StandingSpeed;
 
         /// <summary>Turn on red: a vehicle this close to the end of its lane is at the stop line.</summary>
-        private const float kStopLineReach = 12f;
+        private const float kStopLineReach = ApproachSensor.StopLineReach;
 
         /// <summary>Turn on red: below this speed in m/s the vehicle has come to a stop.</summary>
         private const float kStoppedSpeed = 0.5f;
@@ -193,6 +185,8 @@ namespace TLL.Systems
                 LaneObjects = GetBufferLookup<LaneObject>(true),
                 Curves = GetComponentLookup<Curve>(true),
                 Movings = GetComponentLookup<Game.Objects.Moving>(true),
+                Blockers = GetComponentLookup<Game.Vehicles.Blocker>(true),
+                Creatures = GetComponentLookup<Game.Creatures.Creature>(true),
                 GlobalStep = SimTime.StepOfFrame(m_Simulation.frameIndex),
                 LeftHandTraffic = m_CityConfiguration.leftHandTraffic,
                 TurnOnRed = Mod.Settings != null && Mod.Settings.TurnOnRed,
@@ -223,6 +217,8 @@ namespace TLL.Systems
             [ReadOnly] public BufferLookup<LaneObject> LaneObjects;
             [ReadOnly] public ComponentLookup<Curve> Curves;
             [ReadOnly] public ComponentLookup<Game.Objects.Moving> Movings;
+            [ReadOnly] public ComponentLookup<Game.Vehicles.Blocker> Blockers;
+            [ReadOnly] public ComponentLookup<Game.Creatures.Creature> Creatures;
 
             public long GlobalStep;
             public bool LeftHandTraffic;
@@ -260,11 +256,18 @@ namespace TLL.Systems
                         continue;
 
                     DynamicBuffer<DetectorLane> detectors = hasDetectors ? detectorBuffers[i] : default;
-                    Sense(phases, lanes, detectors, hasDetectors, counters, statistics, movements.Length);
+                    bool scramble = (junction.Options & JunctionOptions.ScrambleOnDemand) != 0;
+                    bool divert = scramble && runtime.Conflicts.Divert;
+                    Sense(phases, lanes, detectors, hasDetectors, counters, statistics, movements, runtime.State, divert, out bool conflict);
 
                     ControllerConfig config = junction.ToConfig();
+                    config.DivertPedestrians = divert;
                     var access = new PhaseBufferAccess(phases);
+                    Stage stageBefore = runtime.State.Stage;
+                    byte phaseBefore = runtime.State.Phase;
                     SignalController.Step(ref runtime.State, in config, ref access, GlobalStep);
+                    if (scramble)
+                        CountConflicts(ref runtime, phases, movements, stageBefore, phaseBefore, conflict);
 
                     Show(runtime.State, phases, lanes, movements, ref light);
                     if (hasPoles)
@@ -292,8 +295,10 @@ namespace TLL.Systems
             /// </summary>
             private unsafe void Sense(DynamicBuffer<JunctionPhase> phases, DynamicBuffer<JunctionLane> lanes,
                 DynamicBuffer<DetectorLane> detectors, bool hasDetectors,
-                DynamicBuffer<MovementCounter> counters, DynamicBuffer<MovementStatistics> statistics, int movementCount)
+                DynamicBuffer<MovementCounter> counters, DynamicBuffer<MovementStatistics> statistics,
+                DynamicBuffer<JunctionMovement> movements, ControllerState state, bool divert, out bool conflict)
             {
+                int movementCount = movements.Length;
                 float* waiting = stackalloc float[movementCount];
                 float* soon = stackalloc float[movementCount];
                 float* near = stackalloc float[movementCount];
@@ -374,16 +379,20 @@ namespace TLL.Systems
                     Entity approach = lanes[l].Approach;
                     if (approach == Entity.Null || SeenBefore(lanes, l, approach))
                         continue;
-                    float q = 0f, s = 0f, n = 0f, a = 0f;
-                    Detect(approach, 0f, ref q, ref s, ref n, ref a);
+                    float* distances = stackalloc float[kMaxSamples];
+                    float* speeds = stackalloc float[kMaxSamples];
+                    var samples = new Samples { Distances = distances, Speeds = speeds };
+                    Gather(approach, 0f, ref samples);
                     if (hasDetectors)
                     {
                         for (int d = 0; d < detectors.Length; d++)
                         {
                             if (detectors[d].Approach == approach)
-                                Detect(detectors[d].Lane, detectors[d].Offset, ref q, ref s, ref n, ref a);
+                                Gather(detectors[d].Lane, detectors[d].Offset, ref samples);
                         }
                     }
+                    ApproachReading reading = ApproachSensor.Read(ref samples);
+                    float q = reading.Waiting, s = reading.Soon, n = reading.Near, a = reading.Arriving;
                     if (q == 0f && s == 0f && a == 0f)
                         continue;
                     float total = 0f;
@@ -410,6 +419,10 @@ namespace TLL.Systems
 
                 for (int m = 0; m < movementCount; m++)
                     counters.ElementAt(m).QueueSteps += waiting[m];
+
+                conflict = state.Stage == Stage.Green && state.Phase < phases.Length
+                    && !phases[state.Phase].Data.HasFlag(PhaseFlags.Scramble)
+                    && TurnsMeetPedestrians(phases[state.Phase].Movements, lanes, movements, busy, call, divert);
 
                 for (int p = 0; p < phases.Length; p++)
                 {
@@ -441,13 +454,13 @@ namespace TLL.Systems
                         // A platoon held for is only worth it if it can leave.
                         if (!blocked[m])
                             approaching += near[m];
-                        // A waiting crosswalk weighs like one vehicle in the
-                        // choice of the next phase; the maximum wait makes
-                        // sure it is served even against heavy traffic.
+                        // The game tells only that someone waits at a
+                        // crosswalk, not how many. At a busy corner that is a
+                        // crowd, so a call weighs like a few vehicles.
                         if (call[m])
                         {
                             phaseCall = true;
-                            pressure += 1f;
+                            pressure += kPedestrianCallWeight;
                         }
                         phaseBusy |= busy[m];
                         phasePreempt |= preempt[m];
@@ -461,16 +474,44 @@ namespace TLL.Systems
                 }
             }
 
+            /// <summary>The vehicles of one approach zone, kept sorted by distance to the stop line.</summary>
+            private unsafe struct Samples : IVehicleSamples
+            {
+                public float* Distances;
+                public float* Speeds;
+                public int Length;
+
+                public int Count => Length;
+
+                public float Distance(int index) => Distances[index];
+
+                public float Speed(int index) => Speeds[index];
+
+                /// <summary>Inserts in order; beyond the capacity the farthest vehicles are dropped.</summary>
+                public void Add(float distance, float speed)
+                {
+                    int i = Length < kMaxSamples ? Length : kMaxSamples - 1;
+                    if (Length == kMaxSamples && distance >= Distances[i])
+                        return;
+                    while (i > 0 && Distances[i - 1] > distance)
+                    {
+                        Distances[i] = Distances[i - 1];
+                        Speeds[i] = Speeds[i - 1];
+                        i--;
+                    }
+                    Distances[i] = distance;
+                    Speeds[i] = speed;
+                    if (Length < kMaxSamples)
+                        Length++;
+                }
+            }
+
             /// <summary>
-            /// Adds what one lane of the approach zone sees: vehicles standing
-            /// (<paramref name="waiting"/>), moving ones that reach the line
-            /// within the passage time (<paramref name="soon"/>), within the
-            /// hold horizon (<paramref name="near"/>) and within the planning
-            /// horizon (<paramref name="arriving"/>, which includes near).
+            /// Adds the vehicles on one lane of the approach zone within reach.
             /// <paramref name="offset"/> is the distance from the end of the
             /// lane to the stop line.
             /// </summary>
-            private void Detect(Entity lane, float offset, ref float waiting, ref float soon, ref float near, ref float arriving)
+            private void Gather(Entity lane, float offset, ref Samples samples)
             {
                 if (!LaneObjects.TryGetBuffer(lane, out DynamicBuffer<LaneObject> objects) || objects.Length == 0 || !Curves.HasComponent(lane))
                     return;
@@ -481,22 +522,91 @@ namespace TLL.Systems
                     if (distance > kDetectionRange)
                         continue;
                     float speed = Movings.TryGetComponent(objects[i].m_LaneObject, out Game.Objects.Moving moving) ? math.length(moving.m_Velocity) : 0f;
-                    if (speed < kStandingSpeed)
-                    {
-                        waiting += 1f;
-                        continue;
-                    }
-                    float eta = distance / speed;
-                    if (eta <= kPassageTime || distance <= kStopLineReach)
-                    {
-                        soon += 1f;
-                        continue;
-                    }
-                    if (eta <= kHoldHorizon)
-                        near += 1f;
-                    if (eta <= kHorizon)
-                        arriving += 1f;
+                    samples.Add(distance, speed);
                 }
+            }
+
+            /// <summary>
+            /// Whether turning vehicles of the green phase and pedestrians want
+            /// the same crosswalk right now: the one across the road the turn
+            /// leads into. While pedestrians cross with the vehicles, a turning
+            /// vehicle the game holds for a pedestrian (its Blocker is one).
+            /// While they are diverted, someone waiting at that crosswalk while
+            /// turning vehicles use it. See PedestrianConflicts.
+            /// </summary>
+            private unsafe bool TurnsMeetPedestrians(ulong green, DynamicBuffer<JunctionLane> lanes, DynamicBuffer<JunctionMovement> movements,
+                bool* busy, bool* call, bool divert)
+            {
+                for (int l = 0; l < lanes.Length; l++)
+                {
+                    JunctionLane lane = lanes[l];
+                    int m = lane.Movement;
+                    if (m >= movements.Length || (green & (1UL << m)) == 0)
+                        continue;
+                    MovementKind kind = movements[m].Kind;
+                    if (kind != MovementKind.Left && kind != MovementKind.Right)
+                        continue;
+                    bool turning = divert ? busy[m] : HeldByPedestrian(lane.Lane);
+                    if (!turning)
+                        continue;
+                    for (int c = 0; c < movements.Length; c++)
+                    {
+                        if (movements[c].Kind != MovementKind.Pedestrian || movements[c].Source != movements[m].Target)
+                            continue;
+                        if (divert ? call[c] : busy[c])
+                            return true;
+                    }
+                }
+                return false;
+            }
+
+            /// <summary>A vehicle on the lane is held by the game for a pedestrian.</summary>
+            private bool HeldByPedestrian(Entity lane)
+            {
+                if (!LaneObjects.TryGetBuffer(lane, out DynamicBuffer<LaneObject> objects))
+                    return false;
+                for (int i = 0; i < objects.Length; i++)
+                {
+                    if (Blockers.TryGetComponent(objects[i].m_LaneObject, out Game.Vehicles.Blocker blocker)
+                        && blocker.m_Blocker != Entity.Null && Creatures.HasComponent(blocker.m_Blocker))
+                        return true;
+                }
+                return false;
+            }
+
+            /// <summary>
+            /// Records the vehicle green that just ended in the junction's
+            /// conflict history. Only greens in which turning vehicles and a
+            /// crosswalk across their exit run together count: the others
+            /// cannot tell anything about pedestrians.
+            /// </summary>
+            private static void CountConflicts(ref JunctionRuntime runtime, DynamicBuffer<JunctionPhase> phases, DynamicBuffer<JunctionMovement> movements,
+                Stage stageBefore, byte phaseBefore, bool conflict)
+            {
+                if (stageBefore != Stage.Green || phaseBefore >= phases.Length || phases[phaseBefore].Data.HasFlag(PhaseFlags.Scramble))
+                    return;
+                runtime.ConflictThisGreen |= conflict;
+                bool ended = runtime.State.Stage != Stage.Green || runtime.State.Phase != phaseBefore;
+                if (!ended)
+                    return;
+                if (TurnsCrossCrosswalk(phases[phaseBefore].Movements, movements))
+                    runtime.Conflicts.Record(runtime.ConflictThisGreen);
+                runtime.ConflictThisGreen = false;
+            }
+
+            private static bool TurnsCrossCrosswalk(ulong green, DynamicBuffer<JunctionMovement> movements)
+            {
+                for (int m = 0; m < movements.Length; m++)
+                {
+                    if ((green & (1UL << m)) == 0 || (movements[m].Kind != MovementKind.Left && movements[m].Kind != MovementKind.Right))
+                        continue;
+                    for (int c = 0; c < movements.Length; c++)
+                    {
+                        if ((green & (1UL << c)) != 0 && movements[c].Kind == MovementKind.Pedestrian && movements[c].Source == movements[m].Target)
+                            return true;
+                    }
+                }
+                return false;
             }
 
             /// <summary>The vehicle nearest the start of a lane, and its position along it.</summary>

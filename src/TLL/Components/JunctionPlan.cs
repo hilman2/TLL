@@ -171,6 +171,12 @@ namespace TLL.Components
         /// of its members.
         /// </summary>
         public int DesiredCycle;
+
+        /// <summary>Turning vehicles against pedestrians over the last vehicle greens; decides the scramble.</summary>
+        public PedestrianConflicts Conflicts;
+
+        /// <summary>The running vehicle green has seen such a conflict.</summary>
+        public bool ConflictThisGreen;
     }
 
     /// <summary>Tag: the junction's plan or lanes must be rebuilt before it runs again.</summary>

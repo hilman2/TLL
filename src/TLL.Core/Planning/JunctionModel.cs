@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace TLL.Core.Planning
@@ -19,6 +20,35 @@ namespace TLL.Core.Planning
         public readonly List<Movement> Movements = new List<Movement>();
 
         public ConflictMatrix Conflicts;
+
+        /// <summary>
+        /// For each movement, the movements whose vehicles queue in the same
+        /// approach lane, as a bit mask; null when no lane is shared. The
+        /// first vehicle of a shared lane holds up all behind it, whichever
+        /// way they go, so such movements need their green together.
+        /// </summary>
+        public ulong[] SharedLane;
+
+        public ulong SharesLaneWith(int movement)
+        {
+            return SharedLane != null && movement < SharedLane.Length ? SharedLane[movement] : 0UL;
+        }
+
+        /// <summary>Records that two movements are fed by the same approach lane.</summary>
+        public void ShareLane(int a, int b)
+        {
+            if (a == b)
+                return;
+            if (SharedLane == null || SharedLane.Length < Movements.Count)
+            {
+                var grown = new ulong[Movements.Count];
+                if (SharedLane != null)
+                    Array.Copy(SharedLane, grown, SharedLane.Length);
+                SharedLane = grown;
+            }
+            SharedLane[a] |= 1UL << b;
+            SharedLane[b] |= 1UL << a;
+        }
 
         public int IndexOf(int source, int target, MovementKind kind)
         {

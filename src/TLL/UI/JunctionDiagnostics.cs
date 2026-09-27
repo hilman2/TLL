@@ -58,7 +58,16 @@ namespace TLL.UI
                     text.Append($", signal {signal.m_Signal}, groups 0x{signal.m_GroupMask:x4}");
                 }
                 if (em.HasBuffer<LaneObject>(lane.Lane))
-                    text.Append($", {em.GetBuffer<LaneObject>(lane.Lane, true).Length} inside");
+                {
+                    DynamicBuffer<LaneObject> inside = em.GetBuffer<LaneObject>(lane.Lane, true);
+                    text.Append($", {inside.Length} inside");
+                    for (int i = 0; i < inside.Length && i < 3; i++)
+                        text.Append($"; {inside[i].m_LaneObject} at {Speed(em, inside[i].m_LaneObject):0.0} m/s{HeldBy(em, inside[i].m_LaneObject)}");
+                }
+                else
+                {
+                    text.Append(em.HasComponent<MasterLane>(lane.Lane) ? ", master lane" : ", no vehicle list");
+                }
                 text.Append('\n');
                 if (lane.Approach != Entity.Null && !SeenBefore(lanes, l))
                     text.Append($"    approach {lane.Approach}: {Front(em, lane.Approach)}\n");
@@ -98,13 +107,41 @@ namespace TLL.UI
             }
             Entity vehicle = objects[front].m_LaneObject;
             float distance = (1f - math.cmax(objects[front].m_CurvePosition)) * length;
-            var text = new StringBuilder($"{objects.Length} vehicles, {standing} standing; front {vehicle} {distance:0} m from the line at {Speed(em, vehicle):0.0} m/s");
-            if (em.HasComponent<Game.Vehicles.Blocker>(vehicle))
+            return $"{objects.Length} vehicles, {standing} standing; front {vehicle} {distance:0} m from the line at {Speed(em, vehicle):0.0} m/s{HeldBy(em, vehicle)}";
+        }
+
+        /// <summary>
+        /// Why the game holds the vehicle, from its Blocker. A tram or a
+        /// truck with trailer keeps it on the leading part, its Controller.
+        /// </summary>
+        private static string HeldBy(EntityManager em, Entity vehicle)
+        {
+            Entity holder = vehicle;
+            if (em.HasComponent<Game.Vehicles.Controller>(vehicle))
             {
-                var blocker = em.GetComponentData<Game.Vehicles.Blocker>(vehicle);
-                text.Append($", held by {blocker.m_Type} {blocker.m_Blocker} ({KindOf(em, blocker.m_Blocker)})");
+                Entity controller = em.GetComponentData<Game.Vehicles.Controller>(vehicle).m_Controller;
+                if (controller != Entity.Null)
+                    holder = controller;
             }
-            return text.ToString();
+            if (!em.HasComponent<Game.Vehicles.Blocker>(holder))
+                return ", no blocker data";
+            var blocker = em.GetComponentData<Game.Vehicles.Blocker>(holder);
+            string where = blocker.m_Blocker != Entity.Null && em.Exists(blocker.m_Blocker) && em.HasComponent<Game.Objects.Transform>(blocker.m_Blocker)
+                ? $" at {Where(em, blocker.m_Blocker)}"
+                : "";
+            return $", held by {blocker.m_Type} {blocker.m_Blocker} ({KindOf(em, blocker.m_Blocker)}{where})";
+        }
+
+        /// <summary>Which lane the blocking object is on, so it can be found in the same dump.</summary>
+        private static string Where(EntityManager em, Entity entity)
+        {
+            if (em.HasComponent<Game.Vehicles.CarCurrentLane>(entity))
+                return $"lane {em.GetComponentData<Game.Vehicles.CarCurrentLane>(entity).m_Lane}";
+            if (em.HasComponent<Game.Creatures.HumanCurrentLane>(entity))
+                return $"lane {em.GetComponentData<Game.Creatures.HumanCurrentLane>(entity).m_Lane}";
+            if (em.HasComponent<Game.Vehicles.TrainCurrentLane>(entity))
+                return $"lane {em.GetComponentData<Game.Vehicles.TrainCurrentLane>(entity).m_Front.m_Lane}";
+            return "unknown lane";
         }
 
         private static string Fill(EntityManager em, Entity lane)

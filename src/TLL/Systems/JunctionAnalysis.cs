@@ -85,6 +85,28 @@ namespace TLL.Systems
                     laneCount += lane.Key.Equals(key) ? 1 : 0;
                 model.Movements.Add(new Movement(key.Source, key.Target, key.Kind, laneCount));
             }
+            // An approach lane feeding junction lanes of several movements is
+            // a shared lane (e.g. straight and left): its movements can only
+            // move together.
+            var byApproachLane = new Dictionary<Entity, ulong>();
+            foreach (LaneInfo lane in lanes)
+            {
+                if (lane.Approach == Entity.Null || (lane.Flags & JunctionLaneFlags.Pedestrian) != 0)
+                    continue;
+                byApproachLane.TryGetValue(lane.Approach, out ulong movements);
+                byApproachLane[lane.Approach] = movements | 1UL << keys.IndexOf(lane.Key);
+            }
+            foreach (ulong movements in byApproachLane.Values)
+            {
+                for (int a = 0; a < keys.Count; a++)
+                {
+                    for (int b = a + 1; b < keys.Count; b++)
+                    {
+                        if ((movements & (1UL << a)) != 0 && (movements & (1UL << b)) != 0)
+                            model.ShareLane(a, b);
+                    }
+                }
+            }
             model.Conflicts = Conflicts(em, lanes, keys, model);
             // Safety net: the circle model catches crossing paths whose lanes
             // the game did not record as overlapping. Merges come from the

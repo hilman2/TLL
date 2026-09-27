@@ -99,6 +99,9 @@ namespace TLL.Core.Planning
                     switch (strategy)
                     {
                         case PlanStrategy.ProtectedTurns:
+                            // A turn from a lane shared with straight traffic
+                            // takes that traffic along (see ShareHardConflicts):
+                            // the whole approach then runs on its own.
                             if (vehicles && m.Get(a, b) != Relation.Compatible && m.Get(a, b) != Relation.Hard
                                 && (IsLongTurn(ma, junction.LeftHandTraffic) || IsLongTurn(mb, junction.LeftHandTraffic)))
                                 m.Set(a, b, Relation.Hard);
@@ -114,7 +117,39 @@ namespace TLL.Core.Planning
                     }
                 }
             }
+            ShareHardConflicts(junction, m);
             return m;
+        }
+
+        /// <summary>
+        /// Movements from one lane move only together: the first vehicle
+        /// decides for all behind it. So each takes on the hard conflicts of
+        /// the others. With the same hard conflicts, widening a phase adds the
+        /// partners of every movement in it, so they end up in the same
+        /// phases. Giving way is not passed on; straight traffic sharing a
+        /// lane with a turn that gives way still has plain green.
+        /// </summary>
+        private static void ShareHardConflicts(JunctionModel junction, ConflictMatrix m)
+        {
+            if (junction.SharedLane == null)
+                return;
+            int n = junction.Movements.Count;
+            for (int a = 0; a < n; a++)
+            {
+                ulong partners = junction.SharesLaneWith(a);
+                if (partners == 0)
+                    continue;
+                for (int b = 0; b < n; b++)
+                {
+                    if ((partners & (1UL << b)) == 0 || m.Get(a, b) == Relation.Hard)
+                        continue;
+                    for (int x = 0; x < n; x++)
+                    {
+                        if (x != a && x != b && m.Get(b, x) == Relation.Hard)
+                            m.Set(a, x, Relation.Hard);
+                    }
+                }
+            }
         }
 
         /// <summary>

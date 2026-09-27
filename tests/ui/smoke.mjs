@@ -102,6 +102,9 @@ const managed = {
     { kind: 0, source: 7, target: 9 },
   ],
   walk: true,
+  scrambleOnDemand: true,
+  scrambleActive: false,
+  conflicts: 3,
   phases: [phase([0, 1, 3], [1]), { ...phase([2, 4]), walkGreen: 19 }],
 };
 const summary = {

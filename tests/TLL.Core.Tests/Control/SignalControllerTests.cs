@@ -342,9 +342,9 @@ namespace TLL.Core.Tests.Control
         /// scramble phase. Vehicles ask for both vehicle phases all the time;
         /// a pedestrian waits at the crosswalk from step 0.
         /// </summary>
-        private static ControllerHarness ScrambleCase(bool divert, bool withScramble)
+        private static ControllerHarness ScrambleCase(bool divert, bool withScramble, ControlMode mode = ControlMode.Actuated)
         {
-            var config = ControllerConfig.Default(ControlMode.Actuated);
+            var config = ControllerConfig.Default(mode);
             config.DivertPedestrians = divert;
             PhaseData vehiclesAndCrossing = ControllerHarness.Phase(5, 30, 20, PhaseFlags.Pedestrian);
             vehiclesAndCrossing.WalkGreen = (ushort)SimTime.ToSteps(12f);
@@ -382,6 +382,18 @@ namespace TLL.Core.Tests.Control
             Assert.Contains(h.GreenStarts(), g => g.phase == 2);
             Assert.DoesNotContain(h.Trace, r => r.Stage == Stage.Green && r.Phase == 0 && r.Walk);
             Assert.Contains(h.Trace, r => r.Stage == Stage.Green && r.Phase == 2 && r.Walk);
+        }
+
+        [Fact]
+        public void FixedTimeRunsTheScrambleOnlyWhileDiverting()
+        {
+            ControllerHarness quiet = ScrambleCase(divert: false, withScramble: true, ControlMode.FixedTime);
+            Assert.DoesNotContain(quiet.GreenStarts(), g => g.phase == 2);
+            Assert.Contains(quiet.Trace, r => r.Stage == Stage.Green && r.Phase == 0 && r.Walk);
+
+            ControllerHarness diverted = ScrambleCase(divert: true, withScramble: true, ControlMode.FixedTime);
+            Assert.Contains(diverted.GreenStarts(), g => g.phase == 2);
+            Assert.DoesNotContain(diverted.Trace, r => r.Stage == Stage.Green && r.Phase == 0 && r.Walk);
         }
 
         [Fact]

@@ -1,0 +1,113 @@
+namespace TLL.Core.Control
+{
+    /// <summary>Vehicles on one approach, ordered by distance to the stop line, nearest first.</summary>
+    public interface IVehicleSamples
+    {
+        int Count { get; }
+
+        /// <summary>Distance to the stop line, metres.</summary>
+        float Distance(int index);
+
+        /// <summary>Speed, metres per second.</summary>
+        float Speed(int index);
+    }
+
+    /// <summary>What the detectors of one approach report, in vehicles.</summary>
+    public struct ApproachReading
+    {
+        /// <summary>The queue: vehicles standing, or in the queue that starts at the stop line.</summary>
+        public float Waiting;
+
+        /// <summary>Moving vehicles, not in the queue, that reach the line within the passage time.</summary>
+        public float Soon;
+
+        /// <summary>Moving vehicles that reach the line within the hold horizon.</summary>
+        public float Near;
+
+        /// <summary>Moving vehicles that reach the line within the planning horizon; includes Near.</summary>
+        public float Arriving;
+    }
+
+    /// <summary>
+    /// Turns the vehicles on an approach into detector readings, as a radar
+    /// at the stop line would count them.
+    ///
+    /// The queue is the chain of vehicles from the stop line back to the
+    /// first real gap, whether they stand or have started to roll. Counting
+    /// only standing vehicles would lose a queue the moment it starts to
+    /// discharge: the vehicles behind the first ones accelerate slowly and
+    /// are seconds away from the line, so the green would end with most of
+    /// the queue still there.
+    /// </summary>
+    public static class ApproachSensor
+    {
+        /// <summary>Below this speed in m/s a vehicle counts as standing.</summary>
+        public const float StandingSpeed = 1.5f;
+
+        /// <summary>
+        /// Passage time in seconds: a vehicle this close to the line keeps
+        /// the green, as the gap setting of an actuated controller.
+        /// </summary>
+        public const float PassageTime = 3f;
+
+        /// <summary>A moving vehicle this close to the line, in metres, counts as at the line.</summary>
+        public const float StopLineReach = 12f;
+
+        /// <summary>Arrivals within this many seconds may hold a green in the adaptive mode (see PhaseData.Approaching).</summary>
+        public const float HoldHorizon = 8f;
+
+        /// <summary>Planning horizon in seconds: arrivals within it count towards pressure.</summary>
+        public const float Horizon = 15f;
+
+        /// <summary>
+        /// Largest gap in metres, front to front, between two vehicles of
+        /// one queue: a car length plus the room a driver leaves while
+        /// moving off.
+        /// </summary>
+        public const float QueueGap = 15f;
+
+        /// <summary>
+        /// A vehicle faster than this, in m/s, has left the queue even if it
+        /// is close behind the one ahead: it drives through at speed.
+        /// </summary>
+        public const float QueueSpeed = 8f;
+
+        public static ApproachReading Read<TVehicles>(ref TVehicles vehicles)
+            where TVehicles : struct, IVehicleSamples
+        {
+            var reading = new ApproachReading();
+            float queueEnd = 0f;
+            bool inQueue = true;
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                float distance = vehicles.Distance(i);
+                float speed = vehicles.Speed(i);
+                if (inQueue && distance - queueEnd <= QueueGap && speed < QueueSpeed)
+                {
+                    reading.Waiting += 1f;
+                    queueEnd = distance;
+                    continue;
+                }
+                inQueue = false;
+                if (speed < StandingSpeed)
+                {
+                    // Standing further back, behind a gap: held up by
+                    // something else, but waiting all the same.
+                    reading.Waiting += 1f;
+                    continue;
+                }
+                float eta = distance / speed;
+                if (eta <= PassageTime || distance <= StopLineReach)
+                {
+                    reading.Soon += 1f;
+                    continue;
+                }
+                if (eta <= HoldHorizon)
+                    reading.Near += 1f;
+                if (eta <= Horizon)
+                    reading.Arriving += 1f;
+            }
+            return reading;
+        }
+    }
+}

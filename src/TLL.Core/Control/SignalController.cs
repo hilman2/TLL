@@ -502,8 +502,10 @@ namespace TLL.Core.Control
             p.WaitSteps = 0;
             s.Preempting = p.Preempt;
             // Push button: pedestrians walk only when someone asked, except
-            // in fixed-time mode, which serves them in every cycle.
-            s.Walk = p.HasFlag(PhaseFlags.Pedestrian) && (c.Mode == ControlMode.FixedTime || CallCounts(in c, ref p));
+            // in fixed-time mode, which serves them in every cycle, in the
+            // vehicle phases or, while they are diverted, in the scramble.
+            bool recall = c.Mode == ControlMode.FixedTime && p.HasFlag(PhaseFlags.Scramble) == c.DivertPedestrians;
+            s.Walk = p.HasFlag(PhaseFlags.Pedestrian) && (recall || CallCounts(in c, ref p));
             s.WalkSince = 0;
             s.GreenLeft = 0;
             if (c.Mode == ControlMode.FixedTime || c.Mode == ControlMode.Coordinated)
@@ -562,6 +564,10 @@ namespace TLL.Core.Control
                 ref PhaseData p = ref phases[i];
                 bool coordinated = p.HasFlag(PhaseFlags.Coordinated);
                 if (c.Mode == ControlMode.Coordinated && !coordinated && !Requested(in c, ref p))
+                    continue;
+                // A scramble runs on demand in fixed time too; its slot goes
+                // to the phase after it.
+                if (p.HasFlag(PhaseFlags.Scramble) && !Requested(in c, ref p))
                     continue;
                 int room = SimTime.Mod(EndOf(in c, ref phases, i) - t, cycle);
                 if (room >= p.MinGreen || coordinated)

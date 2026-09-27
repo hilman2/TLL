@@ -24,6 +24,12 @@ namespace TLL.Components
 
         /// <summary>Switch to flashing yellow while traffic is light.</summary>
         FlashAtLowTraffic = 2,
+
+        /// <summary>
+        /// The plan gets a scramble phase, which runs only while turning
+        /// vehicles keep being held up by pedestrians (see PedestrianConflicts).
+        /// </summary>
+        ScrambleOnDemand = 4,
     }
 
     /// <summary>
@@ -63,7 +69,7 @@ namespace TLL.Components
             return new ManagedJunction
             {
                 Origin = origin,
-                Options = origin == JunctionOrigin.Auto ? JunctionOptions.AutoTiming : JunctionOptions.None,
+                Options = origin == JunctionOrigin.Auto ? JunctionOptions.AutoTiming | JunctionOptions.ScrambleOnDemand : JunctionOptions.None,
                 Mode = mode,
                 Strategy = strategy,
                 Yellow = defaults.Yellow,
