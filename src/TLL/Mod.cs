@@ -41,7 +41,7 @@ namespace TLL
             updateSystem.UpdateAfter<CoordinationSystem, AutopilotSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<UI.TllUISystem>(SystemUpdatePhase.UIUpdate);
             updateSystem.UpdateAt<UI.JunctionToolSystem>(SystemUpdatePhase.ToolUpdate);
-            updateSystem.UpdateAt<UI.SelectionOverlaySystem>(SystemUpdatePhase.ToolUpdate);
+            updateSystem.UpdateAt<UI.MapOverlaySystem>(SystemUpdatePhase.ToolUpdate);
         }
 
         public void OnDispose()

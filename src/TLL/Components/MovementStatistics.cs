@@ -13,7 +13,7 @@ namespace TLL.Components
     [InternalBufferCapacity(0)]
     public struct MovementStatistics : IBufferElementData, ISerializable
     {
-        private const byte kVersion = 1;
+        private const byte kVersion = 2;
 
         /// <summary>Vehicles (or pedestrians for a crosswalk) per hour, averaged over the last hour or two of game time.</summary>
         public float Recent;
@@ -27,6 +27,13 @@ namespace TLL.Components
         /// <summary>Mean number of vehicles waiting, over about a game day.</summary>
         public float Queue;
 
+        /// <summary>
+        /// Highest hourly mean of vehicles waiting, slowly decaying like
+        /// <see cref="Peak"/>: the queue of the rush hour, which the daily
+        /// mean dilutes with the quiet night.
+        /// </summary>
+        public float PeakQueue;
+
         public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
         {
             writer.Write(kVersion);
@@ -34,6 +41,7 @@ namespace TLL.Components
             writer.Write(Daily);
             writer.Write(Peak);
             writer.Write(Queue);
+            writer.Write(PeakQueue);
         }
 
         public void Deserialize<TReader>(TReader reader) where TReader : IReader
@@ -43,7 +51,21 @@ namespace TLL.Components
             reader.Read(out Daily);
             reader.Read(out Peak);
             reader.Read(out Queue);
+            if (version >= 2)
+                reader.Read(out PeakQueue);
         }
+    }
+
+    /// <summary>
+    /// How badly a managed junction copes, from its long-term measurement:
+    /// the rush-hour queue of its worst movement. Written by the autopilot
+    /// once per round for the problem list and the map; not saved, the next
+    /// round after loading refills it from the saved statistics.
+    /// </summary>
+    public struct JunctionHealth : IComponentData
+    {
+        /// <summary>Largest <see cref="MovementStatistics.PeakQueue"/> of the junction's vehicle movements.</summary>
+        public float WorstQueue;
     }
 
     /// <summary>

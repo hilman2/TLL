@@ -104,6 +104,8 @@ namespace TLL.Systems
                         c.PedestrianSteps = 0f;
                         c.QueueSteps = 0f;
                     }
+                    if (!first)
+                        UpdateHealth(node);
                     if (first || settings == null || !settings.AutoManageAll)
                         continue;
                     ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
@@ -153,7 +155,27 @@ namespace TLL.Systems
                 s.Daily = fresh ? rate : s.Daily + kDailyWeight * (rate - s.Daily);
                 s.Peak = math.max(s.Peak * kPeakDecay, s.Recent);
                 s.Queue = fresh ? queue : s.Queue + kDailyWeight * (queue - s.Queue);
+                s.PeakQueue = math.max(s.PeakQueue * kPeakDecay, queue);
             }
+        }
+
+        /// <summary>Sums up the junction's statistics for the problem list and the map.</summary>
+        private void UpdateHealth(Entity node)
+        {
+            DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node, true);
+            DynamicBuffer<MovementCounter> counters = EntityManager.GetBuffer<MovementCounter>(node, true);
+            var health = new JunctionHealth();
+            for (int i = 0; i < statistics.Length && i < counters.Length; i++)
+            {
+                // Crosswalks have a length; their "queue" is not a traffic jam.
+                if (counters[i].Length > 0f)
+                    continue;
+                health.WorstQueue = math.max(health.WorstQueue, statistics[i].PeakQueue);
+            }
+            if (EntityManager.HasComponent<JunctionHealth>(node))
+                EntityManager.SetComponentData(node, health);
+            else
+                EntityManager.AddComponentData(node, health);
         }
 
         private void Decide(Entity node, ManagedJunction junction, Setting settings, bool layoutRound)

@@ -89,8 +89,8 @@ export interface EntityRef {
 
 export interface Problem extends EntityRef {
   name: string;
-  longestWait: number;
-  maxOuts: number;
+  /** Rush-hour queue of the worst movement, vehicles, from the long-term measurement. */
+  queue: number;
 }
 
 export interface Summary {
@@ -98,6 +98,8 @@ export interface Summary {
   /** Name of another traffic light mod TLL stands back for, "?" if unknown, "" for none. */
   conflict: string;
   automation: boolean;
+  showProblems: boolean;
+  showCongestion: boolean;
   managed: number;
   greenWaves: number;
   coordinated: number;
@@ -145,7 +147,7 @@ export interface JunctionInfo extends EntityRef {
   autopilot: AutopilotInfo | null;
 }
 
-const emptySummary: Summary = { available: true, conflict: "", automation: false, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] };
+const emptySummary: Summary = { available: true, conflict: "", automation: false, showProblems: false, showCongestion: false, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] };
 
 export const summary$ = bindValue<Summary>(group, "summary", emptySummary);
 export const selected$ = bindValue<JunctionInfo | null>(group, "selected", null);
@@ -157,6 +159,11 @@ export const toolActive$ = bindValue<boolean>(group, "toolActive", false);
  * the map while the panel is open, knows too.
  */
 export const panelOpen$ = bindLocalValue(false);
+
+export type Tab = "junction" | "city" | "problems";
+
+/** The panel's open tab; kept while the panel is closed. */
+export const tab$ = bindLocalValue<Tab>("junction");
 
 export function setPanelOpen(open: boolean) {
   panelOpen$.update(open);
@@ -173,4 +180,6 @@ export const actions = {
   manage: () => trigger(group, "manage"),
   toggleTool: () => trigger(group, "toggleTool"),
   rebuildGreenWaves: () => trigger(group, "rebuildGreenWaves"),
+  toggleShowProblems: () => trigger(group, "toggleShowProblems"),
+  toggleShowCongestion: () => trigger(group, "toggleShowCongestion"),
 };

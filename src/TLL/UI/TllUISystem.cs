@@ -63,9 +63,9 @@ namespace TLL.UI
         {
             public Entity Node;
             public string Name;
-            public float LongestWait;
-            public uint MaxOuts;
-            public float Score;
+
+            /// <summary>Rush-hour queue of the worst movement, vehicles (see JunctionHealth).</summary>
+            public float Queue;
         }
 
         private sealed class Summary
@@ -146,6 +146,8 @@ namespace TLL.UI
             AddBinding(new TriggerBinding<bool>(kGroup, "setPanelOpen", open => m_PanelOpen = open));
             AddBinding(new TriggerBinding(kGroup, "rebuildGreenWaves", () => Requests.RebuildGreenWaves = true));
             AddBinding(new TriggerBinding(kGroup, "toggleTool", () => m_Tool.Toggle()));
+            AddBinding(new TriggerBinding(kGroup, "toggleShowProblems", () => ChangeSetting(s => s.ShowProblems = !s.ShowProblems)));
+            AddBinding(new TriggerBinding(kGroup, "toggleShowCongestion", () => ChangeSetting(s => s.ShowCongestion = !s.ShowCongestion)));
             AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "toolActive", () => m_Tool.IsActive));
         }
 
@@ -184,6 +186,10 @@ namespace TLL.UI
             writer.Write(m_Control.Conflict ?? "");
             writer.PropertyName("automation");
             writer.Write(Mod.Settings != null && Mod.Settings.AutoManageAll);
+            writer.PropertyName("showProblems");
+            writer.Write(Mod.Settings != null && Mod.Settings.ShowProblems);
+            writer.PropertyName("showCongestion");
+            writer.Write(Mod.Settings != null && Mod.Settings.ShowCongestion);
             writer.PropertyName("managed");
             writer.Write(s.Managed);
             writer.PropertyName("greenWaves");
@@ -203,10 +209,8 @@ namespace TLL.UI
                 WriteEntity(writer, p.Node);
                 writer.PropertyName("name");
                 writer.Write(p.Name);
-                writer.PropertyName("longestWait");
-                writer.Write(p.LongestWait);
-                writer.PropertyName("maxOuts");
-                writer.Write(p.MaxOuts);
+                writer.PropertyName("queue");
+                writer.Write(p.Queue);
                 writer.TypeEnd();
             }
             writer.ArrayEnd();
@@ -227,23 +231,16 @@ namespace TLL.UI
                     if (mode >= 0 && mode < summary.ByMode.Length)
                         summary.ByMode[mode]++;
 
-                    DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(node, true);
-                    int longestWait = 0;
-                    uint maxOuts = 0;
-                    for (int i = 0; i < phases.Length; i++)
-                    {
-                        longestWait = Math.Max(longestWait, phases[i].Data.WaitSteps);
-                        maxOuts += phases[i].Data.Stats.MaxOuts;
-                    }
-                    float wait = SimTime.ToSeconds(longestWait);
-                    // A long wait now and repeated max-outs both mean demand the
-                    // junction cannot serve; a max-out counts like ten seconds.
-                    float score = wait + 10f * maxOuts;
-                    if (score > 0f)
-                        rows.Add(new ProblemRow { Node = node, LongestWait = wait, MaxOuts = maxOuts, Score = score });
+                    // Long-term figures only, so the list changes over game
+                    // hours and not with every cycle.
+                    if (!EntityManager.HasComponent<JunctionHealth>(node))
+                        continue;
+                    float queue = EntityManager.GetComponentData<JunctionHealth>(node).WorstQueue;
+                    if (queue >= MapOverlaySystem.ProblemQueue)
+                        rows.Add(new ProblemRow { Node = node, Queue = queue });
                 }
             }
-            rows.Sort((a, b) => b.Score.CompareTo(a.Score));
+            rows.Sort((a, b) => b.Queue.CompareTo(a.Queue));
             for (int i = 0; i < rows.Count && i < kProblemCount; i++)
             {
                 ProblemRow row = rows[i];
@@ -463,9 +460,15 @@ namespace TLL.UI
 
         private void OnToggleAutomation()
         {
+            ChangeSetting(s => s.AutoManageAll = !s.AutoManageAll);
+        }
+
+        /// <summary>Changes a setting from the panel, saves it, and refreshes the overview at once.</summary>
+        private void ChangeSetting(Action<Setting> change)
+        {
             if (Mod.Settings == null)
                 return;
-            Mod.Settings.AutoManageAll = !Mod.Settings.AutoManageAll;
+            change(Mod.Settings);
             Mod.Settings.ApplyAndSave();
             m_SummaryTime = default;
         }

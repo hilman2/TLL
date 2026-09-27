@@ -224,6 +224,7 @@ namespace TLL.Systems
             entityManager.RemoveComponent<MovementStatistics>(node);
             entityManager.RemoveComponent<AutopilotState>(node);
             entityManager.RemoveComponent<DetectorLane>(node);
+            entityManager.RemoveComponent<JunctionHealth>(node);
             if (exclude)
                 entityManager.AddComponent<JunctionExcluded>(node);
             entityManager.AddComponent<RebuildRequest>(node);

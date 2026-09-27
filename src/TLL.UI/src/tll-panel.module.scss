@@ -172,26 +172,37 @@
   background-color: #e5484d;
 }
 
-.estimate {
+.tabs {
   display: flex;
   flex-direction: row;
-  padding: 1rem 12rem;
-  font-size: 13rem;
-  opacity: 0.75;
+  padding: 6rem 9rem 2rem 9rem;
 }
 
-.estimateCurrent {
-  opacity: 1;
-  color: #3dbf6b;
-}
-
-.estimateValue {
-  flex-shrink: 0;
+.tab {
+  flex: 1;
+  margin: 0 3rem;
+  padding: 5rem 6rem;
   white-space: nowrap;
+  font-size: 14rem;
+  justify-content: center;
+  opacity: 0.7;
 }
 
-.overloaded {
-  color: #e5484d;
+.tabActive {
+  opacity: 1;
+  font-weight: bold;
+}
+
+.autopilot {
+  padding: 4rem 12rem 0 12rem;
+  font-size: 13rem;
+  color: #8fd3ff;
+}
+
+.tooltip {
+  max-width: 360rem;
+  font-size: 13rem;
+  white-space: pre-line;
 }
 
 .preempt {

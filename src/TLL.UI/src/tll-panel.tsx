@@ -1,6 +1,7 @@
 import { useValue } from "cs2/api";
-import { Button, Panel, Scrollable } from "cs2/ui";
+import { Button, Panel, Scrollable, Tooltip } from "cs2/ui";
 import classNames from "classnames";
+import { ReactElement } from "react";
 import {
   actions,
   AutopilotInfo,
@@ -14,7 +15,10 @@ import {
   setPanelOpen,
   SignalAdvice,
   Stage,
+  Summary,
   summary$,
+  Tab,
+  tab$,
   toolActive$,
 } from "bindings";
 import { JunctionDiagram } from "junction-diagram";
@@ -26,6 +30,9 @@ import styles from "tll-panel.module.scss";
 // under each other. Texts are therefore built as one string, and every row
 // states its flex direction. Wrapping flex rows overlap, so choices are laid
 // out in fixed rows of two.
+//
+// Explanations go into tooltips, so the panel itself shows state and
+// choices, not paragraphs.
 
 type Translate = ReturnType<typeof useTranslate>;
 
@@ -33,6 +40,7 @@ const modes = [ControlMode.Adaptive, ControlMode.Actuated, ControlMode.FixedTime
 const strategies = [PlanStrategy.Permissive, PlanStrategy.ProtectedTurns, PlanStrategy.Split, PlanStrategy.ExclusivePedestrian];
 
 const seconds = (s: number) => `${Math.round(s)} s`;
+const perHour = (v: number) => `${Math.round(v)}/h`;
 
 function pairs<T>(items: T[]): T[][] {
   const rows: T[][] = [];
@@ -40,16 +48,30 @@ function pairs<T>(items: T[]): T[][] {
   return rows;
 }
 
+/**
+ * Wraps an element in the game's tooltip, or leaves it alone without text.
+ * The tooltip attaches to its one child through a ref, which the game's
+ * types express as a type React's own element type does not satisfy.
+ */
+const Hint = ({ text, children }: { text: string | null; children: ReactElement }) =>
+  text ? <Tooltip tooltip={<div className={styles.tooltip}>{text}</div>}>{children as any}</Tooltip> : children;
+
 export const TllPanel = () => {
   const open = useValue(panelOpen$);
+  const tab = useValue(tab$);
   const summary = useValue(summary$);
   const selected = useValue(selected$);
-  const toolActive = useValue(toolActive$);
   const t = useTranslate();
   if (!open) return null;
 
-  const managedText = `${t("Panel.Managed", "Junctions controlled by TLL")}: ${summary.managed}`;
-  const wavesText = `${t("Panel.GreenWaves", "Green waves")}: ${summary.greenWaves} (${summary.coordinated} ${t("Panel.Junctions", "junctions")})`;
+  const problemsLabel = summary.problems.length > 0
+    ? `${t("Panel.TabProblems", "Problems")} (${summary.problems.length})`
+    : t("Panel.TabProblems", "Problems");
+  const tabs: [Tab, string][] = [
+    ["junction", t("Panel.TabJunction", "Junction")],
+    ["city", t("Panel.TabCity", "City")],
+    ["problems", problemsLabel],
+  ];
 
   return (
     <Panel
@@ -58,57 +80,48 @@ export const TllPanel = () => {
       header={<div className={styles.title}>{t("Panel.Title", "Traffic Lights & Lanes")}</div>}
       onClose={() => setPanelOpen(false)}
     >
+      <div className={styles.tabs}>
+        {tabs.map(([id, label]) => (
+          <Button key={id} variant="flat" className={classNames(styles.tab, tab === id && styles.tabActive)} selected={tab === id} onSelect={() => tab$.update(id)}>
+            {label}
+          </Button>
+        ))}
+      </div>
+      {!summary.available && <UnavailableNote summary={summary} t={t} />}
       <Scrollable className={styles.scroll} vertical>
-        {!summary.available && (
-          <div className={styles.warning}>
-            {summary.conflict === "?"
-              ? t("Panel.ConflictUnknown", "Another mod drives the traffic lights as well. TLL stays off while it is loaded.")
-              : summary.conflict
-                ? `${summary.conflict}: ${t("Panel.Conflict", "this mod drives the traffic lights as well. TLL stays off while it is loaded.")}`
-                : t("Panel.Unavailable", "The game has changed in a way TLL does not recognise. All traffic lights are left to the game.")}
-          </div>
-        )}
-
-        <div className={styles.row}>
-          <div className={styles.grow}>{managedText}</div>
-          <Button variant="flat" className={styles.small} selected={summary.automation} onSelect={actions.toggleAutomation}>
-            {summary.automation ? t("Panel.AutomationOn", "Automation on") : t("Panel.AutomationOff", "Automation off")}
-          </Button>
-        </div>
-        <div className={styles.row}>
-          <div className={styles.grow}>{wavesText}</div>
-          <Button variant="flat" className={styles.small} onSelect={actions.rebuildGreenWaves}>
-            {t("Panel.RebuildGreenWaves", "Recalculate")}
-          </Button>
-        </div>
-        <div className={styles.row}>
-          <Button variant="flat" className={styles.wide} selected={toolActive} onSelect={actions.toggleTool}>
-            {toolActive ? t("Panel.PickingJunction", "Click a junction…") : t("Panel.PickJunction", "Pick a junction on the map")}
-          </Button>
-        </div>
-
-        {selected && <JunctionDetail junction={selected} t={t} />}
-
-        <div className={styles.heading}>{t("Panel.Problems", "Needs attention")}</div>
-        {summary.problems.length === 0 ? (
-          <div className={styles.muted}>{t("Panel.NoProblems", "No junction is struggling right now.")}</div>
-        ) : (
-          summary.problems.map((p) => <ProblemRow key={p.index} problem={p} t={t} selected={selected?.index === p.index} />)
-        )}
+        {tab === "junction" && <JunctionTab junction={selected} t={t} />}
+        {tab === "city" && <CityTab summary={summary} t={t} />}
+        {tab === "problems" && <ProblemsTab summary={summary} selected={selected} t={t} />}
       </Scrollable>
     </Panel>
   );
 };
 
-const ProblemRow = ({ problem, t, selected }: { problem: Problem; t: Translate; selected: boolean }) => (
-  <Button variant="flat" className={classNames(styles.problem, selected && styles.selected)} onSelect={() => actions.goto(problem)}>
-    <div className={styles.problemName}>{problem.name}</div>
-    <div className={styles.problemStats}>{`${seconds(problem.longestWait)} · ${problem.maxOuts}× ${t("Panel.MaxOut", "maxed")}`}</div>
-  </Button>
+const UnavailableNote = ({ summary, t }: { summary: Summary; t: Translate }) => (
+  <div className={styles.warning}>
+    {summary.conflict === "?"
+      ? t("Panel.ConflictUnknown", "Another mod drives the traffic lights as well. TLL stays off while it is loaded.")
+      : summary.conflict
+        ? `${summary.conflict}: ${t("Panel.Conflict", "this mod drives the traffic lights as well. TLL stays off while it is loaded.")}`
+        : t("Panel.Unavailable", "The game has changed in a way TLL does not recognise. All traffic lights are left to the game.")}
+  </div>
 );
 
-const JunctionDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }) =>
-  junction.managed ? <ManagedDetail junction={junction} t={t} /> : <UnmanagedDetail junction={junction} t={t} />;
+// ---- Junction tab ----
+
+const JunctionTab = ({ junction, t }: { junction: JunctionInfo | null; t: Translate }) => {
+  const toolActive = useValue(toolActive$);
+  return (
+    <>
+      <div className={styles.row}>
+        <Button variant="flat" className={styles.wide} selected={toolActive} onSelect={actions.toggleTool}>
+          {toolActive ? t("Panel.PickingJunction", "Click a junction…") : t("Panel.PickJunction", "Pick a junction on the map")}
+        </Button>
+      </div>
+      {junction && (junction.managed ? <ManagedDetail junction={junction} t={t} /> : <UnmanagedDetail junction={junction} t={t} />)}
+    </>
+  );
+};
 
 const UnmanagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }) => (
   <div className={styles.detail}>
@@ -134,23 +147,27 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
   const origin = junction.manual ? t("Panel.Manual", "Set by you") : t("Panel.Automatic", "Automatic");
   const wave = junction.group > 0 ? ` · ${t("Panel.GreenWave", "green wave")} #${junction.group}` : "";
   const info = `${origin} · ${t("Panel.Cycle", "cycle")} ${seconds(junction.cycleSeconds)}${wave}`;
+  const modeHint = junction.mode === ControlMode.Coordinated
+    ? t("Panel.CoordinatedNote", "Runs in a green wave. Choose another mode to take it out.")
+    : null;
   return (
     <div className={styles.detail}>
       <div className={styles.heading}>{junction.name}</div>
       <div className={styles.muted}>{info}</div>
 
-      {junction.autopilot && <AutopilotSection autopilot={junction.autopilot} junction={junction} t={t} />}
+      {junction.autopilot && <AutopilotLine autopilot={junction.autopilot} junction={junction} t={t} />}
 
-      <div className={styles.label}>{t("Panel.Mode", "Control")}</div>
-      {junction.mode === ControlMode.Coordinated && (
-        <div className={styles.note}>{t("Panel.CoordinatedNote", "Runs in a green wave. Choose another mode to take it out.")}</div>
-      )}
+      <Hint text={modeHint}>
+        <div className={styles.label}>{junction.mode === ControlMode.Coordinated ? `${t("Panel.Mode", "Control")}: ${t("Mode.Coordinated", "Green wave")}` : t("Panel.Mode", "Control")}</div>
+      </Hint>
       {pairs(modes).map((row, i) => (
         <div key={i} className={styles.row}>
           {row.map((m) => (
-            <Button key={m} variant="flat" className={styles.choice} selected={junction.mode === m} onSelect={() => actions.setMode(m)}>
-              {t("Mode." + ControlMode[m], ControlMode[m])}
-            </Button>
+            <Hint key={m} text={t("ModeHint." + ControlMode[m], "")}>
+              <Button variant="flat" className={styles.choice} selected={junction.mode === m} onSelect={() => actions.setMode(m)}>
+                {t("Mode." + ControlMode[m], ControlMode[m])}
+              </Button>
+            </Hint>
           ))}
         </div>
       ))}
@@ -159,9 +176,11 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
       {pairs(strategies).map((row, i) => (
         <div key={i} className={styles.row}>
           {row.map((s) => (
-            <Button key={s} variant="flat" className={styles.choice} selected={junction.strategy === s} onSelect={() => actions.setStrategy(s)}>
-              {t("Strategy." + PlanStrategy[s], PlanStrategy[s])}
-            </Button>
+            <Hint key={s} text={t("StrategyHint." + PlanStrategy[s], "")}>
+              <Button variant="flat" className={styles.choice} selected={junction.strategy === s} onSelect={() => actions.setStrategy(s)}>
+                {t("Strategy." + PlanStrategy[s], PlanStrategy[s])}
+              </Button>
+            </Hint>
           ))}
         </div>
       ))}
@@ -180,38 +199,30 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
   );
 };
 
-const perHour = (v: number) => `${Math.round(v)}/h`;
-
 /**
- * What the autopilot measured and how it compares the phase layouts. The
- * estimates come from the busiest hours of the last days, not from the
- * traffic right now, so they change slowly on purpose.
+ * The autopilot in one line: measured traffic, and the comparison of the
+ * layouts in the tooltip. The estimates come from the busiest hours of the
+ * last days, so they change slowly on purpose.
  */
-const AutopilotSection = ({ autopilot, junction, t }: { autopilot: AutopilotInfo; junction: JunctionInfo; t: Translate }) => {
-  const traffic = `${t("Panel.MainRoad", "Main road")} ${perHour(autopilot.majorVolume)} · ${t("Panel.SideRoad", "side road")} ${perHour(autopilot.minorVolume)}`;
+const AutopilotLine = ({ autopilot, junction, t }: { autopilot: AutopilotInfo; junction: JunctionInfo; t: Translate }) => {
+  const measuring = autopilot.estimates.length === 0;
+  const traffic = measuring
+    ? t("Panel.Collecting", "Still measuring the traffic")
+    : `${t("Panel.MainRoad", "Main road")} ${perHour(autopilot.majorVolume)} · ${t("Panel.SideRoad", "side road")} ${perHour(autopilot.minorVolume)}`;
+  const comparison = autopilot.estimates
+    .map((e) => `${e.strategy === junction.strategy ? "▸ " : "   "}${t("Strategy." + PlanStrategy[e.strategy], PlanStrategy[e.strategy])}: Ø ${seconds(e.delay)}, ${Math.round(e.saturation * 100)} %`)
+    .join("\n");
+  const hint = measuring ? t("Panel.CollectingHint", "The layout is reviewed once enough traffic has been measured.") : `${t("Panel.EstimateHint", "Expected mean wait and load of the busiest phase, per layout:")}\n${comparison}`;
   return (
     <>
-      <div className={styles.label}>{t("Panel.Autopilot", "Autopilot")}</div>
-      <div className={styles.muted}>{traffic}</div>
-      {autopilot.estimates.length === 0 ? (
-        <div className={styles.muted}>{t("Panel.Collecting", "Still measuring the traffic; the layout is reviewed once there is enough.")}</div>
-      ) : (
-        autopilot.estimates.map((e) => (
-          <div key={e.strategy} className={classNames(styles.estimate, e.strategy === junction.strategy && styles.estimateCurrent)}>
-            <div className={styles.grow}>{t("Strategy." + PlanStrategy[e.strategy], PlanStrategy[e.strategy])}</div>
-            <div className={classNames(styles.estimateValue, e.saturation > 1 && styles.overloaded)}>
-              {`Ø ${seconds(e.delay)} · ${Math.round(e.saturation * 100)} %`}
-            </div>
-          </div>
-        ))
-      )}
+      <Hint text={hint}>
+        <div className={styles.autopilot}>{`${t("Panel.Autopilot", "Autopilot")}: ${traffic}`}</div>
+      </Hint>
       {autopilot.pending >= 0 && autopilot.pending !== junction.strategy && (
-        <div className={styles.note}>
-          {`${t("Panel.PendingLayout", "Changes at the next review if traffic stays like this")}: ${t("Strategy." + PlanStrategy[autopilot.pending], PlanStrategy[autopilot.pending])}`}
-        </div>
+        <div className={styles.note}>{`${t("Panel.PendingLayout", "Next review changes to")}: ${t("Strategy." + PlanStrategy[autopilot.pending], PlanStrategy[autopilot.pending])}`}</div>
       )}
       {autopilot.signalAdvice === SignalAdvice.RemoveSignals && (
-        <div className={styles.note}>{t("Panel.RemoveSignals", "Priority rules would serve this junction with less waiting than signals.")}</div>
+        <div className={styles.note}>{t("Panel.RemoveSignals", "Priority rules would mean less waiting here than signals.")}</div>
       )}
     </>
   );
@@ -248,10 +259,92 @@ const PhaseCard = ({ index, phase, junction, t }: { index: number; phase: PhaseI
           <div className={styles.phaseTitle}>{title}</div>
         </div>
         <div className={styles.phaseLine}>{timing}</div>
-        <div className={styles.phaseLine}>{`${t("Panel.Demand", "Demand")}: ${phase.demand.toFixed(0)}`}</div>
-        <div className={styles.phaseLine}>{`${t("Panel.Waiting", "waiting")}: ${seconds(phase.wait)}`}</div>
+        <div className={styles.phaseLine}>{`${t("Panel.Waiting", "waiting")}: ${phase.demand.toFixed(0)} · ${seconds(phase.wait)}`}</div>
         {phase.preempt && <div className={styles.preempt}>{t("Panel.Emergency", "Emergency")}</div>}
       </div>
     </div>
   );
 };
+
+// ---- City tab ----
+
+const Toggle = ({ label, hint, on, onSelect }: { label: string; hint: string; on: boolean; onSelect: () => void }) => (
+  <div className={styles.row}>
+    <Hint text={hint}>
+      <div className={styles.grow}>{label}</div>
+    </Hint>
+    <Button variant="flat" className={styles.small} selected={on} onSelect={onSelect}>
+      {on ? "✓" : "–"}
+    </Button>
+  </div>
+);
+
+const CityTab = ({ summary, t }: { summary: Summary; t: Translate }) => {
+  const byMode = modes
+    .concat([ControlMode.Coordinated])
+    .filter((m) => (summary.byMode[m] ?? 0) > 0)
+    .map((m) => `${t("Mode." + ControlMode[m], ControlMode[m])} ${summary.byMode[m]}`)
+    .join(" · ");
+  return (
+    <>
+      <Toggle
+        label={t("Panel.Automation", "Manage all traffic lights")}
+        hint={t("Settings.AutoManageAll.Description", "")}
+        on={summary.automation}
+        onSelect={actions.toggleAutomation}
+      />
+      <div className={styles.muted}>{`${t("Panel.Managed", "Junctions controlled by TLL")}: ${summary.managed}`}</div>
+      {byMode && <div className={styles.muted}>{byMode}</div>}
+
+      <div className={styles.row}>
+        <div className={styles.grow}>{`${t("Panel.GreenWaves", "Green waves")}: ${summary.greenWaves} (${summary.coordinated} ${t("Panel.Junctions", "junctions")})`}</div>
+        <Button variant="flat" className={styles.small} onSelect={actions.rebuildGreenWaves}>
+          {t("Panel.RebuildGreenWaves", "Recalculate")}
+        </Button>
+      </div>
+
+      <div className={styles.label}>{t("Settings.Group.Map", "Map")}</div>
+      <Toggle
+        label={t("Settings.ShowProblems.Label", "Mark problem junctions")}
+        hint={t("Settings.ShowProblems.Description", "")}
+        on={summary.showProblems}
+        onSelect={actions.toggleShowProblems}
+      />
+      <Toggle
+        label={t("Settings.ShowCongestion.Label", "Mark congestion")}
+        hint={t("Settings.ShowCongestion.Description", "")}
+        on={summary.showCongestion}
+        onSelect={actions.toggleShowCongestion}
+      />
+    </>
+  );
+};
+
+// ---- Problems tab ----
+
+const ProblemsTab = ({ summary, selected, t }: { summary: Summary; selected: JunctionInfo | null; t: Translate }) => (
+  <>
+    <Hint text={t("Panel.ProblemsHint", "Junctions where queues build up in the rush hour, measured over game days. Click one to go there.")}>
+      <div className={styles.label}>{t("Panel.ProblemsTitle", "Queues in the rush hour")}</div>
+    </Hint>
+    {summary.problems.length === 0 ? (
+      <div className={styles.muted}>{t("Panel.NoProblems", "No junction with long queues measured.")}</div>
+    ) : (
+      summary.problems.map((p) => <ProblemRow key={p.index} problem={p} t={t} selected={selected?.index === p.index} />)
+    )}
+  </>
+);
+
+const ProblemRow = ({ problem, t, selected }: { problem: Problem; t: Translate; selected: boolean }) => (
+  <Button
+    variant="flat"
+    className={classNames(styles.problem, selected && styles.selected)}
+    onSelect={() => {
+      actions.goto(problem);
+      tab$.update("junction");
+    }}
+  >
+    <div className={styles.problemName}>{problem.name}</div>
+    <div className={styles.problemStats}>{`Ø ${Math.round(problem.queue)} ${t("Panel.Vehicles", "vehicles")}`}</div>
+  </Button>
+);

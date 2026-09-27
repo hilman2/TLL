@@ -57,7 +57,7 @@ window["cs2/api"] = strictModule("cs2/api", {
     },
   }),
   bindLocalValue: (initial) => {
-    const binding = { value: initial, update(v) { this.value = v; } };
+    const binding = { initial, value: initial, update(v) { this.value = v; } };
     localBindings.push(binding);
     return binding;
   },
@@ -103,15 +103,20 @@ const managed = {
   ],
   phases: [phase([0, 1, 3], [1]), phase([2, 4])],
 };
+const summary = {
+  available: true, conflict: "", automation: true, showProblems: false, showCongestion: true,
+  managed: 12, greenWaves: 2, coordinated: 7, byMode: [1, 2, 7, 2, 0],
+  problems: [
+    { index: 7, version: 1, name: "Main Street / Oak Avenue", queue: 11.4 },
+    { index: 8, version: 1, name: "Harbour Road / A very long street name that does not fit", queue: 5.2 },
+  ],
+};
 const scenarios = {
   "empty city": {},
-  "overview": {
-    "tll.summary": {
-      available: true, automation: true, managed: 12, greenWaves: 2, coordinated: 7, byMode: [1, 2, 7, 2, 0],
-      problems: [{ index: 7, version: 1, name: "Main Street / Oak Avenue", longestWait: 64, maxOuts: 3 }],
-    },
-    "tll.toolActive": true,
-  },
+  "junction tab, picking": { "tll.toolActive": true },
+  "city tab": { tab: "city", "tll.summary": { ...summary, showProblems: true } },
+  "problems tab": { tab: "problems", "tll.summary": summary },
+  "problems tab, none": { tab: "problems" },
   "managed junction": { "tll.selected": managed },
   "junction in transition": { "tll.selected": { ...managed, stage: 1, phase: 0, next: 1 } },
   "flashing junction": { "tll.selected": { ...managed, mode: 4, stage: 4 } },
@@ -136,8 +141,8 @@ const scenarios = {
   "vanilla junction": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: true } },
   "junction without signals": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false } },
   "roundabout": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, roundabout: true } },
-  "other traffic mod": { "tll.summary": { available: false, conflict: "Traffic Lights Enhancement", automation: true, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] } },
-  "unavailable": { "tll.summary": { available: false, automation: false, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] } },
+  "other traffic mod": { "tll.summary": { ...summary, available: false, conflict: "Traffic Lights Enhancement", problems: [] } },
+  "unavailable": { "tll.summary": { ...summary, available: false, problems: [] } },
 };
 
 let failures = 0;
@@ -145,7 +150,9 @@ const preview = [];
 for (const [label, data] of Object.entries(scenarios)) {
   for (const open of [false, true]) {
     scenario = data;
-    for (const b of localBindings) b.value = open;
+    // Boolean local values say whether the panel is open; the string one is
+    // the tab, chosen by the scenario's "tab" entry.
+    for (const b of localBindings) b.value = typeof b.initial === "boolean" ? open : (data.tab ?? b.initial);
     for (const { target, component } of appended) {
       try {
         const html = renderToString(React.createElement(component));

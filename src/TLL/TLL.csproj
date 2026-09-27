@@ -54,6 +54,16 @@
     </PropertyGroup>
   </Target>
 
+  <!-- DeployWIP in Mod.targets removes the Mods folder before copying. With
+       the game running, the Burst DLL stays locked, the removal fails half
+       way and leaves a folder the game cannot load. Stop before that. -->
+  <Target Name="RefuseDeployWhileGameRuns" BeforeTargets="DeployWIP" Condition="'$(UseToolchain)' == 'true' And '$(DeployMod)' != 'false' And '$(OS)' == 'Windows_NT'">
+    <Exec Command="tasklist /FI &quot;IMAGENAME eq Cities2.exe&quot; /NH" ConsoleToMSBuild="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GameProcess" />
+    </Exec>
+    <Error Condition="$(GameProcess.Contains('Cities2.exe'))" Text="Cities: Skylines II is running and holds the mod open. Close the game, or build with -p:DeployMod=false." />
+  </Target>
+
   <Target Name="PostProcessorRollForward" AfterTargets="ModPostProcessorConfig" Condition="'$(UseToolchain)' == 'true'">
     <PropertyGroup>
       <ModPostProcessorArgs>set DOTNET_ROLL_FORWARD=Major&amp;&amp; $(ModPostProcessorArgs)</ModPostProcessorArgs>

@@ -28,13 +28,14 @@ namespace TLL
     }
 
     [FileLocation("ModsSettings/TLL/TLL")]
-    [SettingsUIGroupOrder(kAutomation, kRules, kMaintenance, kDebug)]
-    [SettingsUIShowGroupName(kAutomation, kRules, kMaintenance, kDebug)]
+    [SettingsUIGroupOrder(kAutomation, kRules, kMap, kMaintenance, kDebug)]
+    [SettingsUIShowGroupName(kAutomation, kRules, kMap, kMaintenance, kDebug)]
     public class Setting : ModSetting
     {
         public const string kSection = "Main";
         public const string kAutomation = "Automation";
         public const string kRules = "Rules";
+        public const string kMap = "Map";
         public const string kMaintenance = "Maintenance";
         public const string kDebug = "Debug";
 
@@ -63,6 +64,12 @@ namespace TLL
 
         [SettingsUISection(kSection, kRules)]
         public bool KeepClear { get; set; }
+
+        [SettingsUISection(kSection, kMap)]
+        public bool ShowProblems { get; set; }
+
+        [SettingsUISection(kSection, kMap)]
+        public bool ShowCongestion { get; set; }
 
         [SettingsUIButton]
         [SettingsUIConfirmation]
@@ -126,6 +133,8 @@ namespace TLL
             AutoFlash = true;
             TurnOnRed = false;
             KeepClear = true;
+            ShowProblems = false;
+            ShowCongestion = false;
             VerboseLogging = false;
         }
     }
