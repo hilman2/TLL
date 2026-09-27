@@ -67,6 +67,79 @@ namespace TLL.Core.Advisor
             return ClearlyBetter(estimates[best], estimates[currentIndex]) ? Strategies[best] : current;
         }
 
+        /// <summary>Worst saturation given to a measured layout whose queues did not clear, whatever the model says.</summary>
+        public const float MeasuredOverload = 1.1f;
+
+        /// <summary>
+        /// The estimates as the junction has measured its layouts
+        /// (<see cref="LayoutMemory"/>). Each layout's vehicle delay is scaled
+        /// by how far the game was from the model when it ran; a layout never
+        /// measured borrows the factor of the running one, the best guess of
+        /// how this junction differs from the model. For a measured layout
+        /// the backlog decides whether it copes, not the model: one that
+        /// jammed does not cope, one that did not, copes.
+        /// </summary>
+        /// <param name="running">Index in <see cref="Strategies"/> of the layout running now, or -1.</param>
+        /// <param name="wave">The junction runs in a green wave; its layouts are judged by what they did there.</param>
+        public static PlanEstimate[] Correct(PlanEstimate[] estimates, LayoutMemory memory, int running, bool wave)
+        {
+            Calibration here = running >= 0 ? memory.Get(running, wave) : default;
+            float fallback = here.Measured ? here.Factor : 1f;
+            var result = new PlanEstimate[estimates.Length];
+            for (int i = 0; i < estimates.Length; i++)
+            {
+                PlanEstimate e = estimates[i];
+                Calibration c = memory.Get(i, wave);
+                float pedestrians = e.TotalDelay - e.VehicleDelay;
+                e.VehicleDelay *= c.Measured ? c.Factor : fallback;
+                e.TotalDelay = e.VehicleDelay + pedestrians;
+                e.AverageDelay = e.People > 0f ? e.TotalDelay / e.People : 0f;
+                if (c.Measured)
+                {
+                    e.WorstSaturation = c.Backlog >= LayoutMemory.BacklogShare
+                        ? Math.Max(e.WorstSaturation, MeasuredOverload)
+                        : Math.Min(e.WorstSaturation, Capacity);
+                }
+                result[i] = e;
+            }
+            return result;
+        }
+
+        /// <summary>A green wave may cost its junctions at most this share over running alone.</summary>
+        public const float WaveTolerance = 0.0f;
+
+        /// <summary>Measurement periods a junction needs, alone and in the wave, before it counts in the verdict on the wave.</summary>
+        public const int WaveSamples = 2;
+
+        /// <summary>
+        /// Whether a green wave has measurably made its junctions worse. Per
+        /// junction the calibration in the wave is compared with the one alone,
+        /// for the layout it runs, both against the model and so for the
+        /// traffic of their time; a wave that brings backlog where there was
+        /// none counts as half again as bad. The junctions are weighted by
+        /// their traffic. Junctions not yet measured both ways do not count,
+        /// and without any the wave keeps running.
+        /// </summary>
+        /// <param name="alone">Per member, its calibration running alone.</param>
+        /// <param name="inWave">Per member, its calibration in the wave.</param>
+        /// <param name="weights">Per member, vehicles per hour.</param>
+        public static bool WaveHurts(Calibration[] alone, Calibration[] inWave, float[] weights)
+        {
+            float sum = 0f;
+            float weight = 0f;
+            for (int j = 0; j < alone.Length; j++)
+            {
+                if (alone[j].Samples < WaveSamples || inWave[j].Samples < WaveSamples || weights[j] <= 0f)
+                    continue;
+                float ratio = inWave[j].Factor / Math.Max(0.01f, alone[j].Factor);
+                if (inWave[j].Backlog >= LayoutMemory.BacklogShare && alone[j].Backlog < LayoutMemory.BacklogShare)
+                    ratio = Math.Max(ratio, 1.5f);
+                sum += weights[j] * ratio;
+                weight += weights[j];
+            }
+            return weight > 0f && sum / weight > 1f + WaveTolerance;
+        }
+
         /// <summary>A turn on red must save at least this share of the total delay to be set.</summary>
         public const float TurnOnRedMargin = 0.02f;
 

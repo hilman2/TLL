@@ -50,6 +50,16 @@ namespace TLL.Core.Advisor
         /// <summary>Mean delay per road user in seconds.</summary>
         public float AverageDelay;
 
+        /// <summary>
+        /// The vehicles' part of <see cref="TotalDelay"/>, and how many
+        /// vehicles arrive in the hour. The rest is the pedestrians'.
+        /// </summary>
+        public float VehicleDelay;
+        public float Vehicles;
+
+        /// <summary>Road users arriving in one hour, vehicles and pedestrians.</summary>
+        public float People;
+
         public float Cycle;
 
         /// <summary>Highest volume-to-capacity ratio of any movement; above 1 the junction cannot keep up.</summary>
@@ -208,12 +218,15 @@ namespace TLL.Core.Advisor
                     delay = SignalDelay(v, capacity, effective / cycle, cycle, p.Period, out float x);
                     estimate.WorstSaturation = Math.Max(estimate.WorstSaturation, x);
                     estimate.Saturation[m] = x;
+                    estimate.VehicleDelay += v * delay;
+                    estimate.Vehicles += v;
                 }
                 estimate.Delay[m] = delay;
                 estimate.TotalDelay += v * delay;
                 people += v;
             }
             estimate.AverageDelay = people > 0f ? estimate.TotalDelay / people : 0f;
+            estimate.People = people;
             return estimate;
         }
 
