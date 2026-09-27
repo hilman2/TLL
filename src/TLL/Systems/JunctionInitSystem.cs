@@ -405,9 +405,7 @@ namespace TLL.Systems
                     if (old.Movements != phases[p].Movements)
                         continue;
                     JunctionPhase phase = phases[p];
-                    phase.Data.Green = old.Data.Green;
-                    phase.Data.MaxGreen = old.Data.MaxGreen;
-                    phase.Data.Flags = old.Data.Flags;
+                    phase.Data.KeepFrom(in old.Data);
                     phases[p] = phase;
                     break;
                 }

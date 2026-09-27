@@ -90,6 +90,23 @@ namespace TLL.Core.Control
         }
 
         /// <summary>
+        /// Takes over what the junction has learnt for the same phase in its
+        /// previous plan, when a new plan gives green to exactly the same
+        /// movements.
+        /// </summary>
+        public void KeepFrom(in PhaseData old)
+        {
+            Green = old.Green;
+            MaxGreen = old.MaxGreen;
+            // Whether the phase carries a green wave is learnt; what it is
+            // comes from the new plan. The scramble on demand of one layout
+            // and the pedestrian phase of the scramble layout have the same
+            // crosswalks, and a copied Scramble flag made the latter wait for
+            // a diversion that never comes there: pedestrians never crossed.
+            Flags = (Flags & ~PhaseFlags.Coordinated) | (old.Flags & PhaseFlags.Coordinated);
+        }
+
+        /// <summary>
         /// Least green a timed plan gives the phase: long enough for the walk
         /// if it has a crosswalk, since the fixed schedule cannot stretch a
         /// green when a pedestrian calls.
