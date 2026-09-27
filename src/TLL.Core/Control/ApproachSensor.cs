@@ -60,15 +60,22 @@ namespace TLL.Core.Control
         public const float Horizon = 15f;
 
         /// <summary>
-        /// Largest gap in metres, front to front, between two vehicles of
-        /// one queue: a car length plus the room a driver leaves while
-        /// moving off.
+        /// Largest gap in metres, front to front, between two standing
+        /// vehicles of one queue: a car length plus the room a driver leaves
+        /// while moving off.
         /// </summary>
         public const float QueueGap = 15f;
 
         /// <summary>
-        /// A vehicle faster than this, in m/s, has left the queue even if it
-        /// is close behind the one ahead: it drives through at speed.
+        /// Seconds of headway added to the allowed gap per m/s of speed: a
+        /// queue pulls apart as it accelerates, and is still one queue while
+        /// each vehicle follows the one ahead this closely.
+        /// </summary>
+        public const float QueueHeadway = 1.5f;
+
+        /// <summary>
+        /// A vehicle of the queue faster than this, in m/s, is driving
+        /// through: it counts as soon at the line, not as waiting.
         /// </summary>
         public const float QueueSpeed = 8f;
 
@@ -82,9 +89,14 @@ namespace TLL.Core.Control
             {
                 float distance = vehicles.Distance(i);
                 float speed = vehicles.Speed(i);
-                if (inQueue && distance - queueEnd <= QueueGap && speed < QueueSpeed)
+                // The first cars of a queue that has started to move are the
+                // fast ones; they must not cut off the queue behind them.
+                if (inQueue && distance - queueEnd <= QueueGap + QueueHeadway * speed)
                 {
-                    reading.Waiting += 1f;
+                    if (speed < QueueSpeed)
+                        reading.Waiting += 1f;
+                    else
+                        reading.Soon += 1f;
                     queueEnd = distance;
                     continue;
                 }

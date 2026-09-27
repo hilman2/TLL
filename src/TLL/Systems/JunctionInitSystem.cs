@@ -57,6 +57,12 @@ namespace TLL.Systems
             });
         }
 
+        /// <summary>Junctions whose plan can no longer be built go back to the game rather than keep a stale one.</summary>
+        protected override void OnSwitchedOff()
+        {
+            m_Control.StandBack(SignalControlSystem.ErrorConflict);
+        }
+
         protected override void OnSafeUpdate()
         {
             // Without the bypass the game would drive these junctions too, with
@@ -159,7 +165,7 @@ namespace TLL.Systems
             WriteBuffers(node, storedMovements, phases, lanes, keys);
             WriteDetectors(node, JunctionAnalysis.DetectorChain(EntityManager, node, layout, SignalControlSystem.kDetectionRange));
             WriteMeasurement(node, lanes, keys, savedToCurrent);
-            WriteSignalGroups(node, phases, lanes, keys, ref lights);
+            WriteSignalGroups(node, phases, lanes, keys, layout.Unassigned, ref lights);
 
             if (EntityManager.HasComponent<JunctionDirty>(node))
                 EntityManager.RemoveComponent<JunctionDirty>(node);
@@ -231,7 +237,6 @@ namespace TLL.Systems
             entityManager.AddComponent<RebuildRequest>(node);
         }
 
-        /// <summary>Whether the junction's saved movements are the ones just found, in the same order.</summary>
         /// <summary>
         /// Where each saved movement is in the list just found: element i is
         /// the new index of saved movement i. Null if the junction does not
@@ -357,7 +362,10 @@ namespace TLL.Systems
             {
                 JunctionPhase phase = storedPhases[i];
                 phase.Movements = Remap(phase.Movements, savedToCurrent);
-                phase.Permitted = Remap(phase.Permitted, savedToCurrent);
+                // Who gives way follows from the lanes as they are now: a
+                // change of lane layout on the same roads can add a conflict
+                // the saved plan does not know.
+                phase.Permitted = PhasePlanner.PermittedIn(model, phase.Movements);
                 plan.Phases.Add(new Phase { Green = phase.Movements, Permitted = phase.Permitted });
                 result.Add(phase);
             }
@@ -451,9 +459,17 @@ namespace TLL.Systems
                     crosswalks |= 1UL << i;
                 turns |= kind == MovementKind.Left || kind == MovementKind.Right;
             }
-            // Without turning traffic nobody has to wait for pedestrians.
+            // Without turning traffic nobody has to wait for pedestrians. And
+            // where the plan already has a phase of crosswalks only, because
+            // they meet some vehicle in every other phase, pedestrians have
+            // their own phase anyway.
             if (crosswalks == 0 || !turns)
                 return result;
+            foreach (JunctionPhase phase in result)
+            {
+                if ((phase.Movements & ~crosswalks) == 0)
+                    return result;
+            }
             result.Add(new JunctionPhase
             {
                 Movements = crosswalks,
@@ -598,8 +614,20 @@ namespace TLL.Systems
         /// Puts every junction lane into the game's signal groups of the
         /// phases that give its movement green. Group i + 1 is phase i.
         /// </summary>
-        private void WriteSignalGroups(Entity node, List<JunctionPhase> phases, List<LaneInfo> lanes, List<MovementKey> keys, ref TrafficLights lights)
+        private void WriteSignalGroups(Entity node, List<JunctionPhase> phases, List<LaneInfo> lanes, List<MovementKey> keys, List<Entity> unassigned, ref TrafficLights lights)
         {
+            // Lanes TLL cannot put into a movement keep whatever the game set
+            // last, and nobody updates them while TLL runs the node; giving
+            // way is the one signal that neither blocks them nor lets them
+            // run into others.
+            foreach (Entity lane in unassigned)
+            {
+                LaneSignal signal = EntityManager.GetComponentData<LaneSignal>(lane);
+                signal.m_GroupMask = 0;
+                signal.m_Signal = LaneSignalType.Yield;
+                signal.m_Flags &= ~LaneSignalFlags.CanExtend;
+                EntityManager.SetComponentData(lane, signal);
+            }
             foreach (LaneInfo lane in lanes)
             {
                 int movement = keys.IndexOf(lane.Key);

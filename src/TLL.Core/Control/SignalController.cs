@@ -188,9 +188,18 @@ namespace TLL.Core.Control
             }
             if (!s.Started)
             {
+                // A fresh controller, after loading or after the plan was
+                // rebuilt, does not know what the signals showed before; some
+                // vehicles may still be in the junction on a green that just
+                // ended. So it starts with all red, as when leaving flashing.
                 s.Started = true;
-                s.Phase = (byte)FirstPhase(in c, ref phases, globalStep);
-                EnterGreen(ref s, in c, ref phases, s.Phase, globalStep);
+                s.Next = (byte)FirstPhase(in c, ref phases, globalStep);
+                s.Phase = s.Next;
+                s.StageSteps = 0;
+                if (c.AllRed > 0)
+                    s.Stage = Stage.AllRed;
+                else
+                    AfterAllRed(ref s, in c, ref phases, globalStep);
                 return true;
             }
 
@@ -286,6 +295,19 @@ namespace TLL.Core.Control
             where TPhases : struct, IPhaseAccess
         {
             ref PhaseData current = ref phases[s.Phase];
+            // A green resting past its force-off, because nobody else asked,
+            // reaches its own window again a cycle later. From there it is
+            // on schedule once more and holds until the window ends, instead
+            // of giving way to the first side request at any point.
+            if (s.GreenLeft == 0)
+            {
+                int cycle = CycleOf(in c, ref phases);
+                int t = SimTime.Mod(globalStep - c.Offset, cycle);
+                int start = StartOf(in c, ref phases, s.Phase);
+                int end = EndOf(in c, ref phases, s.Phase);
+                if (t >= start && t < end)
+                    s.GreenLeft = (ushort)(end - t);
+            }
             bool forcedOff = s.GreenLeft == 0 && pastMin;
             // In a green wave the side phases end when their queue is gone.
             // The wave's own phase ends early only when the detectors see
@@ -306,6 +328,8 @@ namespace TLL.Core.Control
                 return -1;
             if (gapOut && !forcedOff)
                 current.Stats.GapOuts++;
+            else if (forcedOff && current.Demand > 0f)
+                current.Stats.MaxOuts++;
             return next;
         }
 
@@ -414,10 +438,11 @@ namespace TLL.Core.Control
 
         /// <summary>
         /// A pedestrian call during a green that started without one: the
-        /// walk starts now if the green can still last the walk time, within
-        /// its maximum (or, in the timed modes, before its force-off), or if
-        /// the green rests because nobody else asks. Otherwise the pedestrian
-        /// waits for the next green of the phase.
+        /// walk starts now if the green can still last the walk time. In the
+        /// actuated modes that means within its maximum, or at any time while
+        /// the green rests because nobody else asks; in the timed modes,
+        /// before its force-off. Otherwise the pedestrian waits for the next
+        /// green of the phase.
         /// </summary>
         private static void LateWalk<TPhases>(ref ControllerState s, in ControllerConfig c, ref TPhases phases)
             where TPhases : struct, IPhaseAccess

@@ -64,6 +64,7 @@
 
   "Panel.Title": "Traffic Lights & Lanes",
   "Panel.Unavailable": "Das Spiel hat sich so geändert, dass TLL es nicht wiedererkennt. Alle Ampeln bleiben beim Spiel.",
+  "Panel.Failed": "TLL hatte einen Fehler und hat alle Ampeln dem Spiel zurückgegeben. Einzelheiten stehen in Logs/TLL.log.",
   "Panel.Conflict": "Dieser Mod steuert ebenfalls die Ampeln. TLL bleibt aus, solange er geladen ist.",
   "Panel.ConflictUnknown": "Ein anderer Mod steuert ebenfalls die Ampeln. TLL bleibt aus, solange er geladen ist.",
   "Panel.Managed": "Von TLL gesteuerte Kreuzungen",
@@ -118,6 +119,8 @@
   "Panel.ScrambleActive": "aktiv",
   "Panel.ScrambleWaiting": "bereit",
   "Panel.ScrambleHint": "Eine eigene Phase nur für Fußgänger, die nur läuft, wenn Abbieger immer wieder für Fußgänger anhalten müssen: ab 5 der letzten 8 Autogrün-Phasen. Solange sie läuft, gehen Fußgänger nicht mehr neben den Autos. Bei höchstens 1 von 8 ist sie wieder aus. Die Zahl zeigt den aktuellen Stand.",
+  "Panel.MakeAutomatic": "Zurück zur Automatik",
+  "Panel.MakeAutomaticHint": "Die Kreuzung bekommt wieder die automatische Steuerung und einen erzeugten Phasenplan, der Autopilot stellt sie ein, und sie kann wieder in eine grüne Welle aufgenommen werden. Der gemessene Verkehr bleibt.",
   "Panel.Diagnose": "Diagnose ins Log schreiben",
   "Panel.DiagnoseHint": "Schreibt jede Spur, ihr Signal und warum das vorderste Fahrzeug wartet nach Logs/TLL.log. Hilfreich, wenn Fahrzeuge bei Grün stehen.",
   "Panel.WalkOnCall": "Überweg auf Anforderung",

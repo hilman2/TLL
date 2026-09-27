@@ -166,6 +166,12 @@ namespace TLL.Components
         public long StatsSince;
 
         /// <summary>
+        /// Controller step since which the movement counters run, set by the
+        /// autopilot; 0 until its first round after a build or a load.
+        /// </summary>
+        public long CountsSince;
+
+        /// <summary>
         /// The cycle this junction would choose on its own, in steps, from the
         /// last optimiser round; 0 until then. A green wave takes the largest
         /// of its members.

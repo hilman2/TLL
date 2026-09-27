@@ -13,7 +13,11 @@ namespace TLL.Core.Advisor
 
         public float MinGreen;
 
-        /// <summary>Shortest green a phase with a crosswalk gets, for the walk.</summary>
+        /// <summary>
+        /// Shortest green a phase with a crosswalk gets, for the walk: 7 s of
+        /// walk plus the clearance of a typical 15 m crosswalk at 1.2 m/s,
+        /// less yellow and all-red, as JunctionInitSystem times the walk.
+        /// </summary>
         public float PedestrianMinGreen;
 
         public float MinCycle;
@@ -27,7 +31,7 @@ namespace TLL.Core.Advisor
             SaturationPerLane = 1800f,
             Intergreen = 4.3f,
             MinGreen = 5f,
-            PedestrianMinGreen = 7f,
+            PedestrianMinGreen = 15f,
             MinCycle = 40f,
             MaxCycle = 120f,
             Period = 0.25f,
@@ -100,7 +104,7 @@ namespace TLL.Core.Advisor
                 {
                     if (!phase.Has(m) || junction.Movements[m].IsPedestrian)
                         continue;
-                    float s = p.SaturationPerLane * junction.Movements[m].LaneCount;
+                    float s = p.SaturationPerLane * junction.Movements[m].LaneCount * LaneShare(junction, m, volumes);
                     if ((phase.Permitted & (1UL << m)) != 0)
                         s *= YieldFactor(junction, phase, m, volumes, p);
                     saturation[ph, m] = s;
@@ -129,20 +133,9 @@ namespace TLL.Core.Advisor
             }
 
             float lost = phases * p.Intergreen;
-            float cycle = y >= 0.95f ? p.MaxCycle : (1.5f * lost + 5f) / (1f - y);
-            cycle = Clamp(cycle, p.MinCycle, p.MaxCycle);
-
-            var green = new float[phases];
-            float minimums = 0f;
-            for (int ph = 0; ph < phases; ph++)
-            {
-                green[ph] = HasCrosswalk(junction, plan.Phases[ph]) ? p.PedestrianMinGreen : p.MinGreen;
-                minimums += green[ph];
-            }
-            cycle = Math.Max(cycle, minimums + lost);
-            float spare = cycle - lost - minimums;
-            for (int ph = 0; ph < phases; ph++)
-                green[ph] += y > 0f ? spare * ratio[ph] / y : spare / phases;
+            float[] minimum = MinimumGreens(junction, plan, volumes, p);
+            float cycle = PlanCycle(ratio, y, minimum, lost, p);
+            float[] green = PlanGreens(ratio, y, minimum, lost, cycle);
 
             var estimate = new PlanEstimate
             {
@@ -225,9 +218,35 @@ namespace TLL.Core.Advisor
                 else
                     opposing += volumes[o];
             }
+            // The gap capacity is the movement's flow in veh/h (HCM). Even
+            // with nobody to give way to, a turning vehicle follows at the
+            // follow-up headway, not at the saturation headway, as the HCM
+            // also discounts unopposed turns.
             float gaps = GapCapacity(opposing, CriticalGap, FollowUp) / p.SaturationPerLane;
             float walk = 1f - pedestrians / PedestrianBlockage;
             return Clamp(Math.Min(gaps, 1f) * walk, 0.05f, 1f);
+        }
+
+        /// <summary>
+        /// The part of its lanes' flow a movement can use. Lanes shared with
+        /// other movements (JunctionModel.SharedLane) carry their vehicles
+        /// too, so the movement gets the lanes in proportion to its own share
+        /// of the traffic on them. Its lane count counts each shared lane in
+        /// full, so without this a lane for left, straight and right would
+        /// count as three.
+        /// </summary>
+        private static float LaneShare(JunctionModel junction, int m, float[] volumes)
+        {
+            ulong partners = junction.SharesLaneWith(m);
+            if (partners == 0 || volumes[m] <= 0f)
+                return 1f;
+            float together = volumes[m];
+            for (int o = 0; o < junction.Movements.Count; o++)
+            {
+                if ((partners & (1UL << o)) != 0)
+                    together += volumes[o];
+            }
+            return volumes[m] / together;
         }
 
         /// <summary>
@@ -243,14 +262,104 @@ namespace TLL.Core.Advisor
             return (float)(v * Math.Exp(-v * criticalGap / 3600.0) / (1.0 - Math.Exp(-v * followUp / 3600.0)));
         }
 
-        private static bool HasCrosswalk(JunctionModel junction, Phase phase)
+        /// <summary>Degree of saturation the planned greens aim at, as a traffic engineer times a signal.</summary>
+        private const float TargetSaturation = 0.9f;
+
+        /// <summary>
+        /// Webster's cycle, lengthened until every phase gets its minimum
+        /// green and a green long enough for its critical flow at the target
+        /// saturation: C = L + sum of max(minimum, y C / x). Webster alone
+        /// ignores the minimum greens; where they take up most of the cycle,
+        /// the busiest phase would be left short and overloaded at low
+        /// traffic, and delays would fall as traffic grows.
+        /// </summary>
+        private static float PlanCycle(float[] ratio, float y, float[] minimum, float lost, DelayParameters p)
         {
+            float cycle = y >= 0.95f ? p.MaxCycle : (1.5f * lost + 5f) / (1f - y);
+            cycle = Clamp(cycle, p.MinCycle, p.MaxCycle);
+            // The need grows with the cycle at a slope of y / x, below 1
+            // while the junction can cope, so this settles; otherwise the
+            // cycle ends at its maximum.
+            for (int i = 0; i < 50 && cycle < p.MaxCycle; i++)
+            {
+                float need = lost;
+                for (int ph = 0; ph < ratio.Length; ph++)
+                    need += Math.Max(minimum[ph], ratio[ph] * cycle / TargetSaturation);
+                if (need <= cycle + 0.01f)
+                    break;
+                cycle = Math.Min(need, p.MaxCycle);
+            }
+            return cycle;
+        }
+
+        /// <summary>
+        /// Greens for a cycle: each phase its minimum or its need at the
+        /// target saturation, whichever is longer; time left over goes by
+        /// flow ratio. When the cycle is capped below the need, the part
+        /// above the minimums is cut back in proportion.
+        /// </summary>
+        private static float[] PlanGreens(float[] ratio, float y, float[] minimum, float lost, float cycle)
+        {
+            int phases = ratio.Length;
+            var green = new float[phases];
+            float total = 0f;
+            float minimums = 0f;
+            for (int ph = 0; ph < phases; ph++)
+            {
+                green[ph] = Math.Max(minimum[ph], ratio[ph] * cycle / TargetSaturation);
+                total += green[ph];
+                minimums += minimum[ph];
+            }
+            float available = cycle - lost;
+            if (available >= total)
+            {
+                float spare = available - total;
+                for (int ph = 0; ph < phases; ph++)
+                    green[ph] += y > 0f ? spare * ratio[ph] / y : spare / phases;
+                return green;
+            }
+            float above = total - minimums;
+            float keep = above > 0f ? Math.Max(0f, available - minimums) / above : 0f;
+            for (int ph = 0; ph < phases; ph++)
+                green[ph] = minimum[ph] + (green[ph] - minimum[ph]) * keep;
+            return green;
+        }
+
+        /// <summary>Cycle assumed for the chance of a pedestrian call before the cycle is known, seconds.</summary>
+        private const float CallCycle = 60f;
+
+        /// <summary>
+        /// Expected shortest green of every phase. With the push button a
+        /// phase needs the walk time only in the cycles in which someone
+        /// calls; with pedestrians arriving at random that is 1 - e^(-v C /
+        /// 3600) of the cycles. A pedestrian walks with the first green that
+        /// serves the crosswalk, so each crosswalk is charged to the first
+        /// phase that has it, not to every one.
+        /// </summary>
+        private static float[] MinimumGreens(JunctionModel junction, PhasePlan plan, float[] volumes, DelayParameters p)
+        {
+            int phases = plan.Phases.Count;
+            var pedestrians = new float[phases];
             for (int m = 0; m < junction.Movements.Count; m++)
             {
-                if (phase.Has(m) && junction.Movements[m].IsPedestrian)
-                    return true;
+                if (!junction.Movements[m].IsPedestrian)
+                    continue;
+                for (int ph = 0; ph < phases; ph++)
+                {
+                    if (plan.Phases[ph].Has(m))
+                    {
+                        pedestrians[ph] += volumes[m];
+                        break;
+                    }
+                }
             }
-            return false;
+            var green = new float[phases];
+            for (int ph = 0; ph < phases; ph++)
+            {
+                float call = 1f - (float)Math.Exp(-pedestrians[ph] * CallCycle / 3600f);
+                green[ph] = p.MinGreen + (p.PedestrianMinGreen - p.MinGreen) * call;
+            }
+            return green;
         }
 
         private static float Clamp(float value, float min, float max)

@@ -30,7 +30,24 @@ namespace TLL.Core.Tests.Coordination
         [InlineData(20, 14, 80, true)]
         public void BandMustCoverAFifthOfTheCycle(int bandA, int bandB, int cycle, bool expected)
         {
-            Assert.Equal(expected, Coupling.BandWorthIt(bandA, bandB, cycle));
+            Assert.Equal(expected, Coupling.BandWorthIt(bandA, bandB, cycle, hasA: true, hasB: true, running: false));
+        }
+
+        [Fact]
+        public void OneWayCorridorIsJudgedByItsOneDirection()
+        {
+            // No through traffic in B: the planner reports a full-cycle band
+            // there, which must not carry a useless band in A.
+            Assert.False(Coupling.BandWorthIt(0, 80, 80, hasA: true, hasB: false, running: false));
+            Assert.True(Coupling.BandWorthIt(20, 80, 80, hasA: true, hasB: false, running: false));
+        }
+
+        [Fact]
+        public void RunningWaveStaysAtASlightlyNarrowerBand()
+        {
+            // 14 of 80 steps both ways: 17.5 %, too little to start, enough to stay.
+            Assert.False(Coupling.BandWorthIt(14, 14, 80, hasA: true, hasB: true, running: false));
+            Assert.True(Coupling.BandWorthIt(14, 14, 80, hasA: true, hasB: true, running: true));
         }
     }
 }

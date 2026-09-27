@@ -50,10 +50,7 @@ namespace TLL.Systems
         private SimulationSystem m_Simulation;
         private CityConfigurationSystem m_CityConfiguration;
         private EntityQuery m_Query;
-        private long m_LastStep;
-        private int m_Round;
-
-        // Per round, for the log line of a regular review.
+        // Summed over 16 rounds, for one log line.
         private int m_Estimated;
         private int m_LayoutChanges;
 
@@ -75,6 +72,7 @@ namespace TLL.Systems
                     ComponentType.ReadWrite<MovementCounter>(),
                     ComponentType.ReadWrite<MovementStatistics>(),
                     ComponentType.ReadOnly<JunctionMovement>(),
+                    ComponentType.ReadWrite<JunctionRuntime>(),
                 },
                 None = new[]
                 {
@@ -89,24 +87,25 @@ namespace TLL.Systems
         protected override void OnSafeUpdate()
         {
             long now = SimTime.StepOfFrame(m_Simulation.frameIndex);
-            bool first = m_LastStep == 0 || now <= m_LastStep;
-            long elapsedSteps = now - m_LastStep;
-            m_LastStep = now;
-            m_Round++;
-            bool layoutRound = m_Round % kLayoutEvery == 0;
+            // Rounds are counted on the game's clock, which the save keeps,
+            // so the regular layout reviews come on time however often the
+            // city is loaded. Each junction has its review in a different
+            // round of the 16, which also spreads the work.
+            uint round = m_Simulation.frameIndex / 4096;
             Setting settings = Mod.Settings;
-            m_Estimated = 0;
-            m_LayoutChanges = 0;
 
             using (NativeArray<Entity> nodes = m_Query.ToEntityArray(Allocator.Temp))
             {
-                if (layoutRound)
-                    Mod.Log.Info($"Autopilot review: {nodes.Length} junction(s) measured.");
                 foreach (Entity node in nodes)
                 {
                     DynamicBuffer<MovementCounter> counters = EntityManager.GetBuffer<MovementCounter>(node);
-                    if (!first)
-                        Measure(node, counters, elapsedSteps);
+                    JunctionRuntime runtime = EntityManager.GetComponentData<JunctionRuntime>(node);
+                    // The counters run since the junction was last built or
+                    // measured. After a build, a load, or with the clock
+                    // behind (another city), that start is not known and the
+                    // round is not measured.
+                    if (runtime.CountsSince > 0 && now > runtime.CountsSince)
+                        Measure(node, counters, now - runtime.CountsSince);
                     for (int i = 0; i < counters.Length; i++)
                     {
                         ref MovementCounter c = ref counters.ElementAt(i);
@@ -114,13 +113,15 @@ namespace TLL.Systems
                         c.PedestrianSteps = 0f;
                         c.QueueSteps = 0f;
                     }
-                    if (!first)
-                        UpdateHealth(node);
-                    if (first || settings == null || !settings.AutoManageAll)
+                    runtime.CountsSince = now;
+                    EntityManager.SetComponentData(node, runtime);
+                    UpdateHealth(node);
+                    if (settings == null || !settings.AutoManageAll)
                         continue;
                     ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
                     if (junction.Origin != JunctionOrigin.Auto)
                         continue;
+                    bool layoutRound = (round + (uint)node.Index) % kLayoutEvery == 0;
                     try
                     {
                         Decide(node, junction, settings, layoutRound);
@@ -133,8 +134,12 @@ namespace TLL.Systems
                     }
                 }
             }
-            if (layoutRound)
-                Mod.Log.Info($"Autopilot review: {m_Estimated} layout estimate(s), {m_LayoutChanges} junction(s) change their layout.");
+            if (round % kLayoutEvery == 0)
+            {
+                Mod.Log.Info($"Autopilot: {m_Estimated} layout estimate(s), {m_LayoutChanges} layout change(s) in the last {kLayoutEvery} rounds.");
+                m_Estimated = 0;
+                m_LayoutChanges = 0;
+            }
         }
 
         /// <summary>Turns the round's counts into rates and updates the running figures.</summary>
@@ -167,7 +172,10 @@ namespace TLL.Systems
                 s.Daily = fresh ? rate : s.Daily + kDailyWeight * (rate - s.Daily);
                 s.Peak = math.max(s.Peak * kPeakDecay, s.Recent);
                 s.Queue = fresh ? queue : s.Queue + kDailyWeight * (queue - s.Queue);
-                s.PeakQueue = math.max(s.PeakQueue * kPeakDecay, queue);
+                // The peak follows the smoothed queue, like Peak follows
+                // Recent: one jammed round alone does not make a problem spot.
+                s.RecentQueue = fresh ? queue : s.RecentQueue + kRecentWeight * (queue - s.RecentQueue);
+                s.PeakQueue = math.max(s.PeakQueue * kPeakDecay, s.RecentQueue);
             }
         }
 
@@ -271,17 +279,31 @@ namespace TLL.Systems
             // A junction without an estimate yet gets one at once, from the
             // saved statistics; only changing its layout waits for the
             // regular reviews.
+            // A failing estimate must not cost the decisions above.
             if (layoutRound || !state.HasEstimate)
-                ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, layoutRound, ref rebuild);
+            {
+                try
+                {
+                    ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, layoutRound, ref rebuild);
+                }
+                catch (Exception e)
+                {
+                    Mod.Log.Error(e, $"Junction {node}: the autopilot could not compare layouts.");
+                }
+            }
 
             if (changed || rebuild)
                 EntityManager.SetComponentData(node, junction);
             if (rebuild)
             {
-                // An empty plan makes the set-up generate one for the new
-                // layout; the rebuild of the node brings the poles along.
-                EntityManager.GetBuffer<JunctionPhase>(node).Clear();
+                // The set-up generates a new plan for an automatic junction on
+                // every rebuild and keeps the timing of phases that stay the
+                // same; the rebuild of the node brings the poles along.
                 EntityManager.AddComponent<RebuildRequest>(node);
+                // A junction in a green wave has a new plan the wave does not
+                // know yet; it is planned again without waiting for its round.
+                if (junction.Mode == ControlMode.Coordinated)
+                    Requests.RebuildGreenWaves = true;
             }
             else if (dirty)
             {

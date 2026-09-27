@@ -70,6 +70,26 @@ namespace TLL.Core.Tests.Planning
             Assert.Contains(plan.Phases, p => p.Has(left) && p.Has(straight));
         }
 
+        [Fact]
+        public void HardConflictsTravelAlongAChainOfSharedLanes()
+        {
+            // Right shares a lane with straight, straight one with left, but
+            // right and left share none: the right turn still waits for
+            // whatever the left turn cannot run with.
+            JunctionModel m = ChordModel.Build(Cross, false);
+            int right = m.Movements.FindIndex(x => x.Source == 0 && x.Kind == MovementKind.Right);
+            int straight = m.Movements.FindIndex(x => x.Source == 0 && x.Kind == MovementKind.Straight);
+            int left = m.Movements.FindIndex(x => x.Source == 0 && x.Kind == MovementKind.Left);
+            m.ShareLane(right, straight);
+            m.ShareLane(straight, left);
+            ConflictMatrix rules = PhasePlanner.Adjust(m, PlanStrategy.Permissive);
+            for (int x = 0; x < m.Movements.Count; x++)
+            {
+                if (x != right && x != straight && x != left && rules.Get(left, x) == Relation.Hard)
+                    Assert.True(rules.Get(right, x) == Relation.Hard, $"{m.Movements[right]} misses the conflict of {m.Movements[left]} with {m.Movements[x]}");
+            }
+        }
+
         [Theory]
         [MemberData(nameof(Junctions))]
         public void MovementsSharingALaneGetGreenTogether(float[] angles, bool lht, bool uTurns, PlanStrategy strategy)

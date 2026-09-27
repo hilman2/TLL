@@ -51,17 +51,25 @@ namespace TLL.Core.Tests.Advisor
         [Fact]
         public void DelayGrowsWithTraffic()
         {
+            // The cycle follows the traffic, so between two close loads the
+            // delay may dip by a few percent where the cycle switches from
+            // being set by the minimum greens to being set by the traffic;
+            // beyond that it must grow, and clearly so over the whole range.
             JunctionModel m = ChordModel.Build(Cross, false);
             foreach (PlanStrategy s in JunctionAdvisor.Strategies)
             {
                 float previous = 0f;
+                float first = -1f;
                 for (float load = 50f; load <= 800f; load += 50f)
                 {
                     PlanEstimate e = Estimate(m, s, Volumes(m, load, load / 3f, load / 3f, load / 4f));
-                    Assert.True(e.AverageDelay >= previous - 0.01f, $"{s}: {e.AverageDelay} s at {load} veh/h after {previous} s");
+                    Assert.True(e.AverageDelay >= previous * 0.95f, $"{s}: {e.AverageDelay} s at {load} veh/h after {previous} s");
                     Assert.False(float.IsNaN(e.TotalDelay) || float.IsInfinity(e.TotalDelay), $"{s} at {load}");
                     previous = e.AverageDelay;
+                    if (first < 0f)
+                        first = e.AverageDelay;
                 }
+                Assert.True(previous > first * 1.5f, $"{s}: {previous} s at 800 veh/h against {first} s at 50");
             }
         }
 

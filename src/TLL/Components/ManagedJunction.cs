@@ -10,7 +10,11 @@ namespace TLL.Components
         /// <summary>Taken over by the city-wide automation. The optimiser may change anything.</summary>
         Auto,
 
-        /// <summary>Configured by the player. The automation leaves it alone.</summary>
+        /// <summary>
+        /// Configured by the player. The autopilot and the green waves leave
+        /// it alone; the optimiser still fits its greens to the traffic while
+        /// <see cref="JunctionOptions.AutoTiming"/> is set.
+        /// </summary>
         Manual,
     }
 
@@ -22,8 +26,8 @@ namespace TLL.Components
         /// <summary>The optimiser adjusts cycle and greens from measured traffic.</summary>
         AutoTiming = 1,
 
-        /// <summary>Switch to flashing yellow while traffic is light.</summary>
-        FlashAtLowTraffic = 2,
+        // Value 2 was a per-junction flashing switch that nothing read; the
+        // setting AutoFlash decides. Left free so old saves stay readable.
 
         /// <summary>
         /// The plan gets a scramble phase, which runs only while turning

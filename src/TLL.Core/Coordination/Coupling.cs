@@ -35,6 +35,9 @@ namespace TLL.Core.Coordination
         /// </summary>
         public const float MinimumBandShare = 0.2f;
 
+        /// <summary>A wave that runs already stays down to this band share.</summary>
+        public const float KeepBandShare = 0.15f;
+
         /// <param name="volume">Two-way volume on the link, vehicles per hour.</param>
         /// <param name="length">Length of the link between the stop lines, metres.</param>
         /// <param name="coordinated">Whether the two junctions run in one wave now.</param>
@@ -49,9 +52,20 @@ namespace TLL.Core.Coordination
         /// <param name="bandA">Green band in direction A, steps.</param>
         /// <param name="bandB">Green band in direction B, steps.</param>
         /// <param name="cycle">Common cycle, steps.</param>
-        public static bool BandWorthIt(int bandA, int bandB, int cycle)
+        /// <param name="hasA">Whether any member has through traffic in direction A.</param>
+        /// <param name="hasB">Same for direction B; a one-way corridor has only one.</param>
+        /// <param name="running">Whether the wave runs already.</param>
+        /// <remarks>
+        /// The planner gives a direction without through traffic a band of a
+        /// full cycle. Averaged in, it would pass any one-way corridor, so
+        /// only directions with traffic count.
+        /// </remarks>
+        public static bool BandWorthIt(int bandA, int bandB, int cycle, bool hasA, bool hasB, bool running)
         {
-            return cycle > 0 && (bandA + bandB) / (2f * cycle) >= MinimumBandShare;
+            if (cycle <= 0 || (!hasA && !hasB))
+                return false;
+            float share = hasA && hasB ? (bandA + bandB) / (2f * cycle) : (hasA ? bandA : bandB) / (float)cycle;
+            return share >= (running ? KeepBandShare : MinimumBandShare);
         }
     }
 }

@@ -64,6 +64,7 @@
 
   "Panel.Title": "Traffic Lights & Lanes",
   "Panel.Unavailable": "The game has changed in a way TLL does not recognise. All traffic lights are left to the game.",
+  "Panel.Failed": "TLL ran into an error and gave all traffic lights back to the game. Details are in Logs/TLL.log.",
   "Panel.Conflict": "this mod drives the traffic lights as well. TLL stays off while it is loaded.",
   "Panel.ConflictUnknown": "Another mod drives the traffic lights as well. TLL stays off while it is loaded.",
   "Panel.Managed": "Junctions controlled by TLL",
@@ -118,6 +119,8 @@
   "Panel.ScrambleActive": "active",
   "Panel.ScrambleWaiting": "standby",
   "Panel.ScrambleHint": "A phase only for pedestrians, run only while turning vehicles keep stopping for pedestrians: from 5 of the last 8 vehicle greens. While it runs, pedestrians no longer cross alongside the vehicles. At 1 of 8 or fewer it ends. The number shows where it stands.",
+  "Panel.MakeAutomatic": "Back to automatic",
+  "Panel.MakeAutomaticHint": "The junction gets the automatic control and a generated phase plan again, the autopilot tunes it, and it can join a green wave again. Measured traffic is kept.",
   "Panel.Diagnose": "Write diagnostics to the log",
   "Panel.DiagnoseHint": "Writes every lane, its signal, and why the first vehicle waits, to Logs/TLL.log. Useful when vehicles stand at green.",
   "Panel.WalkOnCall": "Crosswalk on request",

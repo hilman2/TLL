@@ -33,6 +33,16 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
+        public void FastLeadersDoNotCutOffTheQueueBehind()
+        {
+            // A queue a few seconds into its green: the first cars have picked
+            // up speed, the ones behind are still accelerating or standing.
+            ApproachReading r = Read((3f, 10f), (14f, 9f), (24f, 6f), (33f, 4f), (41f, 2f), (48f, 0f), (55f, 0f));
+            Assert.Equal(5f, r.Waiting);
+            Assert.Equal(2f, r.Soon);
+        }
+
+        [Fact]
         public void QueueEndsAtTheFirstGap()
         {
             ApproachReading r = Read((3f, 0f), (10f, 0f), (17f, 0f), (80f, 12f));
@@ -42,14 +52,17 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
-        public void FastTrafficIsNotAQueue()
+        public void FreeFlowingPlatoonKeepsTheGreenButDoesNotWait()
         {
-            // Free-flowing traffic close together is not waiting; the first
-            // car is at the line, the second 2 s away, the third 3.5 s.
-            ApproachReading r = Read((5f, 14f), (20f, 14f), (49f, 14f));
+            // Cars 1 to 3 follow each other at about 2 s headway: a real
+            // actuated controller keeps the green for them (gap below the 3 s
+            // passage time). None of them waits. The fourth comes after a real
+            // gap and only counts as arriving.
+            ApproachReading r = Read((5f, 14f), (20f, 14f), (49f, 14f), (130f, 14f));
             Assert.Equal(0f, r.Waiting);
-            Assert.Equal(2f, r.Soon);
-            Assert.Equal(1f, r.Near);
+            Assert.Equal(3f, r.Soon);
+            Assert.Equal(0f, r.Near);
+            Assert.Equal(1f, r.Arriving);
         }
 
         [Fact]

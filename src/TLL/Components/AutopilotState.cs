@@ -1,3 +1,4 @@
+using Colossal.Serialization.Entities;
 using TLL.Core.Advisor;
 using TLL.Core.Planning;
 using Unity.Entities;
@@ -7,12 +8,15 @@ namespace TLL.Components
 {
     /// <summary>
     /// What the autopilot keeps per automatic junction between its rounds,
-    /// and what it found, for the panel. Not saved: the decisions themselves
-    /// live in <see cref="ManagedJunction"/>, and the next rounds refill this.
+    /// and what it found, for the panel. The pending layout change and the
+    /// flashing dwell are saved, so reloading does not start them over; the
+    /// estimates are made again in the first round after loading.
     /// </summary>
-    public struct AutopilotState : IComponentData
+    public struct AutopilotState : IComponentData, ISerializable
     {
-        /// <summary>A layout recommended but not yet applied, and in how many rounds in a row.</summary>
+        private const byte kVersion = 1;
+
+        /// <summary>A layout recommended but not yet applied, and in how many reviews in a row.</summary>
         public PlanStrategy Pending;
         public byte PendingRounds;
 
@@ -32,5 +36,22 @@ namespace TLL.Components
         /// <summary>Recent vehicles per hour on the main road and on the busiest side road approach.</summary>
         public float MajorVolume;
         public float MinorVolume;
+
+        public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
+        {
+            writer.Write(kVersion);
+            writer.Write((byte)Pending);
+            writer.Write(PendingRounds);
+            writer.Write(RoundsSinceFlashChange);
+        }
+
+        public void Deserialize<TReader>(TReader reader) where TReader : IReader
+        {
+            reader.Read(out byte version);
+            reader.Read(out byte pending);
+            reader.Read(out PendingRounds);
+            reader.Read(out RoundsSinceFlashChange);
+            Pending = (PlanStrategy)pending;
+        }
     }
 }

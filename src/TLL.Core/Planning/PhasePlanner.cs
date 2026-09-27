@@ -134,22 +134,42 @@ namespace TLL.Core.Planning
             if (junction.SharedLane == null)
                 return;
             int n = junction.Movements.Count;
-            for (int a = 0; a < n; a++)
+            // Repeated until nothing changes, so the conflicts also travel
+            // along chains of lanes (A shares with B, B with C).
+            bool changed = true;
+            while (changed)
             {
-                ulong partners = junction.SharesLaneWith(a);
-                if (partners == 0)
-                    continue;
-                for (int b = 0; b < n; b++)
+                changed = false;
+                for (int a = 0; a < n; a++)
                 {
-                    if ((partners & (1UL << b)) == 0 || m.Get(a, b) == Relation.Hard)
+                    ulong partners = junction.SharesLaneWith(a);
+                    if (partners == 0)
                         continue;
-                    for (int x = 0; x < n; x++)
+                    for (int b = 0; b < n; b++)
                     {
-                        if (x != a && x != b && m.Get(b, x) == Relation.Hard)
-                            m.Set(a, x, Relation.Hard);
+                        if ((partners & (1UL << b)) == 0 || m.Get(a, b) == Relation.Hard)
+                            continue;
+                        for (int x = 0; x < n; x++)
+                        {
+                            if (x != a && x != b && m.Get(b, x) == Relation.Hard && m.Get(a, x) != Relation.Hard)
+                            {
+                                m.Set(a, x, Relation.Hard);
+                                changed = true;
+                            }
+                        }
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// The movements of <paramref name="green"/> that give way within it,
+        /// by the junction's own relations: what a kept plan shows as a
+        /// yield signal after the road layout changed under it.
+        /// </summary>
+        public static ulong PermittedIn(JunctionModel junction, ulong green)
+        {
+            return PermittedWithin(green, junction.Conflicts, junction.Movements.Count);
         }
 
         /// <summary>

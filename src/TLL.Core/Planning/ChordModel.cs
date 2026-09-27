@@ -15,8 +15,9 @@ namespace TLL.Core.Planning
     /// a short chord spanning both points of its approach.
     ///
     /// This is exact for the topology of an ordinary junction and ignores the
-    /// real lane shapes. The mod uses the game's lane overlaps where it has
-    /// them; this model serves tests and junctions without overlap data.
+    /// real lane shapes. The mod builds the relations from the game's lane
+    /// overlaps and adds this model's crossings on top as a safety net, for
+    /// paths the game did not record as overlapping; the tests use it alone.
     /// </summary>
     public static class ChordModel
     {

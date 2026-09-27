@@ -16,29 +16,55 @@ namespace TLL.Core.Coordination
         /// <summary>Upper bound on full passes over the junctions.</summary>
         private const int MaxSweeps = 12;
 
+        /// <summary>
+        /// Working memory of the bandwidth count for one corridor. The descent
+        /// counts bandwidths tens of thousands of times per corridor; new
+        /// arrays for each count ran to hundreds of megabytes of garbage.
+        /// </summary>
+        private sealed class Scratch
+        {
+            public readonly int[] ArrivalA;
+            public readonly int[] ArrivalB;
+            public readonly int[] Delta;
+            public readonly bool[] Open;
+
+            public Scratch(Corridor corridor)
+            {
+                int n = corridor.Count;
+                ArrivalA = new int[n];
+                for (int i = 1; i < n; i++)
+                    ArrivalA[i] = ArrivalA[i - 1] + corridor.TravelA[i - 1];
+                ArrivalB = new int[n];
+                for (int i = n - 2; i >= 0; i--)
+                    ArrivalB[i] = ArrivalB[i + 1] + corridor.TravelB[i];
+                Delta = new int[Math.Max(0, corridor.Cycle) + 1];
+                Open = new bool[Math.Max(0, corridor.Cycle)];
+            }
+        }
+
         /// <summary>Bandwidth of direction A for the given offsets, in steps.</summary>
         public static int BandwidthA(Corridor corridor, int[] offsets)
         {
-            int n = corridor.Count;
-            var arrival = new int[n];
-            for (int i = 1; i < n; i++)
-                arrival[i] = arrival[i - 1] + corridor.TravelA[i - 1];
-            return Bandwidth(corridor, offsets, arrival, forward: true);
+            var scratch = new Scratch(corridor);
+            return Bandwidth(corridor, offsets, scratch.ArrivalA, forward: true, scratch);
         }
 
         /// <summary>Bandwidth of direction B (last junction to first) for the given offsets, in steps.</summary>
         public static int BandwidthB(Corridor corridor, int[] offsets)
         {
-            int n = corridor.Count;
-            var arrival = new int[n];
-            for (int i = n - 2; i >= 0; i--)
-                arrival[i] = arrival[i + 1] + corridor.TravelB[i];
-            return Bandwidth(corridor, offsets, arrival, forward: false);
+            var scratch = new Scratch(corridor);
+            return Bandwidth(corridor, offsets, scratch.ArrivalB, forward: false, scratch);
         }
 
         public static float Score(Corridor corridor, int[] offsets)
         {
-            return corridor.WeightA * BandwidthA(corridor, offsets) + corridor.WeightB * BandwidthB(corridor, offsets);
+            return Score(corridor, offsets, new Scratch(corridor));
+        }
+
+        private static float Score(Corridor corridor, int[] offsets, Scratch scratch)
+        {
+            return corridor.WeightA * Bandwidth(corridor, offsets, scratch.ArrivalA, forward: true, scratch)
+                + corridor.WeightB * Bandwidth(corridor, offsets, scratch.ArrivalB, forward: false, scratch);
         }
 
         /// <summary>
@@ -52,10 +78,11 @@ namespace TLL.Core.Coordination
             int n = corridor.Count;
             int[] best = null;
             float bestScore = float.MinValue;
+            var scratch = new Scratch(corridor);
             foreach (int[] start in StartingPoints(corridor))
             {
-                int[] candidate = Descend(corridor, start);
-                float score = Score(corridor, candidate);
+                int[] candidate = Descend(corridor, start, scratch);
+                float score = Score(corridor, candidate, scratch);
                 if (score > bestScore)
                 {
                     best = candidate;
@@ -131,7 +158,7 @@ namespace TLL.Core.Coordination
         /// while the others stay put, and repeat over all junctions until a
         /// full pass improves nothing.
         /// </summary>
-        private static int[] Descend(Corridor corridor, int[] start)
+        private static int[] Descend(Corridor corridor, int[] start, Scratch scratch)
         {
             int n = corridor.Count;
             int c = corridor.Cycle;
@@ -140,7 +167,7 @@ namespace TLL.Core.Coordination
             for (int i = 0; i < n; i++)
                 anyLocked |= corridor.Junctions[i].Locked;
 
-            float current = Score(corridor, offsets);
+            float current = Score(corridor, offsets, scratch);
             for (int sweep = 0; sweep < MaxSweeps; sweep++)
             {
                 bool improved = false;
@@ -154,7 +181,7 @@ namespace TLL.Core.Coordination
                     for (int o = 0; o < c; o++)
                     {
                         offsets[i] = o;
-                        float score = Score(corridor, offsets);
+                        float score = Score(corridor, offsets, scratch);
                         if (score > bestScore)
                         {
                             bestScore = score;
@@ -179,7 +206,7 @@ namespace TLL.Core.Coordination
         /// vehicle meets green, and returns the longest run of departure
         /// times that meet green everywhere.
         /// </summary>
-        private static int Bandwidth(Corridor corridor, int[] offsets, int[] arrival, bool forward)
+        private static int Bandwidth(Corridor corridor, int[] offsets, int[] arrival, bool forward, Scratch scratch)
         {
             int n = corridor.Count;
             int c = corridor.Cycle;
@@ -189,7 +216,8 @@ namespace TLL.Core.Coordination
             // Junction i is green on arrival for departures in the circular
             // interval [offset + windowStart - arrival, + windowLength).
             // A difference array turns the n intervals into counts in O(n + c).
-            var delta = new int[c + 1];
+            int[] delta = scratch.Delta;
+            Array.Clear(delta, 0, c + 1);
             for (int i = 0; i < n; i++)
             {
                 CorridorJunction j = corridor.Junctions[i];
@@ -218,7 +246,7 @@ namespace TLL.Core.Coordination
                 }
             }
 
-            var open = new bool[c];
+            bool[] open = scratch.Open;
             int count = 0;
             bool all = true;
             for (int t = 0; t < c; t++)

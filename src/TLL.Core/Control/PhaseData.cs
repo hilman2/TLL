@@ -6,7 +6,9 @@ namespace TLL.Core.Control
 
         /// <summary>
         /// The phase that carries a green wave. In coordinated mode it is never
-        /// skipped and never ends early; spare time of other phases flows to it.
+        /// skipped and holds its window; it ends early only when nobody is on
+        /// it or coming. Time a skipped or short side phase leaves goes to the
+        /// phase after it in the schedule.
         /// </summary>
         Coordinated = 1,
 

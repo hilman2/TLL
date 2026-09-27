@@ -61,8 +61,9 @@ namespace TLL.Core.Coordination
             if (n != path.Junctions.Count)
                 throw new ArgumentException("One member per corridor junction expected.", nameof(members));
 
-            // The busiest junction sets the cycle; the others get more green
-            // than they need, which the green wave uses.
+            // The busiest junction sets the cycle; at the others the longer
+            // cycle is shared out over all phases by their flow ratios, which
+            // widens the windows the green wave can use.
             int cycle = limits.MinCycle;
             foreach (CorridorMember m in members)
                 cycle = Math.Max(cycle, m.DesiredCycle > 0 ? m.DesiredCycle : CurrentCycle(m));

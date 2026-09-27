@@ -91,7 +91,16 @@ namespace TLL.Systems
         protected override void OnGameLoadingComplete(Colossal.Serialization.Entities.Purpose purpose, GameMode mode)
         {
             base.OnGameLoadingComplete(purpose, mode);
-            if (!Available || !mode.IsGame())
+            if (!mode.IsGame())
+                return;
+            if (Conflict != null)
+            {
+                // Standing back already: a city loaded later has TLL's signal
+                // groups in its save too, which the game must rebuild.
+                EntityManager.AddComponent<RebuildRequest>(GetEntityQuery(ComponentType.ReadOnly<ManagedJunction>()));
+                return;
+            }
+            if (!Available)
                 return;
             try
             {
@@ -112,12 +121,25 @@ namespace TLL.Systems
         }
 
         /// <summary>
+        /// Without this system nobody switches the managed junctions' signals
+        /// any more, and the game's own system skips them: they would freeze.
+        /// They go back to the game instead.
+        /// </summary>
+        protected override void OnSwitchedOff()
+        {
+            StandBack(ErrorConflict);
+        }
+
+        /// <summary><see cref="Conflict"/> when TLL stood back after an error of its own, not for another mod.</summary>
+        public const string ErrorConflict = "!";
+
+        /// <summary>
         /// Leaves every junction to the game and the other mod for the rest
         /// of the session. Managed junctions keep their TLL data in the save,
         /// so they come back once the other mod is removed; until then their
         /// signal groups are rebuilt by whoever controls them now.
         /// </summary>
-        private void StandBack(string conflict)
+        internal void StandBack(string conflict)
         {
             Conflict = conflict;
             Mod.Log.Warn($"{conflict} drives traffic lights as well. TLL stays out of the way while it is loaded.");
@@ -308,8 +330,10 @@ namespace TLL.Systems
                 bool* preempt = stackalloc bool[movementCount];
                 bool* call = stackalloc bool[movementCount];
                 bool* track = stackalloc bool[movementCount];
+                bool* moving = stackalloc bool[movementCount];
                 for (int m = 0; m < movementCount; m++)
                 {
+                    moving[m] = false;
                     waiting[m] = 0f;
                     soon[m] = 0f;
                     near[m] = 0f;
@@ -358,6 +382,7 @@ namespace TLL.Systems
                         }
                         else
                         {
+                            moving[m] |= AnyMoving(inside);
                             Entity entrant = Rearmost(inside, out float position);
                             if (entrant != lane.LastEntrant && position < 0.5f)
                             {
@@ -464,7 +489,10 @@ namespace TLL.Systems
                             phaseCall = true;
                             pressure += kPedestrianCallWeight;
                         }
-                        phaseBusy |= busy[m];
+                        // The optimiser reads Busy as green that moved
+                        // traffic: vehicles standing in the junction, or
+                        // people on a crosswalk, do not count.
+                        phaseBusy |= moving[m];
                         phasePreempt |= preempt[m];
                     }
                     phase.Data.Demand = demand;
@@ -558,6 +586,16 @@ namespace TLL.Systems
                         if (divert ? call[c] : busy[c])
                             return true;
                     }
+                }
+                return false;
+            }
+
+            private bool AnyMoving(DynamicBuffer<LaneObject> objects)
+            {
+                for (int i = 0; i < objects.Length; i++)
+                {
+                    if (Movings.TryGetComponent(objects[i].m_LaneObject, out Game.Objects.Moving moving) && math.length(moving.m_Velocity) > kStandingSpeed)
+                        return true;
                 }
                 return false;
             }

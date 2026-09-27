@@ -99,7 +99,9 @@ export const TllPanel = () => {
 
 const UnavailableNote = ({ summary, t }: { summary: Summary; t: Translate }) => (
   <div className={styles.warning}>
-    {summary.conflict === "?"
+    {summary.conflict === "!"
+      ? t("Panel.Failed", "TLL ran into an error and gave all traffic lights back to the game. Details are in Logs/TLL.log.")
+      : summary.conflict === "?"
       ? t("Panel.ConflictUnknown", "Another mod drives the traffic lights as well. TLL stays off while it is loaded.")
       : summary.conflict
         ? `${summary.conflict}: ${t("Panel.Conflict", "this mod drives the traffic lights as well. TLL stays off while it is loaded.")}`
@@ -154,6 +156,15 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
     <div className={styles.detail}>
       <div className={styles.heading}>{junction.name}</div>
       <div className={styles.muted}>{info}</div>
+      {junction.manual && (
+        <div className={styles.row}>
+          <Hint text={t("Panel.MakeAutomaticHint", "")}>
+            <Button variant="flat" className={styles.wide} onSelect={actions.makeAutomatic}>
+              {t("Panel.MakeAutomatic", "Back to automatic")}
+            </Button>
+          </Hint>
+        </div>
+      )}
 
       {junction.autopilot && <AutopilotLine autopilot={junction.autopilot} junction={junction} t={t} />}
 

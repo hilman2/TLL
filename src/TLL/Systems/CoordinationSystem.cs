@@ -156,18 +156,21 @@ namespace TLL.Systems
                 network.OppositeOf.Add(ChordModel.FindOpposites(NetGeometry.ApproachAngles(EntityManager, nodes[i], edges)));
             }
 
+            // The walk through unsignalled junctions takes the straightest
+            // road, which need not lead back the same way, so a link may be
+            // found from one end only. Each is kept once, from wherever.
+            var found = new HashSet<(int, int, int, int)>();
             for (int i = 0; i < nodes.Count; i++)
             {
                 List<Entity> edges = edgesOf[i];
                 for (int a = 0; a < edges.Count; a++)
                 {
-                    if (!Walk(nodes[i], edges[a], index, out int k, out Entity arrival, out float length))
-                        continue;
-                    // Each road is found from both ends; keep it once.
-                    if (k <= i)
+                    if (!Walk(nodes[i], edges[a], index, out int k, out Entity arrival, out float length) || k == i)
                         continue;
                     int b = edgesOf[k].IndexOf(arrival);
                     if (b < 0)
+                        continue;
+                    if (!found.Add(i < k ? (i, a, k, b) : (k, b, i, a)))
                         continue;
                     // Traffic on the link in both directions, as the two
                     // junctions measured it arriving from it, at its peak.
@@ -218,7 +221,10 @@ namespace TLL.Systems
                     arrival = edge;
                     return target >= 0;
                 }
-                if (!EntityManager.HasBuffer<ConnectedEdge>(next))
+                // Any other signal on the way, one the player runs, one the
+                // game runs, or one waiting for its plan, breaks the link:
+                // platoons do not pass it on schedule.
+                if (EntityManager.HasComponent<TrafficLights>(next) || !EntityManager.HasBuffer<ConnectedEdge>(next))
                     return false;
 
                 // Heading of the traffic as it arrives at the next node.
@@ -248,48 +254,48 @@ namespace TLL.Systems
 
         private bool Apply(CorridorPath path, List<Entity> nodes, List<List<Entity>> edgesOf, int group)
         {
+            // An end junction without traffic going on along the corridor,
+            // such as the stem of a T or a bend, is left out; the rest of the
+            // corridor still makes a wave.
+            while (path.Junctions.Count >= 2 && !HasThrough(Member(path, 0, nodes, edgesOf)))
+            {
+                path.Junctions.RemoveAt(0);
+                path.ApproachBack.RemoveAt(0);
+                path.ApproachAhead.RemoveAt(0);
+                path.Links.RemoveAt(0);
+                path.ApproachBack[0] = -1;
+            }
+            while (path.Junctions.Count >= 2 && !HasThrough(Member(path, path.Junctions.Count - 1, nodes, edgesOf)))
+            {
+                int last = path.Junctions.Count - 1;
+                path.Junctions.RemoveAt(last);
+                path.ApproachBack.RemoveAt(last);
+                path.ApproachAhead.RemoveAt(last);
+                path.Links.RemoveAt(last - 1);
+                path.ApproachAhead[last - 1] = -1;
+            }
+            if (path.Junctions.Count < 2)
+                return false;
+
             var members = new List<CorridorMember>();
+            bool hasA = false;
+            bool hasB = false;
+            bool running = true;
+            int runningGroup = EntityManager.GetComponentData<ManagedJunction>(nodes[path.Junctions[0]]).Group;
             for (int k = 0; k < path.Junctions.Count; k++)
             {
-                int j = path.Junctions[k];
-                Entity node = nodes[j];
-                List<Entity> edges = edgesOf[j];
-                int[] opposite = ChordModel.FindOpposites(NetGeometry.ApproachAngles(EntityManager, node, edges));
-                int back = path.ApproachBack[k];
-                int ahead = path.ApproachAhead[k];
-                // At the ends of the corridor the missing side is the one
-                // straight across from the side that exists.
-                if (back < 0 && ahead >= 0)
-                    back = opposite[ahead];
-                if (ahead < 0 && back >= 0)
-                    ahead = opposite[back];
-
-                ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
-                DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(node, true);
-                DynamicBuffer<JunctionMovement> movements = EntityManager.GetBuffer<JunctionMovement>(node, true);
-                var member = new CorridorMember
-                {
-                    Phases = new PhaseData[phases.Length],
-                    PhaseMovements = new ulong[phases.Length],
-                    Ratios = new float[phases.Length],
-                    Intergreen = junction.Yellow + junction.AllRed + junction.Prepare,
-                    DesiredCycle = EntityManager.GetComponentData<JunctionRuntime>(node).DesiredCycle,
-                    MovementA = MovementBetween(movements, EdgeAt(edges, back), EdgeAt(edges, ahead)),
-                    MovementB = MovementBetween(movements, EdgeAt(edges, ahead), EdgeAt(edges, back)),
-                };
-                for (int p = 0; p < phases.Length; p++)
-                {
-                    member.Phases[p] = phases[p].Data;
-                    member.PhaseMovements[p] = phases[p].Movements;
-                    member.Ratios[p] = phases[p].FlowRatio;
-                }
-                if (member.MovementA < 0 && member.MovementB < 0)
+                CorridorMember member = Member(path, k, nodes, edgesOf);
+                if (!HasThrough(member))
                     return false;
+                hasA |= member.MovementA >= 0;
+                hasB |= member.MovementB >= 0;
+                ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(nodes[path.Junctions[k]]);
+                running &= junction.Mode == ControlMode.Coordinated && runningGroup != 0 && junction.Group == runningGroup;
                 members.Add(member);
             }
 
             CoordinationPlan plan = Coordinator.Plan(path, members, OptimizerLimits.Default);
-            if (!Coupling.BandWorthIt(plan.BandwidthA, plan.BandwidthB, plan.Cycle))
+            if (!Coupling.BandWorthIt(plan.BandwidthA, plan.BandwidthB, plan.Cycle, hasA, hasB, running))
             {
                 m_BandTooNarrow++;
                 return false;
@@ -321,6 +327,49 @@ namespace TLL.Systems
             return true;
         }
 
+        /// <summary>What the coordinator needs to know about the junction at position <paramref name="k"/> of the corridor.</summary>
+        private CorridorMember Member(CorridorPath path, int k, List<Entity> nodes, List<List<Entity>> edgesOf)
+        {
+            int j = path.Junctions[k];
+            Entity node = nodes[j];
+            List<Entity> edges = edgesOf[j];
+            int[] opposite = ChordModel.FindOpposites(NetGeometry.ApproachAngles(EntityManager, node, edges));
+            int back = path.ApproachBack[k];
+            int ahead = path.ApproachAhead[k];
+            // At the ends of the corridor the missing side is the one
+            // straight across from the side that exists.
+            if (back < 0 && ahead >= 0)
+                back = opposite[ahead];
+            if (ahead < 0 && back >= 0)
+                ahead = opposite[back];
+
+            ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
+            DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(node, true);
+            DynamicBuffer<JunctionMovement> movements = EntityManager.GetBuffer<JunctionMovement>(node, true);
+            var member = new CorridorMember
+            {
+                Phases = new PhaseData[phases.Length],
+                PhaseMovements = new ulong[phases.Length],
+                Ratios = new float[phases.Length],
+                Intergreen = junction.Yellow + junction.AllRed + junction.Prepare,
+                DesiredCycle = EntityManager.GetComponentData<JunctionRuntime>(node).DesiredCycle,
+                MovementA = MovementBetween(movements, EdgeAt(edges, back), EdgeAt(edges, ahead)),
+                MovementB = MovementBetween(movements, EdgeAt(edges, ahead), EdgeAt(edges, back)),
+            };
+            for (int p = 0; p < phases.Length; p++)
+            {
+                member.Phases[p] = phases[p].Data;
+                member.PhaseMovements[p] = phases[p].Movements;
+                member.Ratios[p] = phases[p].FlowRatio;
+            }
+            return member;
+        }
+
+        private static bool HasThrough(CorridorMember member)
+        {
+            return member.MovementA >= 0 || member.MovementB >= 0;
+        }
+
         /// <summary>Takes a junction out of a green wave it no longer belongs to.</summary>
         private void Dissolve(Entity node, Setting settings)
         {
@@ -341,17 +390,27 @@ namespace TLL.Systems
             return approach >= 0 && approach < edges.Count ? edges[approach] : Entity.Null;
         }
 
+        /// <summary>
+        /// The movement carrying the corridor's traffic through the junction:
+        /// the cars', where cars and trams run separately; the tram's only
+        /// where there is nothing else.
+        /// </summary>
         private static int MovementBetween(DynamicBuffer<JunctionMovement> movements, Entity source, Entity target)
         {
             if (source == Entity.Null || target == Entity.Null)
                 return -1;
+            int tram = -1;
             for (int i = 0; i < movements.Length; i++)
             {
                 JunctionMovement m = movements[i];
-                if (m.Source == source && m.Target == target && m.Kind != MovementKind.Pedestrian)
+                if (m.Source != source || m.Target != target || m.Kind == MovementKind.Pedestrian)
+                    continue;
+                if (m.Kind != MovementKind.Track)
                     return i;
+                if (tram < 0)
+                    tram = i;
             }
-            return -1;
+            return tram;
         }
 
         private float SpeedOf(Entity edge)

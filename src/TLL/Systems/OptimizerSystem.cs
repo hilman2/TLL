@@ -125,9 +125,10 @@ namespace TLL.Systems
                 ref JunctionPhase phase = ref buffer.ElementAt(i);
                 phase.Data.Green = result.Green[i];
                 // The demand-driven modes use the split as the typical green
-                // and allow half as much again before forcing a change.
+                // and allow half as much again before forcing a change, but
+                // never less than the walk, so a late pedestrian call fits.
                 int max = result.Green[i] + result.Green[i] / 2;
-                phase.Data.MaxGreen = (ushort)Math.Max(phase.Data.MinGreen + 1, Math.Min(max, kMaxGreenCap));
+                phase.Data.MaxGreen = (ushort)Math.Max(phase.Data.PlannedMinimum + 1, Math.Min(max, kMaxGreenCap));
             }
         }
 

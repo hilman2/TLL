@@ -143,6 +143,7 @@ namespace TLL.UI
             AddBinding(new TriggerBinding<int>(kGroup, "setMode", OnSetMode));
             AddBinding(new TriggerBinding<int>(kGroup, "setStrategy", OnSetStrategy));
             AddBinding(new TriggerBinding(kGroup, "toggleScramble", OnToggleScramble));
+            AddBinding(new TriggerBinding(kGroup, "makeAutomatic", OnMakeAutomatic));
             AddBinding(new TriggerBinding(kGroup, "release", OnRelease));
             AddBinding(new TriggerBinding(kGroup, "manage", OnManage));
             AddBinding(new TriggerBinding<bool>(kGroup, "setPanelOpen", open => m_PanelOpen = open));
@@ -516,18 +517,61 @@ namespace TLL.UI
         {
             if (!TryGetSelected(out ManagedJunction junction) || mode < 0 || mode > (int)ControlMode.Flashing)
                 return;
+            TakeOverByPlayer(ref junction);
             junction.Mode = (ControlMode)mode;
-            junction.Origin = JunctionOrigin.Manual;
             EntityManager.SetComponentData(m_Selected, junction);
+            DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(m_Selected);
+            for (int p = 0; p < phases.Length; p++)
+                phases.ElementAt(p).Data.Flags &= ~PhaseFlags.Coordinated;
             m_DetailTime = default;
+        }
+
+        /// <summary>
+        /// The player's change makes the junction theirs. The automation
+        /// leaves such junctions alone, green waves included, so one that ran
+        /// in a wave leaves it and runs on its own; the wave is planned again
+        /// without it.
+        /// </summary>
+        private static void TakeOverByPlayer(ref ManagedJunction junction)
+        {
+            junction.Origin = JunctionOrigin.Manual;
+            if (junction.Mode == ControlMode.Coordinated || junction.Group != 0)
+            {
+                junction.Mode = Mod.Settings != null ? Mod.Settings.AutoControl() : ControlMode.Adaptive;
+                junction.Group = 0;
+                junction.Offset = 0;
+                Requests.RebuildGreenWaves = true;
+            }
+        }
+
+        /// <summary>
+        /// Gives the selected junction back to the automation: automatic
+        /// settings, a generated plan, and a place in green waves again. The
+        /// traffic measured so far stays.
+        /// </summary>
+        private void OnMakeAutomatic()
+        {
+            if (!TryGetSelected(out _))
+                return;
+            Setting settings = Mod.Settings;
+            ManagedJunction junction = ManagedJunction.Create(JunctionOrigin.Auto,
+                settings != null ? settings.AutoControl() : ControlMode.Adaptive,
+                settings != null ? settings.InitialStrategy() : PlanStrategy.Permissive);
+            EntityManager.SetComponentData(m_Selected, junction);
+            EntityManager.GetBuffer<JunctionPhase>(m_Selected).Clear();
+            EntityManager.RemoveComponent<AutopilotState>(m_Selected);
+            EntityManager.AddComponent<RebuildRequest>(m_Selected);
+            Requests.RebuildGreenWaves = true;
+            m_DetailTime = default;
+            m_SummaryTime = default;
         }
 
         private void OnSetStrategy(int strategy)
         {
             if (!TryGetSelected(out ManagedJunction junction) || strategy < 0 || strategy > (int)PlanStrategy.ExclusivePedestrian)
                 return;
+            TakeOverByPlayer(ref junction);
             junction.Strategy = (PlanStrategy)strategy;
-            junction.Origin = JunctionOrigin.Manual;
             EntityManager.SetComponentData(m_Selected, junction);
             // An empty plan makes JunctionInitSystem generate a new one. The
             // node is rebuilt as a whole, so the signal poles follow the new
@@ -543,14 +587,18 @@ namespace TLL.UI
             if (!TryGetSelected(out ManagedJunction junction))
                 return;
             junction.Options ^= JunctionOptions.ScrambleOnDemand;
-            junction.Origin = JunctionOrigin.Manual;
+            TakeOverByPlayer(ref junction);
             EntityManager.SetComponentData(m_Selected, junction);
             EntityManager.GetBuffer<JunctionPhase>(m_Selected).Clear();
             EntityManager.AddComponent<RebuildRequest>(m_Selected);
             m_DetailTime = default;
         }
 
-        /// <summary>Takes over the selected signalled junction as one the player configures.</summary>
+        /// <summary>
+        /// Takes over the selected signalled junction: as an automatic one
+        /// while the city-wide automation runs, else as one the player
+        /// configures.
+        /// </summary>
         private void OnManage()
         {
             Entity node = m_Selected;
@@ -558,7 +606,8 @@ namespace TLL.UI
                 || EntityManager.HasComponent<ManagedJunction>(node))
                 return;
             Setting settings = Mod.Settings;
-            ManagedJunction junction = ManagedJunction.Create(JunctionOrigin.Manual,
+            JunctionOrigin origin = settings != null && settings.AutoManageAll ? JunctionOrigin.Auto : JunctionOrigin.Manual;
+            ManagedJunction junction = ManagedJunction.Create(origin,
                 settings != null ? settings.AutoControl() : ControlMode.Adaptive,
                 settings != null ? settings.InitialStrategy() : PlanStrategy.Permissive);
             EntityManager.RemoveComponent<JunctionExcluded>(node);

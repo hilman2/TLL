@@ -23,6 +23,7 @@ namespace TLL.Systems
         private EntityQuery m_UnmanagedQuery;
         private EntityQuery m_ManagedQuery;
         private EntityQuery m_AllSignalsQuery;
+        private EntityQuery m_SignalsRemovedQuery;
         private SignalControlSystem m_Control;
 
         public override int GetUpdateInterval(SystemUpdatePhase phase)
@@ -60,6 +61,27 @@ namespace TLL.Systems
                 All = new[] { ComponentType.ReadOnly<TrafficLights>() },
                 None = skip,
             });
+            m_SignalsRemovedQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<ManagedJunction>() },
+                None = new[]
+                {
+                    ComponentType.ReadOnly<TrafficLights>(),
+                    ComponentType.ReadOnly<Deleted>(),
+                    ComponentType.ReadOnly<Temp>(),
+                },
+            });
+        }
+
+        protected override void OnGameLoadingComplete(Colossal.Serialization.Entities.Purpose purpose, GameMode mode)
+        {
+            base.OnGameLoadingComplete(purpose, mode);
+            // Buttons pressed in the main menu, or in a city left before the
+            // simulation got to them, are not meant for the city loaded now.
+            Requests.ReleaseAll = false;
+            Requests.RebuildVanilla = false;
+            Requests.ResetAllToAutomatic = false;
+            Requests.RebuildGreenWaves = false;
         }
 
         protected override void OnSafeUpdate()
@@ -67,6 +89,19 @@ namespace TLL.Systems
             Setting settings = Mod.Settings;
             if (settings == null || !m_Control.Available)
                 return;
+
+            // The player removed the signals (the game takes TrafficLights
+            // off the node): nothing is left to control, and stale data would
+            // come back if signals are added again later.
+            if (!m_SignalsRemovedQuery.IsEmptyIgnoreFilter)
+            {
+                using (NativeArray<Entity> nodes = m_SignalsRemovedQuery.ToEntityArray(Allocator.Temp))
+                {
+                    foreach (Entity node in nodes)
+                        JunctionInitSystem.Release(EntityManager, node, exclude: false);
+                    Mod.Log.Info($"Released {nodes.Length} junction(s) whose signals were removed.");
+                }
+            }
 
             if (Requests.ReleaseAll)
             {

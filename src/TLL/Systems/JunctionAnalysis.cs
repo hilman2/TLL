@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using Colossal.Mathematics;
 using Game.Net;
 using Game.Pathfind;
 using TLL.Components;
 using TLL.Core.Planning;
 using Unity.Entities;
+using Unity.Mathematics;
 
 namespace TLL.Systems
 {
@@ -27,6 +29,13 @@ namespace TLL.Systems
         public Entity Approach;
         public Entity Exit;
         public JunctionLaneFlags Flags;
+
+        /// <summary>
+        /// The game's master lane of a group of parallel lanes: it carries a
+        /// signal but no vehicles, and one exists for every pair of lane
+        /// groups, so it joins movements that share no real lane.
+        /// </summary>
+        public bool Master;
     }
 
     /// <summary>What <see cref="JunctionAnalysis.Analyse"/> finds at a junction.</summary>
@@ -40,6 +49,13 @@ namespace TLL.Systems
         /// <summary>The movements in their fixed order; index i is movement i everywhere.</summary>
         public List<MovementKey> Keys;
         public JunctionModel Model;
+
+        /// <summary>
+        /// Signalled vehicle lanes that belong to no movement, such as side
+        /// connections with one end in the node. They are set to give way
+        /// once; nobody else updates their signal while TLL runs the node.
+        /// </summary>
+        public List<Entity> Unassigned;
     }
 
     /// <summary>
@@ -54,12 +70,15 @@ namespace TLL.Systems
         {
             List<Entity> edges = NetGeometry.ConnectedEdges(em, node);
             float[] angles = NetGeometry.ApproachAngles(em, node, edges);
-            List<LaneInfo> lanes = CollectLanes(em, node, edges);
+            var unassigned = new List<Entity>();
+            List<LaneInfo> lanes = CollectLanes(em, node, edges, unassigned);
             if (lanes.Count == 0)
                 return null;
 
-            // Movements in a fixed order, so the indices a saved plan refers to
-            // come out the same for the same road layout.
+            // Movements in a fixed order of their approaches. The approaches
+            // are numbered as the node lists its roads, which the game may
+            // change after loading, so saved plans are matched to movements
+            // by their roads, not by index (see JunctionInitSystem).
             var keys = new List<MovementKey>();
             foreach (LaneInfo lane in lanes)
             {
@@ -82,16 +101,17 @@ namespace TLL.Systems
             {
                 int laneCount = 0;
                 foreach (LaneInfo lane in lanes)
-                    laneCount += lane.Key.Equals(key) ? 1 : 0;
-                model.Movements.Add(new Movement(key.Source, key.Target, key.Kind, laneCount));
+                    laneCount += lane.Key.Equals(key) && !lane.Master ? 1 : 0;
+                model.Movements.Add(new Movement(key.Source, key.Target, key.Kind, Math.Max(1, laneCount)));
             }
             // An approach lane feeding junction lanes of several movements is
             // a shared lane (e.g. straight and left): its movements can only
-            // move together.
+            // move together. Master lanes connect every pair of lane groups
+            // and would make every approach one shared lane.
             var byApproachLane = new Dictionary<Entity, ulong>();
             foreach (LaneInfo lane in lanes)
             {
-                if (lane.Approach == Entity.Null || (lane.Flags & JunctionLaneFlags.Pedestrian) != 0)
+                if (lane.Approach == Entity.Null || lane.Master || (lane.Flags & JunctionLaneFlags.Pedestrian) != 0)
                     continue;
                 byApproachLane.TryGetValue(lane.Approach, out ulong movements);
                 byApproachLane[lane.Approach] = movements | 1UL << keys.IndexOf(lane.Key);
@@ -115,7 +135,7 @@ namespace TLL.Systems
             if (ChordModel.SmallestGap(angles) >= 1f)
                 model.Conflicts.Tighten(ChordModel.Classify(model.Movements, angles, model.OppositeOf, model.LeftHandTraffic, includeMerges: false));
 
-            return new JunctionLayout { Edges = edges, Angles = angles, Lanes = lanes, Keys = keys, Model = model };
+            return new JunctionLayout { Edges = edges, Angles = angles, Lanes = lanes, Keys = keys, Model = model, Unassigned = unassigned };
         }
 
         /// <summary>
@@ -132,7 +152,8 @@ namespace TLL.Systems
             var done = new HashSet<Entity>();
             foreach (LaneInfo info in layout.Lanes)
             {
-                if (info.Approach == Entity.Null || !done.Add(info.Approach))
+                // A master lane carries no vehicles to detect.
+                if (info.Master || info.Approach == Entity.Null || !done.Add(info.Approach))
                     continue;
                 int edge = info.Key.Source;
                 if (edge < 0 || edge >= layout.Edges.Count)
@@ -214,7 +235,7 @@ namespace TLL.Systems
                 && (em.HasComponent<CarLane>(lane) || em.HasComponent<TrackLane>(lane));
         }
 
-        private static List<LaneInfo> CollectLanes(EntityManager em, Entity node, List<Entity> edges)
+        private static List<LaneInfo> CollectLanes(EntityManager em, Entity node, List<Entity> edges, List<Entity> unassigned)
         {
             var result = new List<LaneInfo>();
             DynamicBuffer<SubLane> subLanes = em.GetBuffer<SubLane>(node, true);
@@ -226,13 +247,17 @@ namespace TLL.Systems
                 Lane lane = em.GetComponentData<Lane>(laneEntity);
                 int source = EdgeIndexOf(lane.m_StartNode, edges);
                 int target = EdgeIndexOf(lane.m_EndNode, edges);
-                var info = new LaneInfo { Lane = laneEntity };
+                var info = new LaneInfo { Lane = laneEntity, Master = em.HasComponent<MasterLane>(laneEntity) };
 
                 if (em.HasComponent<PedestrianLane>(laneEntity))
                 {
                     // A crosswalk joins the two sidewalks of the road it
-                    // crosses, so both of its ends belong to that edge.
-                    int crossed = source >= 0 ? source : target;
+                    // crosses, so its ends usually belong to that edge. At a
+                    // pedestrian light without a junction, and for the middle
+                    // piece of a crosswalk split by medians, both ends belong
+                    // to the node; there the road is found by where the
+                    // crosswalk lies.
+                    int crossed = source >= 0 ? source : target >= 0 ? target : CrossedApproach(em, node, edges, laneEntity);
                     if (crossed < 0)
                         continue;
                     info.Key = new MovementKey { Source = crossed, Target = -1, Kind = MovementKind.Pedestrian };
@@ -241,7 +266,10 @@ namespace TLL.Systems
                 else
                 {
                     if (source < 0 || target < 0)
+                    {
+                        unassigned.Add(laneEntity);
                         continue;
+                    }
                     bool track = !em.HasComponent<CarLane>(laneEntity) && em.HasComponent<TrackLane>(laneEntity);
                     MovementKind kind = track ? MovementKind.Track : KindOf(em.GetComponentData<CarLane>(laneEntity).m_Flags);
                     info.Key = new MovementKey { Source = source, Target = target, Kind = kind };
@@ -252,6 +280,32 @@ namespace TLL.Systems
                 result.Add(info);
             }
             return result;
+        }
+
+        /// <summary>
+        /// The approach a crosswalk with both ends in the node lies across:
+        /// the one reaching out furthest towards the crosswalk's middle. At a
+        /// pedestrian light without a junction the middle is at the node and
+        /// either road serves; the crosswalk crosses both.
+        /// </summary>
+        private static int CrossedApproach(EntityManager em, Entity node, List<Entity> edges, Entity lane)
+        {
+            if (edges.Count == 0 || !em.HasComponent<Curve>(lane) || !em.HasComponent<Node>(node))
+                return -1;
+            float3 middle = MathUtils.Position(em.GetComponentData<Curve>(lane).m_Bezier, 0.5f);
+            float2 fromNode = (middle - em.GetComponentData<Node>(node).m_Position).xz;
+            int best = 0;
+            float bestReach = float.MinValue;
+            for (int i = 0; i < edges.Count; i++)
+            {
+                float reach = math.dot(NetGeometry.Outward(em, node, edges[i]), fromNode);
+                if (reach > bestReach)
+                {
+                    bestReach = reach;
+                    best = i;
+                }
+            }
+            return best;
         }
 
         private static MovementKind KindOf(CarLaneFlags flags)
@@ -305,14 +359,19 @@ namespace TLL.Systems
         /// </summary>
         private static ConflictMatrix Conflicts(EntityManager em, List<LaneInfo> lanes, List<MovementKey> keys, JunctionModel model)
         {
+            // Master lanes are left out: they carry no vehicles, and their
+            // overlaps stand for their whole lane group at once.
             var matrix = new ConflictMatrix(keys.Count);
             var movementOfLane = new Dictionary<Entity, int>();
             foreach (LaneInfo lane in lanes)
-                movementOfLane[lane.Lane] = keys.IndexOf(lane.Key);
+            {
+                if (!lane.Master)
+                    movementOfLane[lane.Lane] = keys.IndexOf(lane.Key);
+            }
 
             foreach (LaneInfo lane in lanes)
             {
-                if (!em.HasBuffer<LaneOverlap>(lane.Lane))
+                if (lane.Master || !em.HasBuffer<LaneOverlap>(lane.Lane))
                     continue;
                 int a = movementOfLane[lane.Lane];
                 DynamicBuffer<LaneOverlap> overlaps = em.GetBuffer<LaneOverlap>(lane.Lane, true);

@@ -122,6 +122,7 @@ const scenarios = {
   "problems tab": { tab: "problems", "tll.summary": summary },
   "problems tab, none": { tab: "problems" },
   "managed junction": { "tll.selected": managed },
+  "manual junction": { "tll.selected": { ...managed, manual: true } },
   "junction in transition": { "tll.selected": { ...managed, stage: 1, phase: 0, next: 1 } },
   "flashing junction": { "tll.selected": { ...managed, mode: 4, stage: 4 } },
   "autopilot measuring": {

@@ -13,7 +13,7 @@ namespace TLL.Components
     [InternalBufferCapacity(0)]
     public struct MovementStatistics : IBufferElementData, ISerializable
     {
-        private const byte kVersion = 2;
+        private const byte kVersion = 3;
 
         /// <summary>Vehicles (or pedestrians for a crosswalk) per hour, averaged over the last hour or two of game time.</summary>
         public float Recent;
@@ -27,8 +27,11 @@ namespace TLL.Components
         /// <summary>Mean number of vehicles waiting, over about a game day.</summary>
         public float Queue;
 
+        /// <summary>Mean number of vehicles waiting over the last rounds, smoothed like <see cref="Recent"/>.</summary>
+        public float RecentQueue;
+
         /// <summary>
-        /// Highest hourly mean of vehicles waiting, slowly decaying like
+        /// Highest <see cref="RecentQueue"/>, slowly decaying like
         /// <see cref="Peak"/>: the queue of the rush hour, which the daily
         /// mean dilutes with the quiet night.
         /// </summary>
@@ -42,6 +45,7 @@ namespace TLL.Components
             writer.Write(Peak);
             writer.Write(Queue);
             writer.Write(PeakQueue);
+            writer.Write(RecentQueue);
         }
 
         public void Deserialize<TReader>(TReader reader) where TReader : IReader
@@ -53,6 +57,8 @@ namespace TLL.Components
             reader.Read(out Queue);
             if (version >= 2)
                 reader.Read(out PeakQueue);
+            if (version >= 3)
+                reader.Read(out RecentQueue);
         }
     }
 

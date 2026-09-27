@@ -129,9 +129,13 @@ namespace TLL.Core.Tests.Control
                 Stage.Prepare => 'P',
                 _ => '?',
             }).ToArray());
+            // A fresh controller starts with all red and prepare, no yellow:
+            // it does not know what showed before.
+            string start = new string('R', config.AllRed) + new string('P', config.Prepare);
+            Assert.StartsWith(start + "G", trace);
             // The run may stop in the middle of a transition; only complete gaps count.
-            string complete = trace.Substring(0, trace.LastIndexOf('G') + 1);
-            Assert.True(complete.Length > trace.Length - expected.Length - 1, $"trace ends with {trace.Substring(complete.Length)}");
+            string complete = trace.Substring(start.Length, trace.LastIndexOf('G') + 1 - start.Length);
+            Assert.True(complete.Length > trace.Length - start.Length - expected.Length - 1, $"trace ends with {trace.Substring(start.Length + complete.Length)}");
             foreach (string gap in complete.Split('G', StringSplitOptions.RemoveEmptyEntries))
                 Assert.Equal(expected, gap);
         }
@@ -220,7 +224,8 @@ namespace TLL.Core.Tests.Control
         public void AdaptiveHoldsGreenForAPlatoonLargerThanTheQueue()
         {
             ControllerHarness h = PlatoonCase(platoon: 4f, queue: 1f, maxGreenSeconds: 60f, steps: 150);
-            Assert.All(h.Trace, r => Assert.True(r.Stage == Stage.Green && r.Phase == 0, $"step {r.Step}: {r.Stage} phase {r.Phase}"));
+            long greenStart = h.GreenStarts().First().step;
+            Assert.All(h.Trace.Where(r => r.Step >= greenStart), r => Assert.True(r.Stage == Stage.Green && r.Phase == 0, $"step {r.Step}: {r.Stage} phase {r.Phase}"));
         }
 
         [Theory]
@@ -229,7 +234,7 @@ namespace TLL.Core.Tests.Control
         public void AdaptiveDoesNotHoldForASmallPlatoon(float platoon, float queue)
         {
             ControllerHarness h = PlatoonCase(platoon, queue, maxGreenSeconds: 60f, steps: 150);
-            long bound = h.Phases[0].MinGreen + h.Config.Intergreen + 2;
+            long bound = h.GreenStarts().First().step + h.Phases[0].MinGreen + h.Config.Intergreen + 2;
             Assert.Contains(h.GreenStarts(), g => g.phase == 1 && g.step <= bound);
         }
 
@@ -237,7 +242,7 @@ namespace TLL.Core.Tests.Control
         public void PlatoonHoldEndsAtMaximumGreen()
         {
             ControllerHarness h = PlatoonCase(platoon: 10f, queue: 1f, maxGreenSeconds: 20f, steps: 400);
-            long bound = h.Phases[0].MaxGreen + h.Config.Intergreen + 2;
+            long bound = h.GreenStarts().First().step + h.Phases[0].MaxGreen + h.Config.Intergreen + 2;
             Assert.Contains(h.GreenStarts(), g => g.phase == 1 && g.step <= bound);
         }
 
@@ -295,9 +300,11 @@ namespace TLL.Core.Tests.Control
         {
             // The call comes after the vehicle minimum is nearly over.
             ControllerHarness h = PushButtonCase(ControlMode.Actuated, callAt: 12);
+            long greenStart = h.GreenStarts().First(g => g.phase == 0).step;
             int walkStart = h.Trace.FindIndex(r => r.Walk);
             Assert.True(walkStart >= 12, $"walk began at step {walkStart}");
-            Assert.True(FirstGreenOfPhase0(h) >= 12 + SimTime.ToSteps(15f) - 1, $"green {FirstGreenOfPhase0(h)} steps");
+            long needed = 12 - greenStart + SimTime.ToSteps(15f) - 1;
+            Assert.True(FirstGreenOfPhase0(h) >= needed, $"green {FirstGreenOfPhase0(h)} steps, needed {needed}");
         }
 
         [Fact]
@@ -568,6 +575,28 @@ namespace TLL.Core.Tests.Control
                 if (position >= start && position < end)
                     Assert.True(r.Stage == Stage.Green && r.Phase == 0, $"step {r.Step}, position {position}: {r.Stage} phase {r.Phase}");
             }
+        }
+
+        [Fact]
+        public void RestingWaveKeepsItsNextWindow()
+        {
+            // The side streets are quiet for a while, so the wave phase rests
+            // past its force-off. A car then arrives on a side street in the
+            // middle of the wave's next window, with a platoon on the main
+            // road: the wave keeps green until its window ends.
+            ControllerHarness h = FixedThreePhase(offset: 0, mode: ControlMode.Coordinated);
+            var access = new PhaseArray(h.Phases);
+            int cycle = SignalController.CycleOf(in h.Config, ref access);
+            int start = SignalController.StartOf(in h.Config, ref access, 0);
+            int end = SignalController.EndOf(in h.Config, ref access, 0);
+            long carAt = cycle * 3 + (start + end) / 2;
+            h.Run(0, cycle * 5, (s, p) =>
+            {
+                p[0].Demand = 3f;
+                p[1].Demand = s >= carAt ? 1f : 0f;
+            });
+            foreach (var r in h.Trace.Where(r => r.Step >= carAt && r.Step < cycle * 3 + end))
+                Assert.True(r.Stage == Stage.Green && r.Phase == 0, $"step {r.Step}, position {SimTime.Mod(r.Step, cycle)}: {r.Stage} phase {r.Phase}");
         }
 
         [Fact]
