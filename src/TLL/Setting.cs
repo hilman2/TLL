@@ -39,6 +39,9 @@ namespace TLL
         [SettingsUISection(kSection, kAutomation)]
         public PlanStrategy AutoStrategy { get; set; }
 
+        [SettingsUISection(kSection, kAutomation)]
+        public bool AutoGreenWaves { get; set; }
+
         [SettingsUISection(kSection, kRules)]
         public bool TurnOnRed { get; set; }
 
@@ -85,6 +88,7 @@ namespace TLL
             AutoManageAll = false;
             AutoMode = AutoControlMode.Adaptive;
             AutoStrategy = PlanStrategy.Permissive;
+            AutoGreenWaves = true;
             TurnOnRed = false;
             KeepClear = true;
             VerboseLogging = false;
@@ -100,5 +104,6 @@ namespace TLL
     {
         public static volatile bool ReleaseAll;
         public static volatile bool RebuildVanilla;
+        public static volatile bool RebuildGreenWaves;
     }
 }

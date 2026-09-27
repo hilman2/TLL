@@ -20,6 +20,9 @@
   "Settings.KeepClear.Label": "Keep junctions clear",
   "Settings.KeepClear.Description": "A lane stays red while its exit is backed up to the junction, so nobody gets stuck in the middle and blocks the cross traffic.",
 
+  "Settings.AutoGreenWaves.Label": "Automatic green waves",
+  "Settings.AutoGreenWaves.Description": "Finds main roads with signals close together and times them as green waves in both directions. Recalculated every few minutes from the measured traffic.",
+
   "Settings.ReleaseAll.Label": "Return all junctions to the game",
   "Settings.ReleaseAll.Description": "Removes TLL's control from every junction, including the ones you configured. The game rebuilds its own signal groups.",
   "Settings.ReleaseAll.Warning": "Return all junctions to the game's control? Your own phase plans are lost.",
@@ -60,6 +63,10 @@
   "Panel.Waiting": "waiting",
   "Panel.Yield": "yields",
   "Panel.Release": "Return to the game's control",
+  "Panel.GreenWaves": "Green waves",
+  "Panel.Junctions": "junctions",
+  "Panel.RebuildGreenWaves": "Recalculate",
+  "Panel.GreenWave": "green wave",
   "Panel.PickJunction": "Pick a junction on the map",
   "Panel.PickingJunction": "Click a junction…",
   "Panel.VanillaSignals": "The game controls these traffic lights.",

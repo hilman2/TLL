@@ -20,6 +20,9 @@
   "Settings.KeepClear.Label": "Kreuzung freihalten",
   "Settings.KeepClear.Description": "Eine Spur bleibt rot, solange ihre Ausfahrt bis zur Kreuzung zurückgestaut ist. So bleibt niemand mitten auf der Kreuzung stehen und blockiert den Querverkehr.",
 
+  "Settings.AutoGreenWaves.Label": "Automatische grüne Wellen",
+  "Settings.AutoGreenWaves.Description": "Findet Hauptstraßen mit dicht aufeinanderfolgenden Ampeln und stimmt sie als grüne Welle in beide Richtungen ab. Wird alle paar Minuten aus dem gemessenen Verkehr neu berechnet.",
+
   "Settings.ReleaseAll.Label": "Alle Kreuzungen an das Spiel zurückgeben",
   "Settings.ReleaseAll.Description": "Beendet die Steuerung durch TLL an allen Kreuzungen, auch an selbst eingestellten. Das Spiel baut seine eigenen Signalgruppen neu auf.",
   "Settings.ReleaseAll.Warning": "Alle Kreuzungen an das Spiel zurückgeben? Deine eigenen Phasenpläne gehen verloren.",
@@ -60,6 +63,10 @@
   "Panel.Waiting": "wartet",
   "Panel.Yield": "wartepflichtig",
   "Panel.Release": "Ans Spiel zurückgeben",
+  "Panel.GreenWaves": "Grüne Wellen",
+  "Panel.Junctions": "Kreuzungen",
+  "Panel.RebuildGreenWaves": "Neu berechnen",
+  "Panel.GreenWave": "Grüne Welle",
   "Panel.PickJunction": "Kreuzung auf der Karte wählen",
   "Panel.PickingJunction": "Kreuzung anklicken …",
   "Panel.VanillaSignals": "Diese Ampeln steuert das Spiel.",

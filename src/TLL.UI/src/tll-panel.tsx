@@ -52,6 +52,14 @@ export const TllPanel = () => {
           </Button>
         </div>
         <div className={styles.row}>
+          <span>
+            {t("Panel.GreenWaves", "Green waves")}: <b>{summary.greenWaves}</b> ({summary.coordinated} {t("Panel.Junctions", "junctions")})
+          </span>
+          <Button variant="flat" className={styles.toggle} onSelect={actions.rebuildGreenWaves}>
+            {t("Panel.RebuildGreenWaves", "Recalculate")}
+          </Button>
+        </div>
+        <div className={styles.row}>
           <Button variant="flat" className={styles.toggle} selected={toolActive} onSelect={actions.toggleTool}>
             {toolActive ? t("Panel.PickingJunction", "Click a junction…") : t("Panel.PickJunction", "Pick a junction on the map")}
           </Button>
@@ -104,6 +112,7 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
     <div className={styles.muted}>
       {junction.manual ? t("Panel.Manual", "Set by you") : t("Panel.Automatic", "Automatic")} · {t("Panel.Cycle", "cycle")}{" "}
       {Math.round(junction.cycleSeconds)} s
+      {junction.group > 0 && ` · ${t("Panel.GreenWave", "green wave")} #${junction.group}`}
     </div>
 
     <div className={styles.label}>{t("Panel.Mode", "Control")}</div>

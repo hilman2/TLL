@@ -129,8 +129,8 @@ namespace TLL.Systems
             }
 
             ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
-            List<Entity> edges = ConnectedEdges(node);
-            float[] angles = ApproachAngles(node, edges);
+            List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
+            float[] angles = NetGeometry.ApproachAngles(EntityManager, node, edges);
             List<LaneInfo> lanes = CollectLanes(node, edges);
             if (lanes.Count == 0)
             {
@@ -266,29 +266,6 @@ namespace TLL.Systems
             if (exclude)
                 entityManager.AddComponent<JunctionExcluded>(node);
             entityManager.AddComponent<RebuildRequest>(node);
-        }
-
-        private List<Entity> ConnectedEdges(Entity node)
-        {
-            var edges = new List<Entity>();
-            DynamicBuffer<ConnectedEdge> connected = EntityManager.GetBuffer<ConnectedEdge>(node, true);
-            for (int i = 0; i < connected.Length; i++)
-                edges.Add(connected[i].m_Edge);
-            return edges;
-        }
-
-        /// <summary>Direction from the node out along each edge, in degrees counter-clockwise seen from above.</summary>
-        private float[] ApproachAngles(Entity node, List<Entity> edges)
-        {
-            var angles = new float[edges.Count];
-            for (int i = 0; i < edges.Count; i++)
-            {
-                Edge edge = EntityManager.GetComponentData<Edge>(edges[i]);
-                Bezier4x3 curve = EntityManager.GetComponentData<Curve>(edges[i]).m_Bezier;
-                float3 direction = edge.m_Start == node ? curve.b - curve.a : curve.c - curve.d;
-                angles[i] = math.degrees(math.atan2(direction.z, direction.x));
-            }
-            return angles;
         }
 
         private List<LaneInfo> CollectLanes(Entity node, List<Entity> edges)

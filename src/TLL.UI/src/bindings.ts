@@ -45,6 +45,8 @@ export interface Summary {
   available: boolean;
   automation: boolean;
   managed: number;
+  greenWaves: number;
+  coordinated: number;
   byMode: number[];
   problems: Problem[];
 }
@@ -69,6 +71,8 @@ export interface JunctionInfo extends EntityRef {
   hasSignals: boolean;
   mode: ControlMode;
   strategy: PlanStrategy;
+  /** Green wave the junction belongs to, 0 for none. */
+  group: number;
   manual: boolean;
   stage: Stage;
   phase: number;
@@ -80,7 +84,7 @@ export interface JunctionInfo extends EntityRef {
   phases: PhaseInfo[];
 }
 
-const emptySummary: Summary = { available: true, automation: false, managed: 0, byMode: [], problems: [] };
+const emptySummary: Summary = { available: true, automation: false, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] };
 
 export const summary$ = bindValue<Summary>(group, "summary", emptySummary);
 export const selected$ = bindValue<JunctionInfo | null>(group, "selected", null);
@@ -98,4 +102,5 @@ export const actions = {
   release: () => trigger(group, "release"),
   manage: () => trigger(group, "manage"),
   toggleTool: () => trigger(group, "toggleTool"),
+  rebuildGreenWaves: () => trigger(group, "rebuildGreenWaves"),
 };

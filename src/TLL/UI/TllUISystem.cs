@@ -41,6 +41,7 @@ namespace TLL.UI
         private CameraUpdateSystem m_CameraSystem;
         private SignalControlSystem m_Control;
         private JunctionToolSystem m_Tool;
+        private CoordinationSystem m_Coordination;
 
         private Entity m_Selected;
         private DateTime m_SummaryTime;
@@ -92,6 +93,7 @@ namespace TLL.UI
             m_CameraSystem = World.GetOrCreateSystemManaged<CameraUpdateSystem>();
             m_Control = World.GetOrCreateSystemManaged<SignalControlSystem>();
             m_Tool = World.GetOrCreateSystemManaged<JunctionToolSystem>();
+            m_Coordination = World.GetOrCreateSystemManaged<CoordinationSystem>();
             m_ManagedQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[] { ComponentType.ReadOnly<ManagedJunction>(), ComponentType.ReadOnly<JunctionPhase>() },
@@ -107,6 +109,7 @@ namespace TLL.UI
             AddBinding(new TriggerBinding<int>(kGroup, "setStrategy", OnSetStrategy));
             AddBinding(new TriggerBinding(kGroup, "release", OnRelease));
             AddBinding(new TriggerBinding(kGroup, "manage", OnManage));
+            AddBinding(new TriggerBinding(kGroup, "rebuildGreenWaves", () => Requests.RebuildGreenWaves = true));
             AddBinding(new TriggerBinding(kGroup, "toggleTool", () => m_Tool.Toggle()));
             AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "toolActive", () => m_Tool.IsActive));
         }
@@ -146,6 +149,10 @@ namespace TLL.UI
             writer.Write(Mod.Settings != null && Mod.Settings.AutoManageAll);
             writer.PropertyName("managed");
             writer.Write(s.Managed);
+            writer.PropertyName("greenWaves");
+            writer.Write(m_Coordination.Corridors);
+            writer.PropertyName("coordinated");
+            writer.Write(m_Coordination.CoordinatedJunctions);
             writer.PropertyName("byMode");
             writer.ArrayBegin((uint)s.ByMode.Length);
             foreach (int count in s.ByMode)
@@ -236,6 +243,8 @@ namespace TLL.UI
             writer.Write((int)d.Junction.Mode);
             writer.PropertyName("strategy");
             writer.Write((int)d.Junction.Strategy);
+            writer.PropertyName("group");
+            writer.Write(d.Junction.Group);
             writer.PropertyName("manual");
             writer.Write(d.Junction.Origin == JunctionOrigin.Manual);
             writer.PropertyName("stage");

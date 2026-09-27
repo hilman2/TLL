@@ -82,6 +82,9 @@ namespace TLL.Systems
                     if (elapsed < kMinimumSample)
                         continue;
 
+                    Measure(buffer, junction, elapsed, limits, ref runtime);
+                    // Coordinated junctions are timed by their green wave
+                    // (CoordinationSystem), which uses what Measure recorded.
                     bool retime = (junction.Options & JunctionOptions.AutoTiming) != 0
                         && junction.Mode != ControlMode.Flashing
                         && junction.Mode != ControlMode.Coordinated;
@@ -93,6 +96,19 @@ namespace TLL.Systems
                     EntityManager.SetComponentData(node, runtime);
                 }
             }
+        }
+
+        /// <summary>Records flow ratios and the cycle the junction would like, for the green waves.</summary>
+        private static void Measure(DynamicBuffer<JunctionPhase> buffer, ManagedJunction junction, int elapsed, OptimizerLimits limits, ref JunctionRuntime runtime)
+        {
+            var phases = new PhaseData[buffer.Length];
+            for (int i = 0; i < phases.Length; i++)
+                phases[i] = buffer[i].Data;
+            float[] ratios = SplitOptimizer.FlowRatios(phases, elapsed);
+            for (int i = 0; i < ratios.Length; i++)
+                buffer.ElementAt(i).FlowRatio = ratios[i];
+            int intergreen = junction.Yellow + junction.AllRed + junction.Prepare;
+            runtime.DesiredCycle = SplitOptimizer.OptimalCycle(ratios, intergreen, limits);
         }
 
         private static void Retime(DynamicBuffer<JunctionPhase> buffer, ManagedJunction junction, int elapsed, OptimizerLimits limits)

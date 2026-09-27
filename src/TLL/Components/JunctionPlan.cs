@@ -64,6 +64,12 @@ namespace TLL.Components
         /// </summary>
         public ulong TurnOnRed;
 
+        /// <summary>
+        /// Share of time this phase's traffic used, from the last optimiser
+        /// round (see SplitOptimizer.FlowRatios). Not saved.
+        /// </summary>
+        public float FlowRatio;
+
         public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
         {
             writer.Write(Data.MinGreen);
@@ -132,6 +138,13 @@ namespace TLL.Components
 
         /// <summary>Controller step at which the phase statistics were last reset.</summary>
         public long StatsSince;
+
+        /// <summary>
+        /// The cycle this junction would choose on its own, in steps, from the
+        /// last optimiser round; 0 until then. A green wave takes the largest
+        /// of its members.
+        /// </summary>
+        public int DesiredCycle;
     }
 
     /// <summary>Tag: the junction's plan or lanes must be rebuilt before it runs again.</summary>
