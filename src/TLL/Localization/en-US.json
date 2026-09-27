@@ -16,7 +16,7 @@
 
   "Settings.Group.Rules": "Traffic rules at TLL junctions",
   "Settings.TurnOnRed.Label": "Turn on red",
-  "Settings.TurnOnRed.Description": "Right turns (left turns in left-hand traffic) may go on red if they only meet traffic they give way to. As in the US and Canada.",
+  "Settings.TurnOnRed.Description": "Right turns (left turns in left-hand traffic) stop at red and may then go when the way is clear. Only where they meet nothing but traffic they give way to. As in the US, Canada, and with the German green arrow.",
   "Settings.KeepClear.Label": "Keep junctions clear",
   "Settings.KeepClear.Description": "A lane stays red while its exit is backed up to the junction, so nobody gets stuck in the middle and blocks the cross traffic.",
 

@@ -52,6 +52,12 @@ namespace TLL.Systems
         /// <summary>Below this speed in m/s a vehicle counts as standing.</summary>
         private const float kStandingSpeed = 1.5f;
 
+        /// <summary>Turn on red: a vehicle this close to the end of its lane is at the stop line.</summary>
+        private const float kStopLineReach = 12f;
+
+        /// <summary>Turn on red: below this speed in m/s the vehicle has come to a stop.</summary>
+        private const float kStoppedSpeed = 0.5f;
+
         private SimulationSystem m_Simulation;
         private CityConfigurationSystem m_CityConfiguration;
         private EntityQuery m_Query;
@@ -350,8 +356,11 @@ namespace TLL.Systems
                         if ((permitted & bit) != 0)
                             signal.m_Signal = LaneSignalType.Yield;
                     }
-                    else if (vehicle && signal.m_Signal == LaneSignalType.Stop && (turnOnRed & bit) != 0)
+                    else if (vehicle && signal.m_Signal == LaneSignalType.Stop && (turnOnRed & bit) != 0 && StoppedAtLine(lane.Approach))
                     {
+                        // Turn on red as the rules have it: stop first, then
+                        // go if the way is clear. The lane stays red until the
+                        // front vehicle has come to a halt at the line.
                         signal.m_Signal = LaneSignalType.Yield;
                     }
 
@@ -369,6 +378,29 @@ namespace TLL.Systems
                     signal.m_Blocker = Entity.Null;
                     LaneSignals[lane.Lane] = signal;
                 }
+            }
+
+            /// <summary>Whether the front vehicle on an approach lane stands at its end, i.e. at the stop line.</summary>
+            private bool StoppedAtLine(Entity approach)
+            {
+                if (approach == Entity.Null || !LaneObjects.TryGetBuffer(approach, out DynamicBuffer<LaneObject> objects)
+                    || objects.Length == 0 || !Curves.HasComponent(approach))
+                    return false;
+                float length = Curves[approach].m_Length;
+                float front = -1f;
+                Entity first = Entity.Null;
+                for (int i = 0; i < objects.Length; i++)
+                {
+                    float position = math.cmax(objects[i].m_CurvePosition);
+                    if (position > front)
+                    {
+                        front = position;
+                        first = objects[i].m_LaneObject;
+                    }
+                }
+                if ((1f - front) * length > kStopLineReach)
+                    return false;
+                return !Movings.TryGetComponent(first, out Game.Objects.Moving moving) || math.length(moving.m_Velocity) < kStoppedSpeed;
             }
 
             /// <summary>

@@ -166,11 +166,12 @@ namespace TLL.Systems
                 model.Movements.Add(new Movement(key.Source, key.Target, key.Kind, laneCount));
             }
             model.Conflicts = Conflicts(lanes, keys, model);
-            // Safety net: the circle model catches pairs whose lanes the game
-            // did not record as overlapping. It needs distinct approach
-            // directions to place its points.
+            // Safety net: the circle model catches crossing paths whose lanes
+            // the game did not record as overlapping. Merges come from the
+            // lanes alone (see ChordModel.Classify). The model needs distinct
+            // approach directions to place its points.
             if (ChordModel.SmallestGap(angles) >= 1f)
-                model.Conflicts.Tighten(ChordModel.Classify(model.Movements, angles, model.OppositeOf, model.LeftHandTraffic));
+                model.Conflicts.Tighten(ChordModel.Classify(model.Movements, angles, model.OppositeOf, model.LeftHandTraffic, includeMerges: false));
 
             var storedMovements = new List<JunctionMovement>();
             foreach (MovementKey key in keys)
@@ -183,13 +184,19 @@ namespace TLL.Systems
                 });
             }
 
-            List<JunctionPhase> phases = ExistingPlan(node, storedMovements, model);
+            // A manual plan is the player's and stays as long as it fits. An
+            // automatic plan is always generated afresh, so automatic junctions
+            // follow the current planner; the timing learnt so far is kept
+            // where a phase stays the same.
+            List<JunctionPhase> existing = ExistingPlan(node, storedMovements, model);
+            List<JunctionPhase> phases = junction.Origin == JunctionOrigin.Manual ? existing : null;
             if (phases == null)
             {
                 if (junction.Origin == JunctionOrigin.Manual && EntityManager.HasBuffer<JunctionPhase>(node)
                     && EntityManager.GetBuffer<JunctionPhase>(node).Length > 0)
                     Mod.Log.Warn($"Junction {node}: the road layout changed, the manual plan no longer fits and was replaced by a generated one.");
                 phases = NewPlan(model, junction.Strategy);
+                KeepTiming(existing, phases);
             }
 
             for (int p = 0; p < phases.Count; p++)
@@ -425,6 +432,27 @@ namespace TLL.Systems
                 }
             }
             return result;
+        }
+
+        /// <summary>Carries timing over to new phases that give green to exactly the same movements as an old one.</summary>
+        private static void KeepTiming(List<JunctionPhase> existing, List<JunctionPhase> phases)
+        {
+            if (existing == null)
+                return;
+            for (int p = 0; p < phases.Count; p++)
+            {
+                foreach (JunctionPhase old in existing)
+                {
+                    if (old.Movements != phases[p].Movements)
+                        continue;
+                    JunctionPhase phase = phases[p];
+                    phase.Data.Green = old.Data.Green;
+                    phase.Data.MaxGreen = old.Data.MaxGreen;
+                    phase.Data.Flags = old.Data.Flags;
+                    phases[p] = phase;
+                    break;
+                }
+            }
         }
 
         private static List<JunctionPhase> NewPlan(JunctionModel model, PlanStrategy strategy)

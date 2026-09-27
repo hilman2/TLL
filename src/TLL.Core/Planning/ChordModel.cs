@@ -58,7 +58,14 @@ namespace TLL.Core.Planning
         /// them. The mod combines this with the game's lane overlaps, so a
         /// conflict the overlaps miss still keeps two movements apart.
         /// </summary>
-        public static ConflictMatrix Classify(IList<Movement> movements, float[] anglesDeg, int[] oppositeOf, bool leftHandTraffic)
+        /// <param name="includeMerges">
+        /// Whether movements into the same road count as merging. The model
+        /// only knows roads, not lanes: on a road with several lanes, a turn
+        /// often gets a lane of its own and meets nobody. Crossings, in
+        /// contrast, are certain on road level. The mod therefore takes only
+        /// crossings from here and merges from the game's lanes.
+        /// </param>
+        public static ConflictMatrix Classify(IList<Movement> movements, float[] anglesDeg, int[] oppositeOf, bool leftHandTraffic, bool includeMerges = true)
         {
             float epsilon = SmallestGap(anglesDeg) / 8f;
             // Side of the arm axis where inbound traffic drives: counter-clockwise
@@ -88,6 +95,8 @@ namespace TLL.Core.Planning
                 for (int j = i + 1; j < count; j++)
                 {
                     PathContact contact = Contact(movements[i], movements[j], from[i], to[i], from[j], to[j]);
+                    if (contact == PathContact.Merge && !includeMerges)
+                        contact = PathContact.None;
                     conflicts.Set(i, j, ConflictRules.Classify(movements[i], movements[j], contact, oppositeOf, leftHandTraffic));
                 }
             }

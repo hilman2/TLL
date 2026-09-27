@@ -15,8 +15,8 @@
   "Settings.AutoStrategy.Description": "Bedingt verträglich: Gegenverkehr fährt gemeinsam, Abbieger warten. Geschützt abbiegen: Abbieger über den Gegenverkehr bekommen eigenes Grün. Getrennt: eine Zufahrt nach der anderen. Rundum-Grün für Fußgänger: eine zusätzliche Phase nur für Fußgänger.",
 
   "Settings.Group.Rules": "Verkehrsregeln an TLL-Kreuzungen",
-  "Settings.TurnOnRed.Label": "Rechts abbiegen bei Rot",
-  "Settings.TurnOnRed.Description": "Rechtsabbieger (bei Linksverkehr Linksabbieger) dürfen bei Rot fahren, wenn sie nur Verkehr kreuzen, dem sie Vorrang geben müssen. Wie in den USA und Kanada, ähnlich dem Grünpfeil.",
+  "Settings.TurnOnRed.Label": "Grünpfeil (bei Rot rechts abbiegen)",
+  "Settings.TurnOnRed.Description": "Rechtsabbieger (bei Linksverkehr Linksabbieger) halten bei Rot an und dürfen dann abbiegen, wenn frei ist. Nur wo sie ausschließlich Verkehr kreuzen, dem sie Vorrang geben müssen.",
   "Settings.KeepClear.Label": "Kreuzung freihalten",
   "Settings.KeepClear.Description": "Eine Spur bleibt rot, solange ihre Ausfahrt bis zur Kreuzung zurückgestaut ist. So bleibt niemand mitten auf der Kreuzung stehen und blockiert den Querverkehr.",
 

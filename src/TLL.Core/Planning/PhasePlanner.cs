@@ -60,7 +60,11 @@ namespace TLL.Core.Planning
             }
 
             for (int p = 0; p < phases.Count; p++)
-                phases[p] = Widen(phases[p], conflicts, n);
+            {
+                Phase widened = Widen(phases[p], conflicts, n);
+                widened.Green = AddFreeOverlaps(widened.Green, junction, strategy);
+                phases[p] = widened;
+            }
 
             RemoveDuplicates(phases);
             SortPhases(phases, junction);
@@ -166,6 +170,36 @@ namespace TLL.Core.Planning
                     green |= 1UL << candidate;
             }
             return new Phase { Green = green };
+        }
+
+        /// <summary>
+        /// Adds every movement that meets nothing at all in the phase, judged
+        /// by the junction's geometry rather than the strategy. A strategy
+        /// keeps apart movements that would have to give way to each other;
+        /// it has no reason to hold a movement at red that crosses nobody,
+        /// such as a right turn into its own lane while the cross street runs.
+        /// With an exclusive pedestrian phase, crosswalks stay out of the
+        /// vehicle phases, since keeping them there is the point of it.
+        /// </summary>
+        private static ulong AddFreeOverlaps(ulong green, JunctionModel junction, PlanStrategy strategy)
+        {
+            int n = junction.Movements.Count;
+            for (int candidate = 0; candidate < n; candidate++)
+            {
+                if ((green & (1UL << candidate)) != 0)
+                    continue;
+                if (strategy == PlanStrategy.ExclusivePedestrian && junction.Movements[candidate].IsPedestrian)
+                    continue;
+                bool free = true;
+                for (int member = 0; member < n && free; member++)
+                {
+                    if ((green & (1UL << member)) != 0)
+                        free = junction.Conflicts.Get(candidate, member) == Relation.Compatible;
+                }
+                if (free)
+                    green |= 1UL << candidate;
+            }
+            return green;
         }
 
         private static bool FitsInto(int candidate, ulong green, ConflictMatrix conflicts, int n)

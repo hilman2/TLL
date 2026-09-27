@@ -33,6 +33,8 @@ namespace TLL.Core.Tests.Planning
         [MemberData(nameof(Junctions))]
         public void NoPhaseHoldsAHardConflict(float[] angles, bool lht, bool uTurns, PlanStrategy strategy)
         {
+            // A pair the geometry forbids never shares a phase. A pair only the
+            // strategy forbids may, if the two do not meet at all.
             JunctionModel m = ChordModel.Build(angles, lht, uTurns);
             PhasePlan plan = PhasePlanner.Build(m, strategy);
             ConflictMatrix rules = PhasePlanner.Adjust(m, strategy);
@@ -42,8 +44,11 @@ namespace TLL.Core.Tests.Planning
                 {
                     for (int y = 0; y < m.Movements.Count; y++)
                     {
-                        if (p.Has(x) && p.Has(y))
-                            Assert.True(rules.Get(x, y) != Relation.Hard, $"{m.Movements[x]} and {m.Movements[y]} share a phase");
+                        if (!p.Has(x) || !p.Has(y))
+                            continue;
+                        Assert.True(m.Conflicts.Get(x, y) != Relation.Hard, $"{m.Movements[x]} and {m.Movements[y]} share a phase");
+                        if (rules.Get(x, y) == Relation.Hard)
+                            Assert.True(m.Conflicts.Get(x, y) == Relation.Compatible, $"{m.Movements[x]} and {m.Movements[y]} share a phase against the strategy but meet ({m.Conflicts.Get(x, y)})");
                     }
                 }
             }
@@ -111,17 +116,43 @@ namespace TLL.Core.Tests.Planning
             JunctionModel m = ChordModel.Build(Cross, false);
             PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.Split);
             Assert.Equal(4, plan.Phases.Count);
+            var sources = new HashSet<int>();
             foreach (Phase p in plan.Phases)
             {
-                int source = -1;
+                // The approach a split phase is for: the one with most movements in it.
+                int main = Enumerable.Range(0, m.Movements.Count).Where(i => p.Has(i) && !m.Movements[i].IsPedestrian)
+                    .GroupBy(i => m.Movements[i].Source).OrderByDescending(g => g.Count()).First().Key;
+                sources.Add(main);
                 for (int i = 0; i < m.Movements.Count; i++)
                 {
-                    if (!p.Has(i) || m.Movements[i].IsPedestrian)
+                    if (!p.Has(i) || m.Movements[i].IsPedestrian || m.Movements[i].Source == main)
                         continue;
-                    Assert.True(source < 0 || source == m.Movements[i].Source);
-                    source = m.Movements[i].Source;
+                    for (int j = 0; j < m.Movements.Count; j++)
+                    {
+                        if (p.Has(j) && j != i)
+                            Assert.Equal(Relation.Compatible, m.Conflicts.Get(i, j));
+                    }
                 }
             }
+            Assert.Equal(4, sources.Count);
+        }
+
+        [Fact]
+        public void TurnIntoItsOwnLaneRunsAlongsideTheCrossStreetEvenWhenSplit()
+        {
+            // T junction: west (0) and east (1) are the main road, south (2)
+            // the stem. On a road with several lanes the right turn out of the
+            // stem gets a lane of its own; the lanes say it meets the
+            // west-to-east traffic nowhere, which the model reproduces here.
+            JunctionModel m = ChordModel.Build(new[] { 180f, 0f, 270f }, false, crosswalks: false);
+            int stemRight = m.IndexOf(2, 1, MovementKind.Right);
+            int westEast = m.IndexOf(0, 1, MovementKind.Straight);
+            m.Conflicts.Set(stemRight, westEast, Relation.Compatible);
+
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.Split);
+
+            Phase west = plan.Phases.First(p => p.Has(westEast));
+            Assert.True(west.Has(stemRight), "the stem's right turn is red while west-to-east has green");
         }
 
         [Fact]
