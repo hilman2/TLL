@@ -306,7 +306,7 @@ namespace TLL.Systems
             ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
             if (junction.Mode != ControlMode.Coordinated && junction.Group == 0)
                 return;
-            junction.Mode = settings.AutoControl;
+            junction.Mode = settings.AutoControl();
             junction.Group = 0;
             junction.Offset = 0;
             EntityManager.SetComponentData(node, junction);

@@ -120,6 +120,8 @@ namespace TLL.Localization
                         return Enum.TryParse(parts[2], out AutoControlMode mode) ? setting.GetEnumValueLocaleID(mode) : null;
                     case nameof(PlanStrategy):
                         return Enum.TryParse(parts[2], out PlanStrategy strategy) ? setting.GetEnumValueLocaleID(strategy) : null;
+                    case nameof(AutoLayout):
+                        return Enum.TryParse(parts[2], out AutoLayout layout) ? setting.GetEnumValueLocaleID(layout) : null;
                 }
                 return null;
             }

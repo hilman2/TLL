@@ -46,6 +46,14 @@
        Mod.targets runs both through Exec, i.e. cmd.exe, and documents
        overriding their command lines like this. No space before "&&", or it
        becomes part of the value. -->
+  <!-- -p:DeployMod=false builds without touching the game's Mods folder,
+       e.g. while the game runs and holds the Burst DLL open. -->
+  <Target Name="DeployToBuildFolder" AfterTargets="BuildGetFullPaths" Condition="'$(UseToolchain)' == 'true' And '$(DeployMod)' == 'false'">
+    <PropertyGroup>
+      <DeployDir>$(MSBuildProjectDirectory)\bin\deploy\$(TargetName)</DeployDir>
+    </PropertyGroup>
+  </Target>
+
   <Target Name="PostProcessorRollForward" AfterTargets="ModPostProcessorConfig" Condition="'$(UseToolchain)' == 'true'">
     <PropertyGroup>
       <ModPostProcessorArgs>set DOTNET_ROLL_FORWARD=Major&amp;&amp; $(ModPostProcessorArgs)</ModPostProcessorArgs>

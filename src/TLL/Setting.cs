@@ -9,9 +9,22 @@ namespace TLL
     /// <summary>Control modes offered for the city-wide automation. Flashing and coordination are set per junction.</summary>
     public enum AutoControlMode
     {
+        /// <summary>The autopilot decides; isolated junctions run adaptive.</summary>
+        Automatic,
         Adaptive,
         Actuated,
         FixedTime,
+    }
+
+    /// <summary>Phase layouts offered for the city-wide automation.</summary>
+    public enum AutoLayout
+    {
+        /// <summary>The autopilot picks the layout per junction from its traffic.</summary>
+        Automatic,
+        Permissive,
+        ProtectedTurns,
+        Split,
+        ExclusivePedestrian,
     }
 
     [FileLocation("ModsSettings/TLL/TLL")]
@@ -37,10 +50,13 @@ namespace TLL
         public AutoControlMode AutoMode { get; set; }
 
         [SettingsUISection(kSection, kAutomation)]
-        public PlanStrategy AutoStrategy { get; set; }
+        public AutoLayout AutoLayout { get; set; }
 
         [SettingsUISection(kSection, kAutomation)]
         public bool AutoGreenWaves { get; set; }
+
+        [SettingsUISection(kSection, kAutomation)]
+        public bool AutoFlash { get; set; }
 
         [SettingsUISection(kSection, kRules)]
         public bool TurnOnRed { get; set; }
@@ -67,28 +83,47 @@ namespace TLL
         [SettingsUISection(kSection, kDebug)]
         public bool VerboseLogging { get; set; }
 
-        public ControlMode AutoControl
+        /// <summary>The mode automatic junctions run in when neither a green wave nor flashing applies.</summary>
+        public ControlMode AutoControl()
         {
-            get
+            switch (AutoMode)
             {
-                switch (AutoMode)
-                {
-                    case AutoControlMode.Actuated:
-                        return ControlMode.Actuated;
-                    case AutoControlMode.FixedTime:
-                        return ControlMode.FixedTime;
-                    default:
-                        return ControlMode.Adaptive;
-                }
+                case AutoControlMode.Actuated:
+                    return ControlMode.Actuated;
+                case AutoControlMode.FixedTime:
+                    return ControlMode.FixedTime;
+                default:
+                    return ControlMode.Adaptive;
+            }
+        }
+
+        /// <summary>
+        /// The layout a junction starts with when the automation takes it
+        /// over. With the automatic layout it is the permissive one, which the
+        /// autopilot then changes where the traffic calls for it.
+        /// </summary>
+        public PlanStrategy InitialStrategy()
+        {
+            switch (AutoLayout)
+            {
+                case AutoLayout.ProtectedTurns:
+                    return PlanStrategy.ProtectedTurns;
+                case AutoLayout.Split:
+                    return PlanStrategy.Split;
+                case AutoLayout.ExclusivePedestrian:
+                    return PlanStrategy.ExclusivePedestrian;
+                default:
+                    return PlanStrategy.Permissive;
             }
         }
 
         public override void SetDefaults()
         {
             AutoManageAll = false;
-            AutoMode = AutoControlMode.Adaptive;
-            AutoStrategy = PlanStrategy.Permissive;
+            AutoMode = AutoControlMode.Automatic;
+            AutoLayout = AutoLayout.Automatic;
             AutoGreenWaves = true;
+            AutoFlash = true;
             TurnOnRed = false;
             KeepClear = true;
             VerboseLogging = false;

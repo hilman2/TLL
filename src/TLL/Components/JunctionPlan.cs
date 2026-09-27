@@ -129,6 +129,13 @@ namespace TLL.Components
         public byte Movement;
 
         public JunctionLaneFlags Flags;
+
+        /// <summary>
+        /// Controller state: the vehicle last counted entering this lane.
+        /// A vehicle is counted once, when it is the rearmost one on the lane
+        /// and different from this one.
+        /// </summary>
+        public Entity LastEntrant;
     }
 
     /// <summary>Controller state of a managed junction. Not saved; the controller resynchronises after loading.</summary>

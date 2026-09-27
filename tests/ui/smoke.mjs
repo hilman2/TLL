@@ -115,6 +115,24 @@ const scenarios = {
   "managed junction": { "tll.selected": managed },
   "junction in transition": { "tll.selected": { ...managed, stage: 1, phase: 0, next: 1 } },
   "flashing junction": { "tll.selected": { ...managed, mode: 4, stage: 4 } },
+  "autopilot measuring": {
+    "tll.selected": { ...managed, autopilot: { majorVolume: 0, minorVolume: 0, signalAdvice: 0, pending: -1, estimates: [] } },
+  },
+  "autopilot with estimates": {
+    "tll.selected": {
+      ...managed,
+      movements: managed.movements.map((m, i) => ({ ...m, volume: i === 0 ? -1 : 120 * i })),
+      autopilot: {
+        majorVolume: 840, minorVolume: 210, signalAdvice: 2, pending: 1,
+        estimates: [
+          { strategy: 0, delay: 18.4, saturation: 0.92 },
+          { strategy: 1, delay: 14.2, saturation: 0.71 },
+          { strategy: 2, delay: 31.0, saturation: 1.18 },
+          { strategy: 3, delay: 42.5, saturation: 1.05 },
+        ],
+      },
+    },
+  },
   "vanilla junction": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: true } },
   "junction without signals": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false } },
   "roundabout": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, roundabout: true } },

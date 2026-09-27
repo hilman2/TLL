@@ -9,10 +9,13 @@
   "Settings.AutoManageAll.Description": "TLL übernimmt jede Kreuzung mit Ampel, erstellt aus ihrer Form einen Phasenplan und passt die Zeiten an den gemessenen Verkehr an. Kreuzungen, die du selbst eingestellt hast, bleiben unberührt. Bahnübergänge und bewegliche Brücken bleiben beim Spiel.",
 
   "Settings.AutoMode.Label": "Steuerung automatischer Kreuzungen",
-  "Settings.AutoMode.Description": "Adaptiv: Die Phase mit dem größten Druck kommt als Nächstes, Grünzeiten passen sich dem Verkehr an. Verkehrsabhängig: Phasen in fester Reihenfolge, ohne Bedarf übersprungen, Grün endet, wenn die Schlange abgebaut ist. Festzeit: feste Grünzeiten, alle paar Minuten optimiert.",
+  "Settings.AutoMode.Description": "Automatisch: Der Autopilot entscheidet; Kreuzungen außerhalb grüner Wellen laufen adaptiv. Adaptiv: Die Phase mit dem größten Druck kommt als Nächstes, Grünzeiten passen sich dem Verkehr an. Verkehrsabhängig: Phasen in fester Reihenfolge, ohne Bedarf übersprungen, Grün endet, wenn die Schlange abgebaut ist. Festzeit: feste Grünzeiten, alle paar Minuten optimiert.",
 
-  "Settings.AutoStrategy.Label": "Phasenaufbau automatischer Kreuzungen",
-  "Settings.AutoStrategy.Description": "Bedingt verträglich: Gegenverkehr fährt gemeinsam, Abbieger warten. Geschützt abbiegen: Abbieger über den Gegenverkehr bekommen eigenes Grün. Getrennt: eine Zufahrt nach der anderen. Rundum-Grün für Fußgänger: eine zusätzliche Phase nur für Fußgänger.",
+  "Settings.AutoLayout.Label": "Phasenaufbau automatischer Kreuzungen",
+  "Settings.AutoLayout.Description": "Automatisch: Der Autopilot vergleicht alle Varianten mit dem über Tage gemessenen Verkehr jeder Kreuzung und nimmt die mit der geringsten Wartezeit. Bedingt verträglich: Gegenverkehr fährt gemeinsam, Abbieger warten. Geschützt abbiegen: Abbieger über den Gegenverkehr bekommen eigenes Grün. Getrennt: eine Zufahrt nach der anderen. Rundum-Grün für Fußgänger: eine zusätzliche Phase nur für Fußgänger.",
+
+  "Settings.AutoFlash.Label": "Gelb blinken bei wenig Verkehr",
+  "Settings.AutoFlash.Description": "Ist an einer Kreuzung so wenig los, dass Vorfahrtsregeln reichen, blinkt sie gelb: Die Hauptstraße fährt, die Nebenstraßen achten die Vorfahrt. Mit mehr Verkehr kommen die Ampeln zurück. Getrennte Schwellen fürs Ein- und Ausschalten verhindern Flackern.",
 
   "Settings.Group.Rules": "Verkehrsregeln an TLL-Kreuzungen",
   "Settings.TurnOnRed.Label": "Grünpfeil (bei Rot rechts abbiegen)",
@@ -34,7 +37,13 @@
   "Settings.VerboseLogging.Label": "Ausführliches Protokoll",
   "Settings.VerboseLogging.Description": "Schreibt pro Kreuzungsplan eine Zeile nach Logs/TLL.log. Hilfreich, wenn du ein Problem meldest.",
 
+  "Enum.AutoControlMode.Automatic": "Automatisch (empfohlen)",
   "Enum.AutoControlMode.Adaptive": "Adaptiv",
+  "Enum.AutoLayout.Automatic": "Automatisch (empfohlen)",
+  "Enum.AutoLayout.Permissive": "Bedingt verträglich",
+  "Enum.AutoLayout.ProtectedTurns": "Geschützt abbiegen",
+  "Enum.AutoLayout.Split": "Getrennt",
+  "Enum.AutoLayout.ExclusivePedestrian": "Rundum-Grün für Fußgänger",
   "Enum.AutoControlMode.Actuated": "Verkehrsabhängig",
   "Enum.AutoControlMode.FixedTime": "Festzeit",
 
@@ -75,6 +84,12 @@
   "Panel.Manage": "Mit TLL steuern",
   "Panel.Roundabout": "Ein Kreisverkehr: Wer einfährt, lässt den Verkehr im Kreis vor. Ampeln gibt es hier nicht.",
   "Panel.NoSignals": "Diese Kreuzung hat keine Ampeln. Du kannst sie mit der Kreuzungsaufwertung des Spiels hinzufügen.",
+  "Panel.Autopilot": "Autopilot",
+  "Panel.MainRoad": "Hauptstraße",
+  "Panel.SideRoad": "Nebenstraße",
+  "Panel.Collecting": "Misst noch den Verkehr. Der Phasenaufbau wird geprüft, sobald genug los war.",
+  "Panel.PendingLayout": "Wechselt bei der nächsten Prüfung, wenn der Verkehr so bleibt",
+  "Panel.RemoveSignals": "Mit Vorfahrtsregeln statt Ampeln würde hier weniger gewartet.",
 
   "Mode.Adaptive": "Adaptiv",
   "Mode.Actuated": "Verkehrsabhängig",

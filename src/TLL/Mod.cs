@@ -37,7 +37,8 @@ namespace TLL
             updateSystem.UpdateBefore<SignalControlSystem, TrafficLightSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<AutoManageSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<OptimizerSystem>(SystemUpdatePhase.GameSimulation);
-            updateSystem.UpdateAfter<CoordinationSystem, OptimizerSystem>(SystemUpdatePhase.GameSimulation);
+            updateSystem.UpdateAfter<AutopilotSystem, OptimizerSystem>(SystemUpdatePhase.GameSimulation);
+            updateSystem.UpdateAfter<CoordinationSystem, AutopilotSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<UI.TllUISystem>(SystemUpdatePhase.UIUpdate);
             updateSystem.UpdateAt<UI.JunctionToolSystem>(SystemUpdatePhase.ToolUpdate);
             updateSystem.UpdateAt<UI.SelectionOverlaySystem>(SystemUpdatePhase.ToolUpdate);

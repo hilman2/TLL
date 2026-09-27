@@ -9,10 +9,13 @@
   "Settings.AutoManageAll.Description": "TLL takes over every signalled junction, builds a phase plan from its layout and adjusts the timing to the measured traffic. Junctions you configured yourself are left alone. Level crossings and movable bridges stay with the game.",
 
   "Settings.AutoMode.Label": "Control mode for automatic junctions",
-  "Settings.AutoMode.Description": "Adaptive: the phase with the most pressure goes next, and green adapts to traffic. Actuated: phases in fixed order, skipped without demand, green ends when the queue is gone. Fixed time: fixed greens, optimised every few minutes.",
+  "Settings.AutoMode.Description": "Automatic: the autopilot decides; junctions outside green waves run adaptive. Adaptive: the phase with the most pressure goes next, and green adapts to traffic. Actuated: phases in fixed order, skipped without demand, green ends when the queue is gone. Fixed time: fixed greens, optimised every few minutes.",
 
-  "Settings.AutoStrategy.Label": "Phase layout for automatic junctions",
-  "Settings.AutoStrategy.Description": "Permissive: oncoming traffic runs together, turning traffic gives way. Protected turns: turns across oncoming traffic get their own green. Split: one approach at a time. Pedestrian scramble: an extra phase in which only pedestrians walk.",
+  "Settings.AutoLayout.Label": "Phase layout for automatic junctions",
+  "Settings.AutoLayout.Description": "Automatic: the autopilot compares all layouts with the traffic measured at each junction over days and picks the one with the least waiting. Permissive: oncoming traffic runs together, turning traffic gives way. Protected turns: turns across oncoming traffic get their own green. Split: one approach at a time. Pedestrian scramble: an extra phase in which only pedestrians walk.",
+
+  "Settings.AutoFlash.Label": "Flashing yellow at low traffic",
+  "Settings.AutoFlash.Description": "When a junction is quiet enough for priority rules, its signals flash yellow: the main road passes, the side roads give way. Signals come back as traffic grows. Separate thresholds for on and off keep it from flickering.",
 
   "Settings.Group.Rules": "Traffic rules at TLL junctions",
   "Settings.TurnOnRed.Label": "Turn on red",
@@ -34,7 +37,13 @@
   "Settings.VerboseLogging.Label": "Detailed log",
   "Settings.VerboseLogging.Description": "Writes one line per junction plan to Logs/TLL.log. Useful when reporting a problem.",
 
+  "Enum.AutoControlMode.Automatic": "Automatic (recommended)",
   "Enum.AutoControlMode.Adaptive": "Adaptive",
+  "Enum.AutoLayout.Automatic": "Automatic (recommended)",
+  "Enum.AutoLayout.Permissive": "Permissive",
+  "Enum.AutoLayout.ProtectedTurns": "Protected turns",
+  "Enum.AutoLayout.Split": "Split",
+  "Enum.AutoLayout.ExclusivePedestrian": "Pedestrian scramble",
   "Enum.AutoControlMode.Actuated": "Actuated",
   "Enum.AutoControlMode.FixedTime": "Fixed time",
 
@@ -75,6 +84,12 @@
   "Panel.Manage": "Control with TLL",
   "Panel.Roundabout": "A roundabout: traffic entering gives way to traffic in the ring. Traffic lights are not used here.",
   "Panel.NoSignals": "This junction has no traffic lights. Add them with the game's intersection upgrade.",
+  "Panel.Autopilot": "Autopilot",
+  "Panel.MainRoad": "Main road",
+  "Panel.SideRoad": "side road",
+  "Panel.Collecting": "Still measuring the traffic; the layout is reviewed once there is enough.",
+  "Panel.PendingLayout": "Changes at the next review if traffic stays like this",
+  "Panel.RemoveSignals": "Priority rules would serve this junction with less waiting than signals.",
 
   "Mode.Adaptive": "Adaptive",
   "Mode.Actuated": "Actuated",

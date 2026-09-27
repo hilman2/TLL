@@ -172,6 +172,28 @@
   background-color: #e5484d;
 }
 
+.estimate {
+  display: flex;
+  flex-direction: row;
+  padding: 1rem 12rem;
+  font-size: 13rem;
+  opacity: 0.75;
+}
+
+.estimateCurrent {
+  opacity: 1;
+  color: #3dbf6b;
+}
+
+.estimateValue {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.overloaded {
+  color: #e5484d;
+}
+
 .preempt {
   color: #f5b83d;
   font-weight: bold;

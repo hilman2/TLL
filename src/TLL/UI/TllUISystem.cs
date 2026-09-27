@@ -9,6 +9,7 @@ using Game.Tools;
 using Game.UI;
 using TLL.Components;
 using TLL.Core;
+using TLL.Core.Advisor;
 using TLL.Core.Control;
 using TLL.Core.Planning;
 using TLL.Systems;
@@ -90,6 +91,8 @@ namespace TLL.UI
             public readonly List<ApproachRow> Approaches = new List<ApproachRow>();
             public bool LeftHandTraffic;
             public float CameraYaw;
+            public bool HasAutopilot;
+            public AutopilotState Autopilot;
         }
 
         private struct MovementRow
@@ -97,6 +100,9 @@ namespace TLL.UI
             public MovementKind Kind;
             public int Source;
             public int Target;
+
+            /// <summary>Recent vehicles (or people, on a crosswalk) per hour; negative before the first measurement.</summary>
+            public float Volume;
         }
 
         private struct ApproachRow
@@ -317,9 +323,12 @@ namespace TLL.UI
                 writer.Write(m.Source);
                 writer.PropertyName("target");
                 writer.Write(m.Target);
+                writer.PropertyName("volume");
+                writer.Write(m.Volume);
                 writer.TypeEnd();
             }
             writer.ArrayEnd();
+            WriteAutopilot(writer, d);
             writer.PropertyName("phases");
             writer.ArrayBegin((uint)d.Phases.Count);
             foreach (PhaseRow p in d.Phases)
@@ -345,6 +354,43 @@ namespace TLL.UI
                 WriteBits(writer, p.Movements);
                 writer.PropertyName("permitted");
                 WriteBits(writer, p.Permitted);
+                writer.TypeEnd();
+            }
+            writer.ArrayEnd();
+            writer.TypeEnd();
+        }
+
+        /// <summary>What the autopilot measured and decided at the junction, or null where it does not run.</summary>
+        private static void WriteAutopilot(IJsonWriter writer, Detail d)
+        {
+            writer.PropertyName("autopilot");
+            if (!d.HasAutopilot)
+            {
+                writer.WriteNull();
+                return;
+            }
+            AutopilotState a = d.Autopilot;
+            writer.TypeBegin("tll.Autopilot");
+            writer.PropertyName("majorVolume");
+            writer.Write(a.MajorVolume);
+            writer.PropertyName("minorVolume");
+            writer.Write(a.MinorVolume);
+            writer.PropertyName("signalAdvice");
+            writer.Write((int)a.SignalAdvice);
+            writer.PropertyName("pending");
+            writer.Write(a.PendingRounds > 0 ? (int)a.Pending : -1);
+            writer.PropertyName("estimates");
+            int count = a.HasEstimate ? JunctionAdvisor.Strategies.Length : 0;
+            writer.ArrayBegin((uint)count);
+            for (int i = 0; i < count; i++)
+            {
+                writer.TypeBegin("tll.Estimate");
+                writer.PropertyName("strategy");
+                writer.Write((int)JunctionAdvisor.Strategies[i]);
+                writer.PropertyName("delay");
+                writer.Write(a.LayoutDelay[i]);
+                writer.PropertyName("saturation");
+                writer.Write(a.LayoutSaturation[i]);
                 writer.TypeEnd();
             }
             writer.ArrayEnd();
@@ -389,16 +435,25 @@ namespace TLL.UI
             if (EntityManager.HasBuffer<JunctionMovement>(node))
             {
                 DynamicBuffer<JunctionMovement> movements = EntityManager.GetBuffer<JunctionMovement>(node, true);
+                bool measured = EntityManager.HasBuffer<MovementStatistics>(node);
+                DynamicBuffer<MovementStatistics> statistics = measured ? EntityManager.GetBuffer<MovementStatistics>(node, true) : default;
+                measured = measured && statistics.Length == movements.Length;
                 for (int i = 0; i < movements.Length; i++)
                 {
+                    MovementStatistics s = measured ? statistics[i] : default;
+                    bool fresh = s.Recent == 0f && s.Daily == 0f && s.Peak == 0f;
                     detail.Movements.Add(new MovementRow
                     {
                         Kind = movements[i].Kind,
                         Source = edges.IndexOf(movements[i].Source),
                         Target = edges.IndexOf(movements[i].Target),
+                        Volume = measured && !fresh ? s.Recent : -1f,
                     });
                 }
             }
+            detail.HasAutopilot = EntityManager.HasComponent<AutopilotState>(node);
+            if (detail.HasAutopilot)
+                detail.Autopilot = EntityManager.GetComponentData<AutopilotState>(node);
             return detail;
         }
 
@@ -459,8 +514,8 @@ namespace TLL.UI
                 return;
             Setting settings = Mod.Settings;
             ManagedJunction junction = ManagedJunction.Create(JunctionOrigin.Manual,
-                settings != null ? settings.AutoControl : ControlMode.Adaptive,
-                settings != null ? settings.AutoStrategy : PlanStrategy.Permissive);
+                settings != null ? settings.AutoControl() : ControlMode.Adaptive,
+                settings != null ? settings.InitialStrategy() : PlanStrategy.Permissive);
             EntityManager.RemoveComponent<JunctionExcluded>(node);
             EntityManager.AddComponentData(node, junction);
             EntityManager.AddComponent<RebuildRequest>(node);

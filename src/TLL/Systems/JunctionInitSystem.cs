@@ -38,27 +38,6 @@ namespace TLL.Systems
         private CityConfigurationSystem m_CityConfiguration;
         private SignalControlSystem m_Control;
 
-        /// <summary>Movement key while collecting lanes: source approach, target approach (-1 for a crosswalk), kind.</summary>
-        private struct MovementKey : IEquatable<MovementKey>
-        {
-            public int Source;
-            public int Target;
-            public MovementKind Kind;
-
-            public bool Equals(MovementKey other) => Source == other.Source && Target == other.Target && Kind == other.Kind;
-
-            public override int GetHashCode() => (Source * 397) ^ (Target * 31) ^ (int)Kind;
-        }
-
-        private struct LaneInfo
-        {
-            public Entity Lane;
-            public MovementKey Key;
-            public Entity Approach;
-            public Entity Exit;
-            public JunctionLaneFlags Flags;
-        }
-
         protected override void OnCreate()
         {
             base.OnCreate();
@@ -129,49 +108,17 @@ namespace TLL.Systems
             }
 
             ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
-            List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
-            float[] angles = NetGeometry.ApproachAngles(EntityManager, node, edges);
-            List<LaneInfo> lanes = CollectLanes(node, edges);
-            if (lanes.Count == 0)
+            JunctionLayout layout = JunctionAnalysis.Analyse(EntityManager, node, m_CityConfiguration.leftHandTraffic);
+            if (layout == null)
             {
                 Release(node, exclude: true);
                 return;
             }
-
-            // Movements in a fixed order, so the indices a saved plan refers to
-            // come out the same for the same road layout.
-            var keys = new List<MovementKey>();
-            foreach (LaneInfo lane in lanes)
-            {
-                if (!keys.Contains(lane.Key))
-                    keys.Add(lane.Key);
-            }
-            keys.Sort((a, b) => a.Source != b.Source ? a.Source.CompareTo(b.Source)
-                : a.Target != b.Target ? a.Target.CompareTo(b.Target)
-                : a.Kind.CompareTo(b.Kind));
-            if (keys.Count > 64)
-                throw new InvalidOperationException($"{keys.Count} movements, TLL handles at most 64.");
-
-            var model = new JunctionModel
-            {
-                ApproachCount = edges.Count,
-                OppositeOf = ChordModel.FindOpposites(angles),
-                LeftHandTraffic = m_CityConfiguration.leftHandTraffic,
-            };
-            foreach (MovementKey key in keys)
-            {
-                int laneCount = 0;
-                foreach (LaneInfo lane in lanes)
-                    laneCount += lane.Key.Equals(key) ? 1 : 0;
-                model.Movements.Add(new Movement(key.Source, key.Target, key.Kind, laneCount));
-            }
-            model.Conflicts = Conflicts(lanes, keys, model);
-            // Safety net: the circle model catches crossing paths whose lanes
-            // the game did not record as overlapping. Merges come from the
-            // lanes alone (see ChordModel.Classify). The model needs distinct
-            // approach directions to place its points.
-            if (ChordModel.SmallestGap(angles) >= 1f)
-                model.Conflicts.Tighten(ChordModel.Classify(model.Movements, angles, model.OppositeOf, model.LeftHandTraffic, includeMerges: false));
+            List<Entity> edges = layout.Edges;
+            float[] angles = layout.Angles;
+            List<LaneInfo> lanes = layout.Lanes;
+            List<MovementKey> keys = layout.Keys;
+            JunctionModel model = layout.Model;
 
             var storedMovements = new List<JunctionMovement>();
             foreach (MovementKey key in keys)
@@ -207,7 +154,9 @@ namespace TLL.Systems
             }
 
             MarkMajorRoad(lanes, model, edges, node, junction.MajorApproach);
+            bool sameMovements = SameMovements(node, storedMovements);
             WriteBuffers(node, storedMovements, phases, lanes, keys);
+            WriteMeasurement(node, lanes, keys, keepStatistics: sameMovements);
             WriteSignalGroups(node, phases, lanes, keys, ref lights);
 
             if (EntityManager.HasComponent<JunctionDirty>(node))
@@ -270,126 +219,61 @@ namespace TLL.Systems
             entityManager.RemoveComponent<JunctionLane>(node);
             entityManager.RemoveComponent<JunctionRuntime>(node);
             entityManager.RemoveComponent<JunctionDirty>(node);
+            entityManager.RemoveComponent<MovementCounter>(node);
+            entityManager.RemoveComponent<MovementStatistics>(node);
+            entityManager.RemoveComponent<AutopilotState>(node);
             if (exclude)
                 entityManager.AddComponent<JunctionExcluded>(node);
             entityManager.AddComponent<RebuildRequest>(node);
         }
 
-        private List<LaneInfo> CollectLanes(Entity node, List<Entity> edges)
+        /// <summary>Whether the junction's saved movements are the ones just found, in the same order.</summary>
+        private bool SameMovements(Entity node, List<JunctionMovement> movements)
         {
-            var result = new List<LaneInfo>();
-            DynamicBuffer<SubLane> subLanes = EntityManager.GetBuffer<SubLane>(node, true);
-            for (int i = 0; i < subLanes.Length; i++)
+            if (!EntityManager.HasBuffer<JunctionMovement>(node))
+                return false;
+            DynamicBuffer<JunctionMovement> stored = EntityManager.GetBuffer<JunctionMovement>(node, true);
+            if (stored.Length != movements.Count)
+                return false;
+            for (int i = 0; i < stored.Length; i++)
             {
-                Entity laneEntity = subLanes[i].m_SubLane;
-                if (!EntityManager.HasComponent<LaneSignal>(laneEntity) || EntityManager.HasComponent<SecondaryLane>(laneEntity))
-                    continue;
-                Lane lane = EntityManager.GetComponentData<Lane>(laneEntity);
-                int source = EdgeIndexOf(lane.m_StartNode, edges);
-                int target = EdgeIndexOf(lane.m_EndNode, edges);
-                var info = new LaneInfo { Lane = laneEntity };
-
-                if (EntityManager.HasComponent<PedestrianLane>(laneEntity))
-                {
-                    // A crosswalk joins the two sidewalks of the road it
-                    // crosses, so both of its ends belong to that edge.
-                    int crossed = source >= 0 ? source : target;
-                    if (crossed < 0)
-                        continue;
-                    info.Key = new MovementKey { Source = crossed, Target = -1, Kind = MovementKind.Pedestrian };
-                    info.Flags = JunctionLaneFlags.Pedestrian;
-                }
-                else
-                {
-                    if (source < 0 || target < 0)
-                        continue;
-                    bool track = !EntityManager.HasComponent<CarLane>(laneEntity) && EntityManager.HasComponent<TrackLane>(laneEntity);
-                    MovementKind kind = track ? MovementKind.Track : KindOf(EntityManager.GetComponentData<CarLane>(laneEntity).m_Flags);
-                    info.Key = new MovementKey { Source = source, Target = target, Kind = kind };
-                    info.Flags = track ? JunctionLaneFlags.Track : JunctionLaneFlags.None;
-                    info.Approach = ConnectedLane(edges[source], lane.m_StartNode, atEnd: true);
-                    info.Exit = ConnectedLane(edges[target], lane.m_EndNode, atEnd: false);
-                }
-                result.Add(info);
+                if (stored[i].Source != movements[i].Source || stored[i].Target != movements[i].Target || stored[i].Kind != movements[i].Kind)
+                    return false;
             }
-            return result;
-        }
-
-        private static MovementKind KindOf(CarLaneFlags flags)
-        {
-            if ((flags & (CarLaneFlags.UTurnLeft | CarLaneFlags.UTurnRight)) != 0)
-                return MovementKind.UTurn;
-            if ((flags & (CarLaneFlags.TurnLeft | CarLaneFlags.GentleTurnLeft)) != 0)
-                return MovementKind.Left;
-            if ((flags & (CarLaneFlags.TurnRight | CarLaneFlags.GentleTurnRight)) != 0)
-                return MovementKind.Right;
-            return MovementKind.Straight;
-        }
-
-        /// <summary>Index of the edge that owns the path node, or -1.</summary>
-        private static int EdgeIndexOf(PathNode pathNode, List<Entity> edges)
-        {
-            for (int i = 0; i < edges.Count; i++)
-            {
-                if (pathNode.OwnerEquals(new PathNode(edges[i], 0)))
-                    return i;
-            }
-            return -1;
+            return true;
         }
 
         /// <summary>
-        /// The lane of <paramref name="edge"/> that ends (or starts) at <paramref name="pathNode"/>:
-        /// the road lane feeding a junction lane, or the one it leads into.
+        /// Sets up the per-movement counters and statistics. Statistics from
+        /// earlier days stay as long as the movements are the same ones;
+        /// after a change to the road layout they start over.
         /// </summary>
-        private Entity ConnectedLane(Entity edge, PathNode pathNode, bool atEnd)
+        private void WriteMeasurement(Entity node, List<LaneInfo> lanes, List<MovementKey> keys, bool keepStatistics)
         {
-            if (!EntityManager.HasBuffer<SubLane>(edge))
-                return Entity.Null;
-            DynamicBuffer<SubLane> subLanes = EntityManager.GetBuffer<SubLane>(edge, true);
-            for (int i = 0; i < subLanes.Length; i++)
-            {
-                Entity candidate = subLanes[i].m_SubLane;
-                if (!EntityManager.HasComponent<Lane>(candidate))
-                    continue;
-                Lane lane = EntityManager.GetComponentData<Lane>(candidate);
-                if ((atEnd ? lane.m_EndNode : lane.m_StartNode).Equals(pathNode))
-                    return candidate;
-            }
-            return Entity.Null;
-        }
-
-        /// <summary>
-        /// Relations between movements from the game's lane overlaps. Each
-        /// overlap between two lanes of different movements is classified;
-        /// a movement pair takes the strictest relation any of its lane pairs
-        /// has.
-        /// </summary>
-        private ConflictMatrix Conflicts(List<LaneInfo> lanes, List<MovementKey> keys, JunctionModel model)
-        {
-            var matrix = new ConflictMatrix(keys.Count);
-            var movementOfLane = new Dictionary<Entity, int>();
-            foreach (LaneInfo lane in lanes)
-                movementOfLane[lane.Lane] = keys.IndexOf(lane.Key);
-
+            DynamicBuffer<MovementCounter> counters = EntityManager.HasBuffer<MovementCounter>(node)
+                ? EntityManager.GetBuffer<MovementCounter>(node)
+                : EntityManager.AddBuffer<MovementCounter>(node);
+            counters.Clear();
+            for (int i = 0; i < keys.Count; i++)
+                counters.Add(new MovementCounter());
             foreach (LaneInfo lane in lanes)
             {
-                if (!EntityManager.HasBuffer<LaneOverlap>(lane.Lane))
+                if ((lane.Flags & JunctionLaneFlags.Pedestrian) == 0 || !EntityManager.HasComponent<Curve>(lane.Lane))
                     continue;
-                int a = movementOfLane[lane.Lane];
-                DynamicBuffer<LaneOverlap> overlaps = EntityManager.GetBuffer<LaneOverlap>(lane.Lane, true);
-                for (int i = 0; i < overlaps.Length; i++)
-                {
-                    LaneOverlap overlap = overlaps[i];
-                    if (!movementOfLane.TryGetValue(overlap.m_Other, out int b) || a == b)
-                        continue;
-                    PathContact contact = (overlap.m_Flags & OverlapFlags.MergeEnd) != 0 ? PathContact.Merge
-                        : (overlap.m_Flags & OverlapFlags.MergeStart) != 0 ? PathContact.Diverge
-                        : PathContact.Cross;
-                    Relation relation = ConflictRules.Classify(model.Movements[a], model.Movements[b], contact, model.OppositeOf, model.LeftHandTraffic);
-                    matrix.Merge(a, b, relation);
-                }
+                ref MovementCounter counter = ref counters.ElementAt(keys.IndexOf(lane.Key));
+                counter.Length = math.max(counter.Length, EntityManager.GetComponentData<Curve>(lane.Lane).m_Length);
             }
-            return matrix;
+
+            bool has = EntityManager.HasBuffer<MovementStatistics>(node);
+            DynamicBuffer<MovementStatistics> statistics = has
+                ? EntityManager.GetBuffer<MovementStatistics>(node)
+                : EntityManager.AddBuffer<MovementStatistics>(node);
+            if (!keepStatistics || statistics.Length != keys.Count)
+            {
+                statistics.Clear();
+                for (int i = 0; i < keys.Count; i++)
+                    statistics.Add(new MovementStatistics());
+            }
         }
 
         /// <summary>The saved plan, if it still matches the junction's movements and gives every movement green.</summary>

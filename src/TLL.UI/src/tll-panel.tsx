@@ -3,6 +3,7 @@ import { Button, Panel, Scrollable } from "cs2/ui";
 import classNames from "classnames";
 import {
   actions,
+  AutopilotInfo,
   ControlMode,
   JunctionInfo,
   panelOpen$,
@@ -11,6 +12,7 @@ import {
   Problem,
   selected$,
   setPanelOpen,
+  SignalAdvice,
   Stage,
   summary$,
   toolActive$,
@@ -133,6 +135,8 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
       <div className={styles.heading}>{junction.name}</div>
       <div className={styles.muted}>{info}</div>
 
+      {junction.autopilot && <AutopilotSection autopilot={junction.autopilot} junction={junction} t={t} />}
+
       <div className={styles.label}>{t("Panel.Mode", "Control")}</div>
       {junction.mode === ControlMode.Coordinated && (
         <div className={styles.note}>{t("Panel.CoordinatedNote", "Runs in a green wave. Choose another mode to take it out.")}</div>
@@ -169,6 +173,43 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
         </Button>
       </div>
     </div>
+  );
+};
+
+const perHour = (v: number) => `${Math.round(v)}/h`;
+
+/**
+ * What the autopilot measured and how it compares the phase layouts. The
+ * estimates come from the busiest hours of the last days, not from the
+ * traffic right now, so they change slowly on purpose.
+ */
+const AutopilotSection = ({ autopilot, junction, t }: { autopilot: AutopilotInfo; junction: JunctionInfo; t: Translate }) => {
+  const traffic = `${t("Panel.MainRoad", "Main road")} ${perHour(autopilot.majorVolume)} · ${t("Panel.SideRoad", "side road")} ${perHour(autopilot.minorVolume)}`;
+  return (
+    <>
+      <div className={styles.label}>{t("Panel.Autopilot", "Autopilot")}</div>
+      <div className={styles.muted}>{traffic}</div>
+      {autopilot.estimates.length === 0 ? (
+        <div className={styles.muted}>{t("Panel.Collecting", "Still measuring the traffic; the layout is reviewed once there is enough.")}</div>
+      ) : (
+        autopilot.estimates.map((e) => (
+          <div key={e.strategy} className={classNames(styles.estimate, e.strategy === junction.strategy && styles.estimateCurrent)}>
+            <div className={styles.grow}>{t("Strategy." + PlanStrategy[e.strategy], PlanStrategy[e.strategy])}</div>
+            <div className={classNames(styles.estimateValue, e.saturation > 1 && styles.overloaded)}>
+              {`Ø ${seconds(e.delay)} · ${Math.round(e.saturation * 100)} %`}
+            </div>
+          </div>
+        ))
+      )}
+      {autopilot.pending >= 0 && autopilot.pending !== junction.strategy && (
+        <div className={styles.note}>
+          {`${t("Panel.PendingLayout", "Changes at the next review if traffic stays like this")}: ${t("Strategy." + PlanStrategy[autopilot.pending], PlanStrategy[autopilot.pending])}`}
+        </div>
+      )}
+      {autopilot.signalAdvice === SignalAdvice.RemoveSignals && (
+        <div className={styles.note}>{t("Panel.RemoveSignals", "Priority rules would serve this junction with less waiting than signals.")}</div>
+      )}
+    </>
   );
 };
 

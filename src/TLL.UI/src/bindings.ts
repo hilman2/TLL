@@ -53,6 +53,33 @@ export interface Movement {
   source: number;
   /** Approach index it leaves by; -1 for a crosswalk. */
   target: number;
+  /** Recent vehicles per hour (people on a crosswalk); negative before the first measurement. */
+  volume: number;
+}
+
+/** Numbers as in TLL.Core.Advisor.SignalAdvice. */
+export enum SignalAdvice {
+  Keep = 0,
+  AddSignals = 1,
+  RemoveSignals = 2,
+}
+
+export interface Estimate {
+  strategy: PlanStrategy;
+  /** Expected mean delay per vehicle, seconds. */
+  delay: number;
+  /** Degree of saturation of the busiest phase; above 1 the queue grows. */
+  saturation: number;
+}
+
+export interface AutopilotInfo {
+  majorVolume: number;
+  minorVolume: number;
+  signalAdvice: SignalAdvice;
+  /** Layout the autopilot wants to change to at the next review, -1 for none. */
+  pending: number;
+  /** From the last layout review; empty until there is enough traffic. */
+  estimates: Estimate[];
 }
 
 export interface EntityRef {
@@ -112,6 +139,8 @@ export interface JunctionInfo extends EntityRef {
   approaches: Approach[];
   movements: Movement[];
   phases: PhaseInfo[];
+  /** Null where the autopilot does not run: manual junctions, or automation off. */
+  autopilot: AutopilotInfo | null;
 }
 
 const emptySummary: Summary = { available: true, automation: false, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] };
