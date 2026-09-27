@@ -4,6 +4,7 @@ using Game.Net;
 using Game.Objects;
 using TLL.Components;
 using TLL.Core;
+using TLL.Core.Control;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -31,8 +32,15 @@ namespace TLL.UI
             text.Append($"  origin {junction.Origin}, mode {junction.Mode}, layout {junction.Strategy}\n");
             if (em.HasComponent<JunctionRuntime>(node))
             {
-                var s = em.GetComponentData<JunctionRuntime>(node).State;
+                JunctionRuntime runtime = em.GetComponentData<JunctionRuntime>(node);
+                var s = runtime.State;
                 text.Append($"  stage {s.Stage}, phase {s.Phase + 1}, next {s.Next + 1}, {SimTime.ToSeconds(s.StageSteps):0} s in stage, walk {s.Walk}\n");
+                // The last eight vehicle greens with turns across a crosswalk,
+                // newest first: x where a turning vehicle stopped for people.
+                string history = "";
+                for (int b = 0; b < PedestrianConflicts.Window; b++)
+                    history += (runtime.Conflicts.History & (1 << b)) != 0 ? 'x' : '.';
+                text.Append($"  scramble on demand {(junction.Options & JunctionOptions.ScrambleOnDemand) != 0}, diverting {runtime.Conflicts.Divert}, conflicts {runtime.Conflicts.Count}/{PedestrianConflicts.Window} [{history}], this green {runtime.ConflictThisGreen}\n");
             }
 
             DynamicBuffer<JunctionMovement> movements = em.GetBuffer<JunctionMovement>(node, true);
@@ -167,7 +175,7 @@ namespace TLL.UI
             if (em.HasComponent<Game.Vehicles.Vehicle>(entity))
                 return em.HasComponent<Game.Vehicles.Train>(entity) ? "tram or train" : "vehicle";
             if (em.HasComponent<Creature>(entity))
-                return "pedestrian";
+                return "pedestrian, counts as a conflict for the scramble";
             if (em.HasComponent<Game.Net.Node>(entity))
                 return "junction";
             if (em.HasComponent<Lane>(entity))
