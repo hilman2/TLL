@@ -110,8 +110,12 @@ namespace TLL.Core.Control
         /// </summary>
         public bool Walk;
 
-        /// <summary>Value of StageSteps when the walk began; a call during the green starts it late.</summary>
-        public ushort WalkSince;
+        /// <summary>
+        /// Steps of the walk still to run; the green cannot end before. A
+        /// countdown rather than a start time, so a green resting for days
+        /// cannot overflow it.
+        /// </summary>
+        public ushort WalkLeft;
     }
 
     /// <summary>
@@ -190,7 +194,10 @@ namespace TLL.Core.Control
                 return true;
             }
 
-            s.StageSteps++;
+            // Saturates instead of wrapping: a quiet junction may rest in one
+            // green for days, and a wrapped count would restart its minimum.
+            if (s.StageSteps < ushort.MaxValue)
+                s.StageSteps++;
             switch (s.Stage)
             {
                 case Stage.Green:
@@ -236,9 +243,11 @@ namespace TLL.Core.Control
                 current.Stats.BusySteps++;
             if (s.GreenLeft > 0)
                 s.GreenLeft--;
+            if (s.WalkLeft > 0)
+                s.WalkLeft--;
 
             LateWalk(ref s, in c, ref phases);
-            bool pastMin = s.StageSteps >= current.MinGreen && (!s.Walk || s.StageSteps - s.WalkSince >= WalkGreenOf(ref current));
+            bool pastMin = s.StageSteps >= current.MinGreen && s.WalkLeft == 0;
 
             if (s.Preempting)
             {
@@ -289,13 +298,15 @@ namespace TLL.Core.Control
 
             if (!forcedOff && !gapOut)
                 return -1;
-            if (gapOut && !forcedOff)
-                current.Stats.GapOuts++;
 
             // Choose among the phases whose green is still ahead, starting the
             // search where the transition would end.
             int next = NextTimedPhase(in c, ref phases, globalStep + c.Intergreen, s.Phase);
-            return next == s.Phase ? -1 : next;
+            if (next == s.Phase)
+                return -1;
+            if (gapOut && !forcedOff)
+                current.Stats.GapOuts++;
+            return next;
         }
 
         private static int ActuatedDecision<TPhases>(ref ControllerState s, in ControllerConfig c, ref TPhases phases, bool pastMin)
@@ -420,7 +431,7 @@ namespace TLL.Core.Control
             if (!room)
                 return;
             s.Walk = true;
-            s.WalkSince = s.StageSteps;
+            s.WalkLeft = (ushort)walk;
         }
 
         /// <summary>Fewest vehicles on their way that are worth holding a green for.</summary>
@@ -510,14 +521,21 @@ namespace TLL.Core.Control
             // vehicle phases or, while they are diverted, in the scramble.
             bool recall = c.Mode == ControlMode.FixedTime && p.HasFlag(PhaseFlags.Scramble) == c.DivertPedestrians;
             s.Walk = p.HasFlag(PhaseFlags.Pedestrian) && (recall || CallCounts(in c, ref p));
-            s.WalkSince = 0;
             s.GreenLeft = 0;
             if (c.Mode == ControlMode.FixedTime || c.Mode == ControlMode.Coordinated)
             {
                 int cycle = CycleOf(in c, ref phases);
                 int t = SimTime.Mod(globalStep - c.Offset, cycle);
                 s.GreenLeft = (ushort)SimTime.Mod(EndOf(in c, ref phases, phase) - t, cycle);
+                // A phase entered late in its window gives no walk it cannot
+                // finish before its force-off, which would push the schedule;
+                // the pedestrian waits for the next cycle. Only where the
+                // planned green is shorter than the walk anyway, the walk
+                // runs over, or nobody would ever cross there.
+                if (s.Walk && s.GreenLeft < WalkGreenOf(ref p) && p.Green >= WalkGreenOf(ref p))
+                    s.Walk = false;
             }
+            s.WalkLeft = s.Walk ? (ushort)WalkGreenOf(ref p) : (ushort)0;
         }
 
         /// <summary>Phase to start with: the scheduled one for timed modes, else the first with demand.</summary>

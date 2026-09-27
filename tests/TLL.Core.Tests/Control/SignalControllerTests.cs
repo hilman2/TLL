@@ -404,6 +404,56 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
+        public void LongRestDoesNotBlockTheJunction()
+        {
+            // A quiet junction rests in one green for days (more steps than a
+            // ushort holds). A pedestrian calls shortly before the step count
+            // would wrap, then a car arrives on the other phase: it must get
+            // green once the walk is over.
+            PhaseData crossing = ControllerHarness.Phase(5, 16, 20, PhaseFlags.Pedestrian);
+            crossing.WalkGreen = (ushort)SimTime.ToSteps(15f);
+            var h = new ControllerHarness(ControllerConfig.Default(ControlMode.Actuated), crossing, ControllerHarness.Phase(5, 40, 20));
+            const int callAt = 65500;
+            const int carAt = 65520;
+            h.Run(0, 70000, (s, p) =>
+            {
+                p[0].Demand = s < 3 ? 1f : 0f;
+                p[0].PedestrianCall = s >= callAt && s < callAt + 5;
+                p[1].Demand = s >= carAt ? 1f : 0f;
+            });
+            long bound = callAt + h.Phases[0].WalkGreen + h.Config.Intergreen + 5;
+            Assert.Contains(h.GreenStarts(), g => g.phase == 1 && g.step <= bound);
+        }
+
+        [Fact]
+        public void TimedPhaseStartingLateGivesNoWalkItCannotFinish()
+        {
+            // Coordinated: the crosswalk phase is entered with less time left
+            // before its force-off than the walk needs. Starting the walk would
+            // push the whole schedule; the pedestrian waits for the next cycle.
+            var config = ControllerConfig.Default(ControlMode.Coordinated);
+            PhaseData main = ControllerHarness.Phase(5, 60, 30, PhaseFlags.Coordinated);
+            PhaseData crossing = ControllerHarness.Phase(5, 60, 30, PhaseFlags.Pedestrian);
+            crossing.WalkGreen = (ushort)SimTime.ToSteps(15f);
+            var h = new ControllerHarness(config, main, crossing);
+            var access = new PhaseArray(h.Phases);
+            int cycle = SignalController.CycleOf(in h.Config, ref access);
+            int end = SignalController.EndOf(in h.Config, ref access, 1);
+            h.Run(0, cycle * 6, (s, p) =>
+            {
+                p[0].Demand = 2f;
+                // The crosswalk asks only late in its window.
+                int position = SimTime.Mod(s, cycle);
+                p[1].PedestrianCall = position >= end - SimTime.ToSteps(12f) && position < end;
+            });
+            // Phase 1 gets its short green, but none runs past its force-off.
+            var greens = h.GreenLengths().Where(g => g.phase == 1).ToList();
+            Assert.NotEmpty(greens);
+            foreach (var (phase, length) in greens)
+                Assert.True(length <= SimTime.ToSteps(12f) + 2, $"crosswalk green ran {length} steps into the next window");
+        }
+
+        [Fact]
         public void FixedTimeWalksInEveryCycle()
         {
             ControllerHarness h = PushButtonCase(ControlMode.FixedTime, callAt: -1, steps: 600);

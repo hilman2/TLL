@@ -373,14 +373,16 @@ namespace TLL.Systems
                 }
 
                 // Approach zones, once per approach lane, shared out among
-                // the movements it feeds.
+                // the movements it feeds. The sample memory is taken once:
+                // stack memory taken inside the loop would only be given back
+                // when the method returns.
+                float* distances = stackalloc float[kMaxSamples];
+                float* speeds = stackalloc float[kMaxSamples];
                 for (int l = 0; l < lanes.Length; l++)
                 {
                     Entity approach = lanes[l].Approach;
                     if (approach == Entity.Null || SeenBefore(lanes, l, approach))
                         continue;
-                    float* distances = stackalloc float[kMaxSamples];
-                    float* speeds = stackalloc float[kMaxSamples];
                     var samples = new Samples { Distances = distances, Speeds = speeds };
                     Gather(approach, 0f, ref samples);
                     if (hasDetectors)
