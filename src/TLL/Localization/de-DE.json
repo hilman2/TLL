@@ -73,6 +73,7 @@
   "Panel.PickingJunction": "Kreuzung anklicken …",
   "Panel.VanillaSignals": "Diese Ampeln steuert das Spiel.",
   "Panel.Manage": "Mit TLL steuern",
+  "Panel.Roundabout": "Ein Kreisverkehr: Wer einfährt, lässt den Verkehr im Kreis vor. Ampeln gibt es hier nicht.",
   "Panel.NoSignals": "Diese Kreuzung hat keine Ampeln. Du kannst sie mit der Kreuzungsaufwertung des Spiels hinzufügen.",
 
   "Mode.Adaptive": "Adaptiv",

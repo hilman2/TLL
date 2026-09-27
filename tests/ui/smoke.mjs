@@ -117,6 +117,7 @@ const scenarios = {
   "flashing junction": { "tll.selected": { ...managed, mode: 4, stage: 4 } },
   "vanilla junction": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: true } },
   "junction without signals": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false } },
+  "roundabout": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, roundabout: true } },
   "unavailable": { "tll.summary": { available: false, automation: false, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] } },
 };
 

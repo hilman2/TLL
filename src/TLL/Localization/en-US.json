@@ -73,6 +73,7 @@
   "Panel.PickingJunction": "Click a junction…",
   "Panel.VanillaSignals": "The game controls these traffic lights.",
   "Panel.Manage": "Control with TLL",
+  "Panel.Roundabout": "A roundabout: traffic entering gives way to traffic in the ring. Traffic lights are not used here.",
   "Panel.NoSignals": "This junction has no traffic lights. Add them with the game's intersection upgrade.",
 
   "Mode.Adaptive": "Adaptive",

@@ -1,6 +1,6 @@
 import { useValue } from "cs2/api";
 import { Button } from "cs2/ui";
-import { panelOpen$ } from "bindings";
+import { panelOpen$, setPanelOpen } from "bindings";
 import { useTranslate } from "localization";
 import icon from "images/tll.svg";
 
@@ -14,7 +14,7 @@ export const TllButton = () => {
       src={icon}
       selected={open}
       tooltipLabel={t("Panel.Title", "Traffic Lights & Lanes")}
-      onSelect={() => panelOpen$.update(!open)}
+      onSelect={() => setPanelOpen(!open)}
     />
   );
 };

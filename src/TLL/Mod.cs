@@ -40,6 +40,7 @@ namespace TLL
             updateSystem.UpdateAfter<CoordinationSystem, OptimizerSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<UI.TllUISystem>(SystemUpdatePhase.UIUpdate);
             updateSystem.UpdateAt<UI.JunctionToolSystem>(SystemUpdatePhase.ToolUpdate);
+            updateSystem.UpdateAt<UI.SelectionOverlaySystem>(SystemUpdatePhase.ToolUpdate);
         }
 
         public void OnDispose()

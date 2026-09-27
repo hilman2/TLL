@@ -94,6 +94,8 @@ export interface JunctionInfo extends EntityRef {
   /** False for a junction TLL does not control; the fields below are then meaningless. */
   managed: boolean;
   hasSignals: boolean;
+  /** The game's roundabout upgrade; priority rules, not signals, run it. */
+  roundabout: boolean;
   mode: ControlMode;
   strategy: PlanStrategy;
   /** Green wave the junction belongs to, 0 for none. */
@@ -118,8 +120,17 @@ export const summary$ = bindValue<Summary>(group, "summary", emptySummary);
 export const selected$ = bindValue<JunctionInfo | null>(group, "selected", null);
 export const toolActive$ = bindValue<boolean>(group, "toolActive", false);
 
-/** Whether the panel is open. Lives only in the UI; the button and the panel share it. */
+/**
+ * Whether the panel is open. The button and the panel share it; change it
+ * through setPanelOpen so the C# side, which marks the selected junction on
+ * the map while the panel is open, knows too.
+ */
 export const panelOpen$ = bindLocalValue(false);
+
+export function setPanelOpen(open: boolean) {
+  panelOpen$.update(open);
+  trigger(group, "setPanelOpen", open);
+}
 
 export const actions = {
   toggleAutomation: () => trigger(group, "toggleAutomation"),

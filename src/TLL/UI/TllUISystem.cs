@@ -46,7 +46,14 @@ namespace TLL.UI
         private Game.City.CityConfigurationSystem m_CityConfiguration;
 
         private Entity m_Selected;
+        private bool m_PanelOpen;
         private DateTime m_SummaryTime;
+
+        /// <summary>The junction shown in the panel, or Null.</summary>
+        public Entity Selected => m_Selected;
+
+        /// <summary>Whether the player has the panel open; the panel reports it.</summary>
+        public bool PanelOpen => m_PanelOpen;
         private DateTime m_DetailTime;
         private Summary m_Summary = new Summary();
         private Detail m_Detail;
@@ -74,6 +81,7 @@ namespace TLL.UI
             public string Name;
             public bool Managed;
             public bool HasSignals;
+            public bool Roundabout;
             public ManagedJunction Junction;
             public ControllerState State;
             public int Cycle;
@@ -129,6 +137,7 @@ namespace TLL.UI
             AddBinding(new TriggerBinding<int>(kGroup, "setStrategy", OnSetStrategy));
             AddBinding(new TriggerBinding(kGroup, "release", OnRelease));
             AddBinding(new TriggerBinding(kGroup, "manage", OnManage));
+            AddBinding(new TriggerBinding<bool>(kGroup, "setPanelOpen", open => m_PanelOpen = open));
             AddBinding(new TriggerBinding(kGroup, "rebuildGreenWaves", () => Requests.RebuildGreenWaves = true));
             AddBinding(new TriggerBinding(kGroup, "toggleTool", () => m_Tool.Toggle()));
             AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "toolActive", () => m_Tool.IsActive));
@@ -259,6 +268,8 @@ namespace TLL.UI
             writer.Write(d.Managed);
             writer.PropertyName("hasSignals");
             writer.Write(d.HasSignals);
+            writer.PropertyName("roundabout");
+            writer.Write(d.Roundabout);
             writer.PropertyName("mode");
             writer.Write((int)d.Junction.Mode);
             writer.PropertyName("strategy");
@@ -352,6 +363,7 @@ namespace TLL.UI
                 Name = JunctionName(node),
                 HasSignals = EntityManager.HasComponent<TrafficLights>(node),
                 Managed = EntityManager.HasComponent<ManagedJunction>(node) && EntityManager.HasBuffer<JunctionPhase>(node),
+                Roundabout = IsRoundabout(node),
             };
             if (!detail.Managed)
                 return detail;
@@ -477,6 +489,24 @@ namespace TLL.UI
         }
 
         // ---- Helpers ----
+
+        /// <summary>
+        /// Whether the node is a roundabout (the game's roundabout upgrade),
+        /// recognised by the roundabout flag the game puts on its lanes.
+        /// </summary>
+        private bool IsRoundabout(Entity node)
+        {
+            if (!EntityManager.HasBuffer<SubLane>(node))
+                return false;
+            DynamicBuffer<SubLane> lanes = EntityManager.GetBuffer<SubLane>(node, true);
+            for (int i = 0; i < lanes.Length; i++)
+            {
+                Entity lane = lanes[i].m_SubLane;
+                if (EntityManager.HasComponent<CarLane>(lane) && (EntityManager.GetComponentData<CarLane>(lane).m_Flags & CarLaneFlags.Roundabout) != 0)
+                    return true;
+            }
+            return false;
+        }
 
         /// <summary>A junction is named after the roads meeting there, e.g. "Main Street / Oak Avenue".</summary>
         private string JunctionName(Entity node)

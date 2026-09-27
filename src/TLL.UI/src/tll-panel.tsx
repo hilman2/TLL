@@ -10,6 +10,7 @@ import {
   PlanStrategy,
   Problem,
   selected$,
+  setPanelOpen,
   Stage,
   summary$,
   toolActive$,
@@ -53,7 +54,7 @@ export const TllPanel = () => {
       draggable
       className={styles.panel}
       header={<div className={styles.title}>{t("Panel.Title", "Traffic Lights & Lanes")}</div>}
-      onClose={() => panelOpen$.update(false)}
+      onClose={() => setPanelOpen(false)}
     >
       <Scrollable className={styles.scroll} vertical>
         {!summary.available && (
@@ -106,7 +107,9 @@ const JunctionDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate 
 const UnmanagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }) => (
   <div className={styles.detail}>
     <div className={styles.heading}>{junction.name}</div>
-    {junction.hasSignals ? (
+    {junction.roundabout ? (
+      <div className={styles.muted}>{t("Panel.Roundabout", "A roundabout: traffic entering gives way to traffic in the ring. Traffic lights are not used here.")}</div>
+    ) : junction.hasSignals ? (
       <>
         <div className={styles.muted}>{t("Panel.VanillaSignals", "The game controls these traffic lights.")}</div>
         <div className={styles.row}>
