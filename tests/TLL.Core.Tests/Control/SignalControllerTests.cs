@@ -195,6 +195,52 @@ namespace TLL.Core.Tests.Control
             Assert.True(longestWait <= bound, $"phase 1 waited {longestWait} steps, bound {bound}");
         }
 
+        /// <summary>
+        /// Phase 0 starts with a car at the line, then has nobody waiting but
+        /// <paramref name="platoon"/> vehicles a few seconds out; phase 1 has
+        /// <paramref name="queue"/> waiting.
+        /// </summary>
+        private static ControllerHarness PlatoonCase(float platoon, float queue, float maxGreenSeconds, int steps)
+        {
+            var h = new ControllerHarness(ControllerConfig.Default(ControlMode.Adaptive),
+                ControllerHarness.Phase(5, maxGreenSeconds, 0),
+                ControllerHarness.Phase(5, 3000, 0));
+            h.Run(0, steps, (s, p) =>
+            {
+                p[0].Demand = s < 3 ? 1f : 0f;
+                p[0].Pressure = s < 3 ? 1f : 0.5f * platoon;
+                p[0].Approaching = s < 3 ? 0f : platoon;
+                p[1].Demand = s < 3 ? 0f : queue;
+                p[1].Pressure = s < 3 ? 0f : queue;
+            });
+            return h;
+        }
+
+        [Fact]
+        public void AdaptiveHoldsGreenForAPlatoonLargerThanTheQueue()
+        {
+            ControllerHarness h = PlatoonCase(platoon: 4f, queue: 1f, maxGreenSeconds: 60f, steps: 150);
+            Assert.All(h.Trace, r => Assert.True(r.Stage == Stage.Green && r.Phase == 0, $"step {r.Step}: {r.Stage} phase {r.Phase}"));
+        }
+
+        [Theory]
+        [InlineData(4f, 4f)]
+        [InlineData(1f, 0.5f)]
+        public void AdaptiveDoesNotHoldForASmallPlatoon(float platoon, float queue)
+        {
+            ControllerHarness h = PlatoonCase(platoon, queue, maxGreenSeconds: 60f, steps: 150);
+            long bound = h.Phases[0].MinGreen + h.Config.Intergreen + 2;
+            Assert.Contains(h.GreenStarts(), g => g.phase == 1 && g.step <= bound);
+        }
+
+        [Fact]
+        public void PlatoonHoldEndsAtMaximumGreen()
+        {
+            ControllerHarness h = PlatoonCase(platoon: 10f, queue: 1f, maxGreenSeconds: 20f, steps: 400);
+            long bound = h.Phases[0].MaxGreen + h.Config.Intergreen + 2;
+            Assert.Contains(h.GreenStarts(), g => g.phase == 1 && g.step <= bound);
+        }
+
         [Fact]
         public void AdaptiveSwitchesToMuchHigherPressure()
         {

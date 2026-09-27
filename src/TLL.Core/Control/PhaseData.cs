@@ -44,6 +44,13 @@ namespace TLL.Core.Control
         /// </summary>
         public float Pressure;
 
+        /// <summary>
+        /// Vehicles still on their way that reach the stop line within a few
+        /// seconds, beyond those already counted in <see cref="Demand"/>. The
+        /// adaptive mode may hold a green for them (see SignalController).
+        /// </summary>
+        public float Approaching;
+
         /// <summary>Traffic is moving through the junction on this phase's lanes right now.</summary>
         public bool Busy;
 

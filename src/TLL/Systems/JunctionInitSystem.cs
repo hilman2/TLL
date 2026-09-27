@@ -156,6 +156,7 @@ namespace TLL.Systems
             MarkMajorRoad(lanes, model, edges, node, junction.MajorApproach);
             bool sameMovements = SameMovements(node, storedMovements);
             WriteBuffers(node, storedMovements, phases, lanes, keys);
+            WriteDetectors(node, JunctionAnalysis.DetectorChain(EntityManager, node, layout, SignalControlSystem.kDetectionRange));
             WriteMeasurement(node, lanes, keys, keepStatistics: sameMovements);
             WriteSignalGroups(node, phases, lanes, keys, ref lights);
 
@@ -222,6 +223,7 @@ namespace TLL.Systems
             entityManager.RemoveComponent<MovementCounter>(node);
             entityManager.RemoveComponent<MovementStatistics>(node);
             entityManager.RemoveComponent<AutopilotState>(node);
+            entityManager.RemoveComponent<DetectorLane>(node);
             if (exclude)
                 entityManager.AddComponent<JunctionExcluded>(node);
             entityManager.AddComponent<RebuildRequest>(node);
@@ -450,6 +452,16 @@ namespace TLL.Systems
                 EntityManager.SetComponentData(node, runtime);
             else
                 EntityManager.AddComponentData(node, runtime);
+        }
+
+        private void WriteDetectors(Entity node, List<DetectorLane> detectors)
+        {
+            DynamicBuffer<DetectorLane> buffer = EntityManager.HasBuffer<DetectorLane>(node)
+                ? EntityManager.GetBuffer<DetectorLane>(node)
+                : EntityManager.AddBuffer<DetectorLane>(node);
+            buffer.Clear();
+            foreach (DetectorLane d in detectors)
+                buffer.Add(d);
         }
 
         /// <summary>

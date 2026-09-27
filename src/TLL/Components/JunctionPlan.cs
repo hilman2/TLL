@@ -138,6 +138,25 @@ namespace TLL.Components
         public Entity LastEntrant;
     }
 
+    /// <summary>
+    /// A road lane further up an approach, beyond the lane that ends at the
+    /// junction, watched as part of the approach zone. The chain follows the
+    /// road across plain nodes and stops at the previous junction, as a
+    /// detector at the start of the link would. Rebuilt with the junction's
+    /// lanes and not saved, like <see cref="JunctionLane"/>.
+    /// </summary>
+    [InternalBufferCapacity(0)]
+    public struct DetectorLane : IBufferElementData
+    {
+        /// <summary>The approach lane (<see cref="JunctionLane.Approach"/>) this lane feeds.</summary>
+        public Entity Approach;
+
+        public Entity Lane;
+
+        /// <summary>Distance from the end of this lane to the stop line, in metres.</summary>
+        public float Offset;
+    }
+
     /// <summary>Controller state of a managed junction. Not saved; the controller resynchronises after loading.</summary>
     public struct JunctionRuntime : IComponentData
     {

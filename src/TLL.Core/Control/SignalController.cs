@@ -316,8 +316,25 @@ namespace TLL.Core.Control
             bool outweighed = !bestStarved && phases[best].Pressure > current.Pressure * c.SwitchRatio && phases[best].Pressure > current.Pressure + 1f;
             if (!(maxedOut || gappedOut || bestStarved || outweighed))
                 return -1;
+            if (!maxedOut && !bestStarved && HoldForPlatoon(ref current, ref phases[best]))
+                return -1;
             CountEnd(ref current, maxedOut, gappedOut);
             return best;
+        }
+
+        /// <summary>Fewest vehicles on their way that are worth holding a green for.</summary>
+        public const float PlatoonSize = 2f;
+
+        /// <summary>
+        /// Adaptive mode: keep the green for a group of vehicles about to
+        /// arrive, when they outnumber the ones the switch would serve.
+        /// Switching now would stop the group for a whole cycle while the
+        /// others gain only the few seconds the group takes to pass. Maximum
+        /// green and the maximum wait still end the hold.
+        /// </summary>
+        private static bool HoldForPlatoon(ref PhaseData current, ref PhaseData contender)
+        {
+            return current.Approaching >= PlatoonSize && current.Approaching > contender.Demand;
         }
 
         private static void CountEnd(ref PhaseData phase, bool maxedOut, bool gappedOut)

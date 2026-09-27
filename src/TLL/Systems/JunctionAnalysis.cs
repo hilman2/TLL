@@ -96,6 +96,102 @@ namespace TLL.Systems
             return new JunctionLayout { Edges = edges, Angles = angles, Lanes = lanes, Keys = keys, Model = model };
         }
 
+        /// <summary>
+        /// The road lanes further up each approach lane of the layout, out to
+        /// <paramref name="range"/> metres from the stop line. The chain
+        /// follows the road across plain nodes, where one road continues into
+        /// the next piece of the same road, and stops at any node with signals
+        /// or more than two roads: what lies beyond belongs to the previous
+        /// junction.
+        /// </summary>
+        public static List<DetectorLane> DetectorChain(EntityManager em, Entity node, JunctionLayout layout, float range)
+        {
+            var result = new List<DetectorLane>();
+            var done = new HashSet<Entity>();
+            foreach (LaneInfo info in layout.Lanes)
+            {
+                if (info.Approach == Entity.Null || !done.Add(info.Approach))
+                    continue;
+                int edge = info.Key.Source;
+                if (edge < 0 || edge >= layout.Edges.Count)
+                    continue;
+                Follow(em, info.Approach, info.Approach, 0f, layout.Edges[edge], node, range, result, new HashSet<Entity>());
+            }
+            return result;
+        }
+
+        /// <summary>Most lanes watched per approach lane; a limit against unusual road layouts, not a design value.</summary>
+        private const int kMaxChain = 16;
+
+        private static void Follow(EntityManager em, Entity approach, Entity lane, float offset, Entity edge, Entity downstreamNode,
+            float range, List<DetectorLane> result, HashSet<Entity> visited)
+        {
+            if (!em.HasComponent<Curve>(lane) || !em.HasComponent<Lane>(lane))
+                return;
+            float start = offset + em.GetComponentData<Curve>(lane).m_Length;
+            if (start >= range || visited.Count >= kMaxChain)
+                return;
+            Entity upstreamNode = NetGeometry.OtherEnd(em, edge, downstreamNode);
+            if (!IsPlainNode(em, upstreamNode))
+                return;
+            Entity upstreamEdge = Entity.Null;
+            foreach (Entity e in NetGeometry.ConnectedEdges(em, upstreamNode))
+            {
+                if (e != edge)
+                    upstreamEdge = e;
+            }
+            if (upstreamEdge == Entity.Null)
+                return;
+
+            PathNode entry = em.GetComponentData<Lane>(lane).m_StartNode;
+            // Usually a short connecting lane of the node joins the two road
+            // pieces; the road lane before it is found from its start.
+            DynamicBuffer<SubLane> nodeLanes = em.GetBuffer<SubLane>(upstreamNode, true);
+            bool found = false;
+            for (int i = 0; i < nodeLanes.Length; i++)
+            {
+                Entity feeder = nodeLanes[i].m_SubLane;
+                if (!IsVehicleLane(em, feeder) || visited.Contains(feeder))
+                    continue;
+                Lane feederLane = em.GetComponentData<Lane>(feeder);
+                if (!feederLane.m_EndNode.Equals(entry))
+                    continue;
+                found = true;
+                visited.Add(feeder);
+                result.Add(new DetectorLane { Approach = approach, Lane = feeder, Offset = start });
+                float beyond = start + (em.HasComponent<Curve>(feeder) ? em.GetComponentData<Curve>(feeder).m_Length : 0f);
+                Entity before = ConnectedLane(em, upstreamEdge, feederLane.m_StartNode, atEnd: true);
+                if (before != Entity.Null && beyond < range && visited.Add(before))
+                {
+                    result.Add(new DetectorLane { Approach = approach, Lane = before, Offset = beyond });
+                    Follow(em, approach, before, beyond, upstreamEdge, upstreamNode, range, result, visited);
+                }
+            }
+            if (found)
+                return;
+            // Without a connecting lane the road lanes meet directly.
+            Entity direct = ConnectedLane(em, upstreamEdge, entry, atEnd: true);
+            if (direct != Entity.Null && visited.Add(direct))
+            {
+                result.Add(new DetectorLane { Approach = approach, Lane = direct, Offset = start });
+                Follow(em, approach, direct, start, upstreamEdge, upstreamNode, range, result, visited);
+            }
+        }
+
+        /// <summary>A node where one road simply continues: exactly two roads and no signals.</summary>
+        private static bool IsPlainNode(EntityManager em, Entity node)
+        {
+            if (node == Entity.Null || em.HasComponent<TrafficLights>(node) || !em.HasBuffer<ConnectedEdge>(node))
+                return false;
+            return em.GetBuffer<ConnectedEdge>(node, true).Length == 2 && em.HasBuffer<SubLane>(node);
+        }
+
+        private static bool IsVehicleLane(EntityManager em, Entity lane)
+        {
+            return em.HasComponent<Lane>(lane) && !em.HasComponent<PedestrianLane>(lane)
+                && (em.HasComponent<CarLane>(lane) || em.HasComponent<TrackLane>(lane));
+        }
+
         private static List<LaneInfo> CollectLanes(EntityManager em, Entity node, List<Entity> edges)
         {
             var result = new List<LaneInfo>();

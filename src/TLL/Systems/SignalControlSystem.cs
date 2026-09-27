@@ -29,11 +29,13 @@ namespace TLL.Systems
     public partial class SignalControlSystem : TllSystemBase
     {
         /// <summary>
-        /// Reach of the approach zone before the stop line, in metres, as
-        /// radar or video detection at a real junction. Only the approach
-        /// lane itself is watched, never beyond the upstream junction.
+        /// Reach of the approach zone before the stop line, in metres, as a
+        /// long-range radar at a real junction. It follows the road across
+        /// plain nodes (see <see cref="DetectorLane"/>) but never beyond the
+        /// previous junction, so what it sees is what a detector at the start
+        /// of the link would count.
         /// </summary>
-        private const float kDetectionRange = 150f;
+        internal const float kDetectionRange = 250f;
 
         /// <summary>
         /// Passage time in seconds: a vehicle this close to the line keeps
@@ -43,6 +45,13 @@ namespace TLL.Systems
 
         /// <summary>Planning horizon in seconds: arrivals within it count towards pressure.</summary>
         private const float kHorizon = 15f;
+
+        /// <summary>
+        /// Arrivals within this many seconds may hold a green in the adaptive
+        /// mode (see PhaseData.Approaching): about what one more phase change
+        /// would cost them in yellow and all-red.
+        /// </summary>
+        private const float kHoldHorizon = 8f;
 
         /// <summary>Road length a queued vehicle takes up, including the gap to the next one.</summary>
         private const float kVehicleSpacing = 7f;
@@ -127,6 +136,7 @@ namespace TLL.Systems
                 MovementType = GetBufferTypeHandle<JunctionMovement>(true),
                 CounterType = GetBufferTypeHandle<MovementCounter>(false),
                 StatisticsType = GetBufferTypeHandle<MovementStatistics>(true),
+                DetectorType = GetBufferTypeHandle<DetectorLane>(true),
                 SubObjectType = GetBufferTypeHandle<Game.Objects.SubObject>(true),
                 LaneSignals = GetComponentLookup<LaneSignal>(false),
                 Poles = GetComponentLookup<Game.Objects.TrafficLight>(false),
@@ -153,6 +163,7 @@ namespace TLL.Systems
             [ReadOnly] public BufferTypeHandle<JunctionMovement> MovementType;
             public BufferTypeHandle<MovementCounter> CounterType;
             [ReadOnly] public BufferTypeHandle<MovementStatistics> StatisticsType;
+            [ReadOnly] public BufferTypeHandle<DetectorLane> DetectorType;
             [ReadOnly] public BufferTypeHandle<Game.Objects.SubObject> SubObjectType;
 
             // Lanes and poles belong to exactly one junction, so parallel
@@ -178,6 +189,8 @@ namespace TLL.Systems
                 BufferAccessor<JunctionMovement> movementBuffers = chunk.GetBufferAccessor(ref MovementType);
                 BufferAccessor<MovementCounter> counterBuffers = chunk.GetBufferAccessor(ref CounterType);
                 BufferAccessor<MovementStatistics> statisticsBuffers = chunk.GetBufferAccessor(ref StatisticsType);
+                bool hasDetectors = chunk.Has(ref DetectorType);
+                BufferAccessor<DetectorLane> detectorBuffers = hasDetectors ? chunk.GetBufferAccessor(ref DetectorType) : default;
                 bool hasPoles = chunk.Has(ref SubObjectType);
                 BufferAccessor<Game.Objects.SubObject> subObjects = hasPoles ? chunk.GetBufferAccessor(ref SubObjectType) : default;
 
@@ -196,7 +209,8 @@ namespace TLL.Systems
                     if (counters.Length != movements.Length || statistics.Length != movements.Length)
                         continue;
 
-                    Sense(phases, lanes, counters, statistics, movements.Length);
+                    DynamicBuffer<DetectorLane> detectors = hasDetectors ? detectorBuffers[i] : default;
+                    Sense(phases, lanes, detectors, hasDetectors, counters, statistics, movements.Length);
 
                     ControllerConfig config = junction.ToConfig();
                     var access = new PhaseBufferAccess(phases);
@@ -219,18 +233,20 @@ namespace TLL.Systems
             /// - Entry: a vehicle is counted once when it enters a junction
             ///   lane, which also tells its direction.
             /// - Approach zone, up to kDetectionRange before the stop line on
-            ///   the approach lane only (radar or video): standing vehicles
-            ///   are the queue, moving ones are arrivals with a time to the
-            ///   line. Nothing beyond the upstream junction, and no routes.
+            ///   the approach road only (radar): standing vehicles are the
+            ///   queue, moving ones are arrivals with a time to the line.
+            ///   Nothing beyond the upstream junction, and no routes.
             ///
             /// An approach lane serving several movements is split among them
             /// by their measured shares.
             /// </summary>
             private unsafe void Sense(DynamicBuffer<JunctionPhase> phases, DynamicBuffer<JunctionLane> lanes,
+                DynamicBuffer<DetectorLane> detectors, bool hasDetectors,
                 DynamicBuffer<MovementCounter> counters, DynamicBuffer<MovementStatistics> statistics, int movementCount)
             {
                 float* waiting = stackalloc float[movementCount];
                 float* soon = stackalloc float[movementCount];
+                float* near = stackalloc float[movementCount];
                 float* arriving = stackalloc float[movementCount];
                 bool* blocked = stackalloc bool[movementCount];
                 bool* busy = stackalloc bool[movementCount];
@@ -239,6 +255,7 @@ namespace TLL.Systems
                 {
                     waiting[m] = 0f;
                     soon[m] = 0f;
+                    near[m] = 0f;
                     arriving[m] = 0f;
                     blocked[m] = false;
                     busy[m] = false;
@@ -295,7 +312,16 @@ namespace TLL.Systems
                     Entity approach = lanes[l].Approach;
                     if (approach == Entity.Null || SeenBefore(lanes, l, approach))
                         continue;
-                    Detect(approach, out float q, out float s, out float a);
+                    float q = 0f, s = 0f, n = 0f, a = 0f;
+                    Detect(approach, 0f, ref q, ref s, ref n, ref a);
+                    if (hasDetectors)
+                    {
+                        for (int d = 0; d < detectors.Length; d++)
+                        {
+                            if (detectors[d].Approach == approach)
+                                Detect(detectors[d].Lane, detectors[d].Offset, ref q, ref s, ref n, ref a);
+                        }
+                    }
                     if (q == 0f && s == 0f && a == 0f)
                         continue;
                     float total = 0f;
@@ -315,6 +341,7 @@ namespace TLL.Systems
                         float share = total > 0f ? statistics[m].Recent / total : 1f / sharing;
                         waiting[m] += q * share;
                         soon[m] += s * share;
+                        near[m] += n * share;
                         arriving[m] += a * share;
                     }
                 }
@@ -327,6 +354,7 @@ namespace TLL.Systems
                     ref JunctionPhase phase = ref phases.ElementAt(p);
                     float demand = 0f;
                     float pressure = 0f;
+                    float approaching = 0f;
                     bool phaseBusy = false;
                     bool phasePreempt = false;
                     for (int m = 0; m < movementCount; m++)
@@ -342,32 +370,37 @@ namespace TLL.Systems
                         // nobody, so it hardly counts.
                         float own = waiting[m] + soon[m] + 0.5f * arriving[m];
                         pressure += blocked[m] ? own * 0.1f : own;
+                        // A platoon held for is only worth it if it can leave.
+                        if (!blocked[m])
+                            approaching += near[m];
                         phaseBusy |= busy[m];
                         phasePreempt |= preempt[m];
                     }
                     phase.Data.Demand = demand;
                     phase.Data.Pressure = pressure;
+                    phase.Data.Approaching = approaching;
                     phase.Data.Busy = phaseBusy;
                     phase.Data.Preempt = phasePreempt;
                 }
             }
 
             /// <summary>
-            /// The approach zone of one lane: vehicles standing within reach
-            /// of the line, moving ones that reach it within the passage time,
-            /// and moving ones that reach it within the planning horizon.
+            /// Adds what one lane of the approach zone sees: vehicles standing
+            /// (<paramref name="waiting"/>), moving ones that reach the line
+            /// within the passage time (<paramref name="soon"/>), within the
+            /// hold horizon (<paramref name="near"/>) and within the planning
+            /// horizon (<paramref name="arriving"/>, which includes near).
+            /// <paramref name="offset"/> is the distance from the end of the
+            /// lane to the stop line.
             /// </summary>
-            private void Detect(Entity approach, out float waiting, out float soon, out float arriving)
+            private void Detect(Entity lane, float offset, ref float waiting, ref float soon, ref float near, ref float arriving)
             {
-                waiting = 0f;
-                soon = 0f;
-                arriving = 0f;
-                if (!LaneObjects.TryGetBuffer(approach, out DynamicBuffer<LaneObject> objects) || objects.Length == 0 || !Curves.HasComponent(approach))
+                if (!LaneObjects.TryGetBuffer(lane, out DynamicBuffer<LaneObject> objects) || objects.Length == 0 || !Curves.HasComponent(lane))
                     return;
-                float length = Curves[approach].m_Length;
+                float length = Curves[lane].m_Length;
                 for (int i = 0; i < objects.Length; i++)
                 {
-                    float distance = (1f - math.cmax(objects[i].m_CurvePosition)) * length;
+                    float distance = offset + (1f - math.cmax(objects[i].m_CurvePosition)) * length;
                     if (distance > kDetectionRange)
                         continue;
                     float speed = Movings.TryGetComponent(objects[i].m_LaneObject, out Game.Objects.Moving moving) ? math.length(moving.m_Velocity) : 0f;
@@ -378,8 +411,13 @@ namespace TLL.Systems
                     }
                     float eta = distance / speed;
                     if (eta <= kPassageTime || distance <= kStopLineReach)
+                    {
                         soon += 1f;
-                    else if (eta <= kHorizon)
+                        continue;
+                    }
+                    if (eta <= kHoldHorizon)
+                        near += 1f;
+                    if (eta <= kHorizon)
                         arriving += 1f;
                 }
             }
