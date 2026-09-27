@@ -56,12 +56,6 @@ namespace TLL.Systems
         /// </summary>
         private const float kTramWeight = 10f;
 
-        /// <summary>Most pressure a phase gets from pedestrian calls, in vehicles, reached after <see cref="kPedestrianCallRamp"/>.</summary>
-        private const float kPedestrianCallWeight = 5f;
-
-        /// <summary>Seconds of waiting over which a pedestrian call grows from one vehicle to its full weight.</summary>
-        private const float kPedestrianCallRamp = 60f;
-
         /// <summary>The game's vehicles ask for green with priority 100, emergency vehicles with 108.</summary>
         private const int kEmergencyPriority = 108;
 
@@ -491,15 +485,11 @@ namespace TLL.Systems
                         phaseBusy |= moving[m];
                         phasePreempt |= preempt[m];
                     }
-                    // The game tells only that someone waits at a crosswalk,
-                    // not how many, so a call weighs once per phase, however
-                    // many of its crosswalks have one. It starts at one
-                    // vehicle, so a fresh call does not cut a queue short,
-                    // and grows while the pedestrians wait, up to a few
-                    // vehicles after a minute: at a busy corner that is a
-                    // crowd.
-                    if (phaseCall)
-                        pressure += PedestrianPressure(phase.Data.WaitSteps);
+                    // A pedestrian call asks for the phase but adds no
+                    // pressure: it decides whether the phase comes, not
+                    // ahead of which queue. Pedestrians then get their walk
+                    // and no more, and the maximum wait makes sure they are
+                    // served against steady traffic.
                     phase.Data.Demand = demand;
                     phase.Data.Pressure = pressure;
                     phase.Data.Approaching = approaching;
@@ -593,12 +583,6 @@ namespace TLL.Systems
                     }
                 }
                 return false;
-            }
-
-            private static float PedestrianPressure(ushort waitSteps)
-            {
-                float waited = SimTime.ToSeconds(waitSteps);
-                return 1f + (kPedestrianCallWeight - 1f) * math.saturate(waited / kPedestrianCallRamp);
             }
 
             private bool AnyMoving(DynamicBuffer<LaneObject> objects)

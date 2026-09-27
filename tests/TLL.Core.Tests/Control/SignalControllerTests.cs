@@ -411,6 +411,29 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
+        public void PedestrianCallGetsTheWalkWithoutCuttingAQueueShort()
+        {
+            // A steady queue on phase 0, someone waiting at the crosswalks of
+            // phase 1. The call makes phase 1 come, but not before the queue
+            // had its green up to the maximum; phase 1 then gets the walk and
+            // no more.
+            PhaseData cars = ControllerHarness.Phase(5, 30, 20);
+            PhaseData crossing = ControllerHarness.Phase(5, 30, 20, PhaseFlags.Pedestrian);
+            crossing.WalkGreen = (ushort)SimTime.ToSteps(15f);
+            var h = new ControllerHarness(ControllerConfig.Default(ControlMode.Adaptive), cars, crossing);
+            h.Run(0, 400, (s, p) =>
+            {
+                p[0].Demand = 5f;
+                p[0].Pressure = 5f;
+                p[1].PedestrianCall = true;
+            });
+            var greens = h.GreenLengths();
+            Assert.True(greens[0].phase == 0 && greens[0].length >= h.Phases[0].MaxGreen, $"first green: phase {greens[0].phase}, {greens[0].length} steps");
+            var walk = greens.First(g => g.phase == 1);
+            Assert.InRange(walk.length, crossing.WalkGreen, crossing.WalkGreen + 1);
+        }
+
+        [Fact]
         public void LongRestDoesNotBlockTheJunction()
         {
             // A quiet junction rests in one green for days (more steps than a
