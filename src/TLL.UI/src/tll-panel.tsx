@@ -227,7 +227,9 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
 const AutopilotLine = ({ autopilot, junction, t }: { autopilot: AutopilotInfo; junction: JunctionInfo; t: Translate }) => {
   const measuring = autopilot.estimates.length === 0;
   const traffic = measuring
-    ? t("Panel.Collecting", "Still measuring the traffic")
+    ? autopilot.tooQuiet
+      ? t("Panel.TooQuiet", "too little traffic to compare layouts")
+      : t("Panel.Collecting", "still measuring the traffic")
     : `${t("Panel.MainRoad", "Main road")} ${perHour(autopilot.majorVolume)} · ${t("Panel.SideRoad", "side road")} ${perHour(autopilot.minorVolume)}`;
   const comparison = autopilot.estimates
     .map((e) => `${e.strategy === junction.strategy ? "▸ " : "   "}${t("Strategy." + PlanStrategy[e.strategy], PlanStrategy[e.strategy])}: Ø ${seconds(e.delay)}, ${Math.round(e.saturation * 100)} %`)

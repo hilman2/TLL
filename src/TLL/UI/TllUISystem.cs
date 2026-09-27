@@ -390,6 +390,8 @@ namespace TLL.UI
             writer.Write(a.MinorVolume);
             writer.PropertyName("signalAdvice");
             writer.Write((int)a.SignalAdvice);
+            writer.PropertyName("tooQuiet");
+            writer.Write(a.TooQuiet);
             writer.PropertyName("pending");
             writer.Write(a.PendingRounds > 0 ? (int)a.Pending : -1);
             writer.PropertyName("estimates");

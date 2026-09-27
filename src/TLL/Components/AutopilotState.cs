@@ -24,6 +24,9 @@ namespace TLL.Components
         public float4 LayoutSaturation;
         public bool HasEstimate;
 
+        /// <summary>The last review found too little traffic at the peak to compare layouts.</summary>
+        public bool TooQuiet;
+
         public SignalAdvice SignalAdvice;
 
         /// <summary>Recent vehicles per hour on the main road and on the busiest side road approach.</summary>

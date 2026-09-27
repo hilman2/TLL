@@ -76,6 +76,8 @@ export interface AutopilotInfo {
   majorVolume: number;
   minorVolume: number;
   signalAdvice: SignalAdvice;
+  /** Too little traffic at the peak so far to compare layouts. */
+  tooQuiet: boolean;
   /** Layout the autopilot wants to change to at the next review, -1 for none. */
   pending: number;
   /** From the last layout review; empty until there is enough traffic. */

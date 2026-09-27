@@ -53,6 +53,10 @@ namespace TLL.Systems
         private long m_LastStep;
         private int m_Round;
 
+        // Per round, for the log line of a regular review.
+        private int m_Estimated;
+        private int m_LayoutChanges;
+
         public override int GetUpdateInterval(SystemUpdatePhase phase)
         {
             return 4096;
@@ -91,9 +95,13 @@ namespace TLL.Systems
             m_Round++;
             bool layoutRound = m_Round % kLayoutEvery == 0;
             Setting settings = Mod.Settings;
+            m_Estimated = 0;
+            m_LayoutChanges = 0;
 
             using (NativeArray<Entity> nodes = m_Query.ToEntityArray(Allocator.Temp))
             {
+                if (layoutRound)
+                    Mod.Log.Info($"Autopilot review: {nodes.Length} junction(s) measured.");
                 foreach (Entity node in nodes)
                 {
                     DynamicBuffer<MovementCounter> counters = EntityManager.GetBuffer<MovementCounter>(node);
@@ -125,6 +133,8 @@ namespace TLL.Systems
                     }
                 }
             }
+            if (layoutRound)
+                Mod.Log.Info($"Autopilot review: {m_Estimated} layout estimate(s), {m_LayoutChanges} junction(s) change their layout.");
         }
 
         /// <summary>Turns the round's counts into rates and updates the running figures.</summary>
@@ -258,8 +268,11 @@ namespace TLL.Systems
                 rebuild = true;
             }
 
-            if (layoutRound)
-                ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, ref rebuild);
+            // A junction without an estimate yet gets one at once, from the
+            // saved statistics; only changing its layout waits for the
+            // regular reviews.
+            if (layoutRound || !state.HasEstimate)
+                ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, layoutRound, ref rebuild);
 
             if (changed || rebuild)
                 EntityManager.SetComponentData(node, junction);
@@ -280,10 +293,15 @@ namespace TLL.Systems
                 EntityManager.AddComponentData(node, state);
         }
 
+        /// <summary>
+        /// Estimates every layout from the peak traffic for the panel, and
+        /// with <paramref name="decide"/> set, a regular review, changes the
+        /// layout where the setting leaves it to the autopilot.
+        /// </summary>
         private void ReviewLayout(Entity node, ref ManagedJunction junction, ref AutopilotState state, Setting settings,
-            DynamicBuffer<MovementStatistics> statistics, float[] peakByApproach, int[] opposite, ref bool rebuild)
+            DynamicBuffer<MovementStatistics> statistics, float[] peakByApproach, int[] opposite, bool decide, ref bool rebuild)
         {
-            if (settings.AutoLayout != AutoLayout.Automatic)
+            if (decide && settings.AutoLayout != AutoLayout.Automatic)
             {
                 PlanStrategy fixedChoice = settings.InitialStrategy();
                 if (junction.Strategy != fixedChoice)
@@ -291,7 +309,6 @@ namespace TLL.Systems
                     junction.Strategy = fixedChoice;
                     rebuild = true;
                 }
-                return;
             }
 
             JunctionLayout layout = JunctionAnalysis.Analyse(EntityManager, node, m_CityConfiguration.leftHandTraffic);
@@ -305,11 +322,13 @@ namespace TLL.Systems
                 if (!layout.Model.Movements[m].IsPedestrian)
                     total += volumes[m];
             }
-            if (total < kMinimumVolume)
+            state.TooQuiet = total < kMinimumVolume;
+            if (state.TooQuiet)
                 return;
 
             PlanEstimate[] estimates = JunctionAdvisor.EvaluateAll(layout.Model, volumes, DelayParameters.Default);
             state.HasEstimate = true;
+            m_Estimated++;
             state.LayoutDelay = new float4(estimates[0].AverageDelay, estimates[1].AverageDelay, estimates[2].AverageDelay, estimates[3].AverageDelay);
             state.LayoutSaturation = new float4(estimates[0].WorstSaturation, estimates[1].WorstSaturation, estimates[2].WorstSaturation, estimates[3].WorstSaturation);
 
@@ -318,6 +337,8 @@ namespace TLL.Systems
             Road(peakByApproach, opposite, out _, out float major, out float minor, out _);
             state.SignalAdvice = SignalAdvisor.Decide(true, major, minor, best.AverageDelay);
 
+            if (!decide || settings.AutoLayout != AutoLayout.Automatic)
+                return;
             if (choice == junction.Strategy)
             {
                 state.PendingRounds = 0;
@@ -336,6 +357,7 @@ namespace TLL.Systems
                 return;
             if (settings.VerboseLogging)
                 Mod.Log.Info($"Autopilot: junction {node} changes from {junction.Strategy} to {choice}, expected mean delay {best.AverageDelay:0.0} s.");
+            m_LayoutChanges++;
             junction.Strategy = choice;
             state.PendingRounds = 0;
             rebuild = true;
