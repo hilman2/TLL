@@ -180,6 +180,8 @@ namespace TLL.UI
             writer.TypeBegin("tll.Summary");
             writer.PropertyName("available");
             writer.Write(s.Available);
+            writer.PropertyName("conflict");
+            writer.Write(m_Control.Conflict ?? "");
             writer.PropertyName("automation");
             writer.Write(Mod.Settings != null && Mod.Settings.AutoManageAll);
             writer.PropertyName("managed");

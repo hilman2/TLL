@@ -86,6 +86,49 @@ namespace TLL.Systems
 
         public bool Available { get; private set; }
 
+        /// <summary>Name of another mod that drives traffic lights and made TLL stand back, or null.</summary>
+        public string Conflict { get; private set; }
+
+        protected override void OnGameLoadingComplete(Colossal.Serialization.Entities.Purpose purpose, GameMode mode)
+        {
+            base.OnGameLoadingComplete(purpose, mode);
+            if (!Available || !mode.IsGame())
+                return;
+            try
+            {
+                // Checked when a city loads, when every mod has registered
+                // its systems. A mod that replaced the game's query after TLL
+                // counts as a conflict even if it is not known by name.
+                string conflict = ModConflicts.Find(World);
+                if (conflict == null && !VanillaBypass.IsIntact(World))
+                    conflict = "?";
+                if (conflict == null)
+                    return;
+                StandBack(conflict);
+            }
+            catch (System.Exception e)
+            {
+                Mod.Log.Error(e, "Checking for other traffic light mods failed.");
+            }
+        }
+
+        /// <summary>
+        /// Leaves every junction to the game and the other mod for the rest
+        /// of the session. Managed junctions keep their TLL data in the save,
+        /// so they come back once the other mod is removed; until then their
+        /// signal groups are rebuilt by whoever controls them now.
+        /// </summary>
+        private void StandBack(string conflict)
+        {
+            Conflict = conflict;
+            Mod.Log.Warn($"{conflict} drives traffic lights as well. TLL stays out of the way while it is loaded.");
+            VanillaBypass.Undo(World);
+            Available = false;
+            Enabled = false;
+            EntityQuery managed = GetEntityQuery(ComponentType.ReadOnly<ManagedJunction>());
+            EntityManager.AddComponent<RebuildRequest>(managed);
+        }
+
         public override int GetUpdateInterval(SystemUpdatePhase phase)
         {
             return SimTime.FramesPerStep;

@@ -136,6 +136,7 @@ const scenarios = {
   "vanilla junction": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: true } },
   "junction without signals": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false } },
   "roundabout": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, roundabout: true } },
+  "other traffic mod": { "tll.summary": { available: false, conflict: "Traffic Lights Enhancement", automation: true, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] } },
   "unavailable": { "tll.summary": { available: false, automation: false, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] } },
 };
 

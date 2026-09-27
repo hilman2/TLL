@@ -61,7 +61,11 @@ export const TllPanel = () => {
       <Scrollable className={styles.scroll} vertical>
         {!summary.available && (
           <div className={styles.warning}>
-            {t("Panel.Unavailable", "The game has changed in a way TLL does not recognise. All traffic lights are left to the game.")}
+            {summary.conflict === "?"
+              ? t("Panel.ConflictUnknown", "Another mod drives the traffic lights as well. TLL stays off while it is loaded.")
+              : summary.conflict
+                ? `${summary.conflict}: ${t("Panel.Conflict", "this mod drives the traffic lights as well. TLL stays off while it is loaded.")}`
+                : t("Panel.Unavailable", "The game has changed in a way TLL does not recognise. All traffic lights are left to the game.")}
           </div>
         )}
 

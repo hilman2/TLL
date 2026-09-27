@@ -95,6 +95,8 @@ export interface Problem extends EntityRef {
 
 export interface Summary {
   available: boolean;
+  /** Name of another traffic light mod TLL stands back for, "?" if unknown, "" for none. */
+  conflict: string;
   automation: boolean;
   managed: number;
   greenWaves: number;
@@ -143,7 +145,7 @@ export interface JunctionInfo extends EntityRef {
   autopilot: AutopilotInfo | null;
 }
 
-const emptySummary: Summary = { available: true, automation: false, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] };
+const emptySummary: Summary = { available: true, conflict: "", automation: false, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] };
 
 export const summary$ = bindValue<Summary>(group, "summary", emptySummary);
 export const selected$ = bindValue<JunctionInfo | null>(group, "selected", null);

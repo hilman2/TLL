@@ -54,6 +54,8 @@
 
   "Panel.Title": "Traffic Lights & Lanes",
   "Panel.Unavailable": "The game has changed in a way TLL does not recognise. All traffic lights are left to the game.",
+  "Panel.Conflict": "this mod drives the traffic lights as well. TLL stays off while it is loaded.",
+  "Panel.ConflictUnknown": "Another mod drives the traffic lights as well. TLL stays off while it is loaded.",
   "Panel.Managed": "Junctions controlled by TLL",
   "Panel.AutomationOn": "Automation on",
   "Panel.AutomationOff": "Automation off",

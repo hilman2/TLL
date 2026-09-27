@@ -54,6 +54,8 @@
 
   "Panel.Title": "Traffic Lights & Lanes",
   "Panel.Unavailable": "Das Spiel hat sich so geändert, dass TLL es nicht wiedererkennt. Alle Ampeln bleiben beim Spiel.",
+  "Panel.Conflict": "Dieser Mod steuert ebenfalls die Ampeln. TLL bleibt aus, solange er geladen ist.",
+  "Panel.ConflictUnknown": "Ein anderer Mod steuert ebenfalls die Ampeln. TLL bleibt aus, solange er geladen ist.",
   "Panel.Managed": "Von TLL gesteuerte Kreuzungen",
   "Panel.AutomationOn": "Automatik an",
   "Panel.AutomationOff": "Automatik aus",

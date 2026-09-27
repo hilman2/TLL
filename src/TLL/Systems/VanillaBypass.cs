@@ -22,6 +22,9 @@ namespace TLL.Systems
     {
         private const string kQueryField = "m_TrafficLightQuery";
 
+        private static EntityQuery s_Original;
+        private static EntityQuery s_Replacement;
+
         /// <returns>True if the game's system now skips managed junctions.</returns>
         public static bool Apply(World world)
         {
@@ -60,8 +63,33 @@ namespace TLL.Systems
                 },
             });
             field.SetValue(system, replacement);
+            s_Original = original;
+            s_Replacement = replacement;
             Mod.Log.Info("The game's traffic light system now skips junctions managed by TLL.");
             return true;
+        }
+
+        /// <summary>
+        /// Whether the game's system still uses TLL's query. Another mod that
+        /// replaces the same query after TLL has loaded takes the exclusion
+        /// away, and the game would drive managed junctions again.
+        /// </summary>
+        public static bool IsIntact(World world)
+        {
+            FieldInfo field = typeof(TrafficLightSystem).GetField(kQueryField, BindingFlags.Instance | BindingFlags.NonPublic);
+            if (field == null || s_Replacement == default)
+                return false;
+            return (EntityQuery)field.GetValue(world.GetOrCreateSystemManaged<TrafficLightSystem>()) == s_Replacement;
+        }
+
+        /// <summary>Gives the game's system its own query back, if TLL's is still in place.</summary>
+        public static void Undo(World world)
+        {
+            if (!IsIntact(world))
+                return;
+            FieldInfo field = typeof(TrafficLightSystem).GetField(kQueryField, BindingFlags.Instance | BindingFlags.NonPublic);
+            field.SetValue(world.GetOrCreateSystemManaged<TrafficLightSystem>(), s_Original);
+            Mod.Log.Info("The game's traffic light system drives all junctions again.");
         }
 
         private static bool ContainsType(EntityQuery query, ComponentType type)
