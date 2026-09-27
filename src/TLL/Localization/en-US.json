@@ -83,7 +83,7 @@
   "Panel.Yield": "yields",
   "Panel.Release": "Return to the game's control",
   "Panel.Of": "of",
-  "Panel.CoordinatedNote": "Runs in a green wave. Choose another mode to take it out.",
+  "Panel.CoordinatedNote": "Runs in a green wave: a fixed cycle shared with its neighbours, side roads only on demand, and the main road gives up its green early when nobody comes. Choose another mode to take the junction out.",
   "Panel.GreenWaves": "Green waves",
   "Panel.Junctions": "junctions",
   "Panel.RebuildGreenWaves": "Recalculate",

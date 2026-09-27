@@ -473,6 +473,63 @@ namespace TLL.Core.Tests.Control
             }
         }
 
+        /// <summary>
+        /// A green wave junction whose main road has nobody waiting and
+        /// <paramref name="approaching"/> vehicles within the hold horizon;
+        /// both side phases always have demand. Returns the harness and the
+        /// coordinated window.
+        /// </summary>
+        private static ControllerHarness EmptyMainRoad(float approaching, out int cycle, out int start, out int end)
+        {
+            ControllerHarness h = FixedThreePhase(offset: 0, mode: ControlMode.Coordinated);
+            var access = new PhaseArray(h.Phases);
+            cycle = SignalController.CycleOf(in h.Config, ref access);
+            start = SignalController.StartOf(in h.Config, ref access, 0);
+            end = SignalController.EndOf(in h.Config, ref access, 0);
+            h.Run(0, cycle * 10, (s, p) =>
+            {
+                p[0].Demand = 0f;
+                p[0].Approaching = approaching;
+                p[1].Demand = 2f;
+                p[2].Demand = 2f;
+            });
+            return h;
+        }
+
+        [Fact]
+        public void WaveGivesUpItsGreenWhenTheMainRoadIsEmpty()
+        {
+            ControllerHarness h = EmptyMainRoad(approaching: 0f, out int cycle, out int start, out int end);
+            // Well inside the window, after the minimum green, the side
+            // streets have it.
+            int middle = (start + end) / 2;
+            var inside = h.Trace.Where(r => r.Step >= cycle * 2 && SimTime.Mod(r.Step, cycle) == middle).ToList();
+            Assert.NotEmpty(inside);
+            Assert.All(inside, r => Assert.False(r.Stage == Stage.Green && r.Phase == 0, $"step {r.Step}: the wave kept an empty green"));
+        }
+
+        [Fact]
+        public void WaveKeepsItsGreenForAnArrivingPlatoon()
+        {
+            ControllerHarness h = EmptyMainRoad(approaching: 3f, out int cycle, out int start, out int end);
+            foreach (var r in h.Trace.Where(r => r.Step >= cycle * 2))
+            {
+                int position = SimTime.Mod(r.Step, cycle);
+                if (position >= start && position < end)
+                    Assert.True(r.Stage == Stage.Green && r.Phase == 0, $"step {r.Step}, position {position}: {r.Stage} phase {r.Phase}");
+            }
+        }
+
+        [Fact]
+        public void WaveIsBackOnScheduleAfterGivingUpItsGreen()
+        {
+            ControllerHarness h = EmptyMainRoad(approaching: 0f, out int cycle, out int start, out _);
+            // The window opens on time every cycle, so the next platoon finds green.
+            var opening = h.Trace.Where(r => r.Step >= cycle * 2 && SimTime.Mod(r.Step, cycle) == start).ToList();
+            Assert.NotEmpty(opening);
+            Assert.All(opening, r => Assert.True(r.Stage == Stage.Green && r.Phase == 0, $"step {r.Step}: {r.Stage} phase {r.Phase} at the window's start"));
+        }
+
         [Fact]
         public void WithoutIntergreenTheScheduleStillHolds()
         {

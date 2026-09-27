@@ -278,10 +278,14 @@ namespace TLL.Core.Control
         {
             ref PhaseData current = ref phases[s.Phase];
             bool forcedOff = s.GreenLeft == 0 && pastMin;
-            bool gapOut = c.Mode == ControlMode.Coordinated
-                && !current.HasFlag(PhaseFlags.Coordinated)
-                && pastMin
-                && current.Demand <= 0f;
+            // In a green wave the side phases end when their queue is gone.
+            // The wave's own phase ends early only when the detectors see
+            // nobody on it within the hold horizon and someone else waits:
+            // its platoon has passed, and the next one comes with the next
+            // cycle, when the phase is back on schedule.
+            bool empty = current.Demand <= 0f
+                && (!current.HasFlag(PhaseFlags.Coordinated) || (current.Approaching <= 0f && OthersRequested(in c, ref phases, s.Phase)));
+            bool gapOut = c.Mode == ControlMode.Coordinated && pastMin && empty;
 
             if (!forcedOff && !gapOut)
                 return -1;

@@ -157,9 +157,16 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
 
       {junction.autopilot && <AutopilotLine autopilot={junction.autopilot} junction={junction} t={t} />}
 
-      <Hint text={modeHint}>
-        <div className={styles.label}>{junction.mode === ControlMode.Coordinated ? `${t("Panel.Mode", "Control")}: ${t("Mode.Coordinated", "Green wave")}` : t("Panel.Mode", "Control")}</div>
-      </Hint>
+      <div className={styles.label}>{t("Panel.Mode", "Control")}</div>
+      {junction.mode === ControlMode.Coordinated && (
+        <div className={styles.row}>
+          <Hint text={modeHint}>
+            <Button variant="flat" className={styles.wide} selected>
+              {`${t("Mode.Coordinated", "Green wave")} #${junction.group}`}
+            </Button>
+          </Hint>
+        </div>
+      )}
       {pairs(modes).map((row, i) => (
         <div key={i} className={styles.row}>
           {row.map((m) => (

@@ -83,7 +83,7 @@
   "Panel.Yield": "wartepflichtig",
   "Panel.Release": "Ans Spiel zurückgeben",
   "Panel.Of": "von",
-  "Panel.CoordinatedNote": "Läuft in einer grünen Welle. Wähle einen anderen Modus, um sie herauszunehmen.",
+  "Panel.CoordinatedNote": "Läuft in einer grünen Welle: fester gemeinsamer Umlauf mit den Nachbarn, Nebenrichtungen nur bei Bedarf, und die Hauptrichtung gibt früher ab, wenn niemand kommt. Wähle einen anderen Modus, um die Kreuzung herauszunehmen.",
   "Panel.GreenWaves": "Grüne Wellen",
   "Panel.Junctions": "Kreuzungen",
   "Panel.RebuildGreenWaves": "Neu berechnen",

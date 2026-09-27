@@ -21,9 +21,12 @@ namespace TLL.Systems
     /// its junctions to coordinated control. Junctions that no longer belong
     /// to a corridor go back to the automation's normal mode.
     ///
-    /// Runs every 16384 simulation frames, about every four simulated
-    /// minutes, and when the player asks for it. Manual junctions are never
-    /// touched.
+    /// Only links with enough measured traffic for their length are
+    /// considered, and only waves with a usable band run (see
+    /// <see cref="Coupling"/>); everything else stays adaptive.
+    ///
+    /// Runs every 16384 simulation frames, a sixteenth of a game day, and
+    /// when the player asks for it. Manual junctions are never touched.
     /// </summary>
     public partial class CoordinationSystem : TllSystemBase
     {
@@ -51,6 +54,10 @@ namespace TLL.Systems
         private SimulationSystem m_Simulation;
         private uint m_LastRound;
         private bool m_HasRun;
+
+        // Per round, for the log line.
+        private int m_LinksTooQuiet;
+        private int m_BandTooNarrow;
 
         public override int GetUpdateInterval(SystemUpdatePhase phase)
         {
@@ -108,6 +115,8 @@ namespace TLL.Systems
 
             var inCorridor = new HashSet<Entity>();
             int corridors = 0;
+            m_LinksTooQuiet = 0;
+            m_BandTooNarrow = 0;
             if (settings.AutoGreenWaves && nodes.Count >= 2)
             {
                 SignalNetwork network = BuildNetwork(nodes, out List<List<Entity>> edgesOf);
@@ -131,8 +140,7 @@ namespace TLL.Systems
             }
             Corridors = corridors;
             CoordinatedJunctions = inCorridor.Count;
-            if (settings.VerboseLogging)
-                Mod.Log.Info($"Green waves: {corridors} corridor(s) over {inCorridor.Count} junction(s).");
+            Mod.Log.Info($"Green waves: {corridors} corridor(s) over {inCorridor.Count} junction(s); {m_LinksTooQuiet} link(s) with too little traffic, {m_BandTooNarrow} corridor(s) with too narrow a band.");
         }
 
         private SignalNetwork BuildNetwork(List<Entity> nodes, out List<List<Entity>> edgesOf)
@@ -161,6 +169,14 @@ namespace TLL.Systems
                     int b = edgesOf[k].IndexOf(arrival);
                     if (b < 0)
                         continue;
+                    // Traffic on the link in both directions, as the two
+                    // junctions measured it arriving from it, at its peak.
+                    float volume = InflowFrom(nodes[i], edges[a]) + InflowFrom(nodes[k], arrival);
+                    if (!Coupling.Couple(volume, length, InOneWave(nodes[i], nodes[k])))
+                    {
+                        m_LinksTooQuiet++;
+                        continue;
+                    }
                     network.Links.Add(new SignalLink
                     {
                         A = i,
@@ -169,7 +185,7 @@ namespace TLL.Systems
                         ApproachB = b,
                         Length = length,
                         Speed = SpeedOf(edges[a]),
-                        Weight = CarLaneCount(edges[a]),
+                        Weight = volume,
                     });
                 }
             }
@@ -273,6 +289,11 @@ namespace TLL.Systems
             }
 
             CoordinationPlan plan = Coordinator.Plan(path, members, OptimizerLimits.Default);
+            if (!Coupling.BandWorthIt(plan.BandwidthA, plan.BandwidthB, plan.Cycle))
+            {
+                m_BandTooNarrow++;
+                return false;
+            }
             for (int k = 0; k < path.Junctions.Count; k++)
             {
                 Entity node = nodes[path.Junctions[k]];
@@ -350,15 +371,27 @@ namespace TLL.Systems
             return kDefaultSpeed;
         }
 
-        private float CarLaneCount(Entity edge)
+        /// <summary>Peak vehicles per hour arriving at the junction from the given road.</summary>
+        private float InflowFrom(Entity node, Entity edge)
         {
-            if (!EntityManager.HasBuffer<SubLane>(edge))
+            if (!EntityManager.HasBuffer<MovementStatistics>(node))
                 return 0f;
-            int count = 0;
-            DynamicBuffer<SubLane> lanes = EntityManager.GetBuffer<SubLane>(edge, true);
-            for (int i = 0; i < lanes.Length; i++)
-                count += EntityManager.HasComponent<CarLane>(lanes[i].m_SubLane) ? 1 : 0;
-            return count;
+            DynamicBuffer<JunctionMovement> movements = EntityManager.GetBuffer<JunctionMovement>(node, true);
+            DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node, true);
+            float sum = 0f;
+            for (int m = 0; m < movements.Length && m < statistics.Length; m++)
+            {
+                if (movements[m].Source == edge && movements[m].Kind != MovementKind.Pedestrian)
+                    sum += statistics[m].Peak;
+            }
+            return sum;
+        }
+
+        private bool InOneWave(Entity a, Entity b)
+        {
+            ManagedJunction ja = EntityManager.GetComponentData<ManagedJunction>(a);
+            ManagedJunction jb = EntityManager.GetComponentData<ManagedJunction>(b);
+            return ja.Mode == ControlMode.Coordinated && jb.Mode == ControlMode.Coordinated && ja.Group != 0 && ja.Group == jb.Group;
         }
     }
 }
