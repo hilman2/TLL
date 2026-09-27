@@ -25,13 +25,22 @@ namespace TLL.Systems
     /// (TimeSystem.kTicksPerDay), so that is 64 rounds a day, one every 22.5
     /// minutes on the game clock. Each round turns the counters of the
     /// control job into rates and updates the recent, daily and peak figures.
-    /// The layout is reviewed every 16 rounds (6 game hours) against the peak
+    /// The layout is reviewed every 4 rounds (1.5 game hours) against the peak
     /// figures, the traffic the junction must cope with, and changes only
-    /// when two reviews in a row agree.
+    /// when two reviews in a row agree. The review also decides whether
+    /// pedestrians stay in their own phase (see PedestrianConflicts), at
+    /// every junction that has one on demand.
     /// </summary>
     public partial class AutopilotSystem : TllSystemBase
     {
-        private const int kLayoutEvery = 16;
+        /// <summary>
+        /// Rounds from one review to the next. The peak figures a review
+        /// works from change slowly, and the two reviews a change needs and
+        /// the margin JunctionAdvisor asks for keep it from flipping; more
+        /// rounds in between only make it slower to follow the city.
+        /// </summary>
+        public const int kLayoutEvery = 4;
+        public const int kRoundFrames = 4096;
         private const int kConfirmRounds = 2;
         private const int kMinFlashRounds = 2;
 
@@ -50,13 +59,26 @@ namespace TLL.Systems
         private SimulationSystem m_Simulation;
         private CityConfigurationSystem m_CityConfiguration;
         private EntityQuery m_Query;
-        // Summed over 16 rounds, for one log line.
+        // Summed from one review round of all junctions to the next, for one log line.
         private int m_Estimated;
+        private readonly System.Diagnostics.Stopwatch m_ReviewTime = new System.Diagnostics.Stopwatch();
         private int m_LayoutChanges;
 
         public override int GetUpdateInterval(SystemUpdatePhase phase)
         {
-            return 4096;
+            return kRoundFrames;
+        }
+
+        /// <summary>
+        /// Simulation frames from <paramref name="frameIndex"/> to the next
+        /// round in which <paramref name="node"/> is reviewed.
+        /// </summary>
+        public static uint FramesToReview(uint frameIndex, Entity node)
+        {
+            uint round = frameIndex / kRoundFrames + 1;
+            while ((round + (uint)node.Index) % kLayoutEvery != 0)
+                round++;
+            return round * kRoundFrames - frameIndex;
         }
 
         protected override void OnCreate()
@@ -90,8 +112,8 @@ namespace TLL.Systems
             // Rounds are counted on the game's clock, which the save keeps,
             // so the regular layout reviews come on time however often the
             // city is loaded. Each junction has its review in a different
-            // round of the 16, which also spreads the work.
-            uint round = m_Simulation.frameIndex / 4096;
+            // one of the kLayoutEvery rounds, which also spreads the work.
+            uint round = m_Simulation.frameIndex / kRoundFrames;
             Setting settings = Mod.Settings;
 
             using (NativeArray<Entity> nodes = m_Query.ToEntityArray(Allocator.Temp))
@@ -114,6 +136,11 @@ namespace TLL.Systems
                         c.QueueSteps = 0f;
                     }
                     runtime.CountsSince = now;
+                    bool layoutRound = (round + (uint)node.Index) % kLayoutEvery == 0;
+                    // Manual junctions have scrambles on demand too, so this
+                    // part of the review comes before the autopilot's.
+                    if (layoutRound)
+                        runtime.Conflicts.Review();
                     EntityManager.SetComponentData(node, runtime);
                     UpdateHealth(node);
                     if (settings == null || !settings.AutoManageAll)
@@ -121,7 +148,6 @@ namespace TLL.Systems
                     ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
                     if (junction.Origin != JunctionOrigin.Auto)
                         continue;
-                    bool layoutRound = (round + (uint)node.Index) % kLayoutEvery == 0;
                     try
                     {
                         Decide(node, junction, settings, layoutRound);
@@ -136,9 +162,10 @@ namespace TLL.Systems
             }
             if (round % kLayoutEvery == 0)
             {
-                Mod.Log.Info($"Autopilot: {m_Estimated} layout estimate(s), {m_LayoutChanges} layout change(s) in the last {kLayoutEvery} rounds.");
+                Mod.Log.Info($"Autopilot: {m_Estimated} layout estimate(s) in {m_ReviewTime.Elapsed.TotalMilliseconds:0} ms, {m_LayoutChanges} layout change(s) in the last {kLayoutEvery} rounds.");
                 m_Estimated = 0;
                 m_LayoutChanges = 0;
+                m_ReviewTime.Reset();
             }
         }
 
@@ -282,6 +309,7 @@ namespace TLL.Systems
             // A failing estimate must not cost the decisions above.
             if (layoutRound || !state.HasEstimate)
             {
+                m_ReviewTime.Start();
                 try
                 {
                     ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, layoutRound, ref rebuild);
@@ -290,6 +318,7 @@ namespace TLL.Systems
                 {
                     Mod.Log.Error(e, $"Junction {node}: the autopilot could not compare layouts.");
                 }
+                m_ReviewTime.Stop();
             }
 
             if (changed || rebuild)

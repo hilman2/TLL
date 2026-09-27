@@ -95,6 +95,9 @@ namespace TLL.UI
             public ManagedJunction Junction;
             public ControllerState State;
             public PedestrianConflicts Conflicts;
+
+            /// <summary>Game minutes until the junction's next review (AutopilotSystem).</summary>
+            public float ReviewMinutes;
             public int Cycle;
             public int Intergreen;
 
@@ -330,6 +333,8 @@ namespace TLL.UI
             writer.Write(d.Conflicts.Divert);
             writer.PropertyName("conflicts");
             writer.Write(d.Conflicts.Count);
+            writer.PropertyName("reviewMinutes");
+            writer.Write(d.ReviewMinutes);
             writer.PropertyName("stageSeconds");
             writer.Write(SimTime.ToSeconds(d.State.StageSteps));
             writer.PropertyName("cycleSeconds");
@@ -468,6 +473,7 @@ namespace TLL.UI
                 detail.State = runtime.State;
                 detail.Conflicts = runtime.Conflicts;
             }
+            detail.ReviewMinutes = AutopilotSystem.FramesToReview(m_Simulation.frameIndex, node) * 1440f / Game.Simulation.TimeSystem.kTicksPerDay;
 
             DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(node, true);
             int intergreen = detail.Junction.Yellow + detail.Junction.AllRed + detail.Junction.Prepare;

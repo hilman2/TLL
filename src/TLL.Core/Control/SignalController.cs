@@ -368,6 +368,7 @@ namespace TLL.Core.Control
             int best = -1;
             float bestScore = float.MinValue;
             bool bestStarved = false;
+            int longest = -1;
             for (int i = 0; i < phases.Count; i++)
             {
                 if (i == s.Phase)
@@ -375,6 +376,8 @@ namespace TLL.Core.Control
                 ref PhaseData p = ref phases[i];
                 if (!Requested(in c, ref p))
                     continue;
+                if (longest < 0 || p.WaitSteps > phases[longest].WaitSteps)
+                    longest = i;
                 bool starved = p.WaitSteps >= c.MaxWait;
                 // A starved phase beats any unstarved one; among equals the
                 // pressure decides, and among starved ones the longest wait.
@@ -388,6 +391,14 @@ namespace TLL.Core.Control
             }
             if (best < 0)
                 return -1;
+            // Pedestrians add no pressure, so a phase they alone ask for, the
+            // scramble above all, would lose to every queue until the maximum
+            // wait. Their call decides whether the phase comes, not ahead of
+            // whom: once it has waited longer than everyone else, it takes the
+            // next phase end, which puts it in turn once per cycle. Taking
+            // every phase end would starve the vehicle phase with the least
+            // pressure instead.
+            int called = CallCounts(in c, ref phases[longest]) ? longest : -1;
 
             bool maxedOut = s.StageSteps >= current.MaxGreen;
             bool gappedOut = current.Demand <= 0f;
@@ -397,7 +408,7 @@ namespace TLL.Core.Control
             if (!maxedOut && !bestStarved && HoldForPlatoon(ref current, ref phases[best]))
                 return -1;
             CountEnd(ref current, maxedOut, gappedOut);
-            return best;
+            return called >= 0 && !bestStarved ? called : best;
         }
 
         /// <summary>

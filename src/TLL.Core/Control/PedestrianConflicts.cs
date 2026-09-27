@@ -12,6 +12,10 @@ namespace TLL.Core.Control
     /// longer meet, so it is people waiting to cross while turning vehicles
     /// use their crosswalk: without that, the scramble would switch itself
     /// off as soon as it worked.
+    ///
+    /// The scramble starts as soon as the conflicts pile up and then stays
+    /// until a <see cref="Review"/> finds they have almost stopped, so the
+    /// junction does not flip between the two with every few greens.
     /// </summary>
     public struct PedestrianConflicts
     {
@@ -21,7 +25,7 @@ namespace TLL.Core.Control
         /// <summary>Conflicts within the window from which pedestrians are diverted.</summary>
         public const int DivertAt = 5;
 
-        /// <summary>Conflicts within the window at or below which they cross with the vehicles again.</summary>
+        /// <summary>Conflicts within the window at or below which a review lets them cross with the vehicles again.</summary>
         public const int ReturnAt = 1;
 
         /// <summary>One bit per recorded green, newest in bit 0; set for a conflict.</summary>
@@ -40,14 +44,21 @@ namespace TLL.Core.Control
             }
         }
 
-        /// <summary>Records the green that just ended and updates <see cref="Divert"/>.</summary>
+        /// <summary>Records the green that just ended; diverts pedestrians once the conflicts reach <see cref="DivertAt"/>.</summary>
         public void Record(bool conflict)
         {
             History = (byte)((History << 1) | (conflict ? 1 : 0));
-            int n = Count;
-            if (!Divert && n >= DivertAt)
+            if (Count >= DivertAt)
                 Divert = true;
-            else if (Divert && n <= ReturnAt)
+        }
+
+        /// <summary>
+        /// The regular review, on the autopilot's schedule: ends the
+        /// diversion if the conflicts have almost stopped.
+        /// </summary>
+        public void Review()
+        {
+            if (Count <= ReturnAt)
                 Divert = false;
         }
     }

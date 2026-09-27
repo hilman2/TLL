@@ -52,6 +52,8 @@ const severeQueue = 15;
 
 const seconds = (s: number) => `${Math.round(s)} s`;
 const perHour = (v: number) => `${Math.round(v)}/h`;
+/** Time to the next review on the game clock, which is what the player sees tick. */
+const nextReview = (junction: JunctionInfo, t: Translate) => `${t("Panel.NextReview", "Next review in")} ${Math.round(junction.reviewMinutes)} min`;
 
 function pairs<T>(items: T[]): T[][] {
   const rows: T[][] = [];
@@ -271,7 +273,7 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
         <Switch
           label={
             junction.scrambleOnDemand
-              ? `${t("Panel.ScrambleOnDemand", "Scramble on demand")}: ${junction.scrambleActive ? t("Panel.ScrambleActive", "active") : t("Panel.ScrambleWaiting", "standby")} (${junction.conflicts}/8)`
+              ? `${t("Panel.ScrambleOnDemand", "Scramble on demand")}: ${junction.scrambleActive ? t("Panel.ScrambleActive", "active") : t("Panel.ScrambleWaiting", "standby")} (${junction.conflicts}/8)${junction.scrambleActive ? ` · ${nextReview(junction, t)}` : ""}`
               : t("Panel.ScrambleOnDemand", "Scramble on demand")
           }
           hint={t("Panel.ScrambleHint", "")}
@@ -393,6 +395,7 @@ const AutopilotCard = ({ autopilot, junction, t }: { autopilot: AutopilotInfo; j
       {autopilot.pending >= 0 && autopilot.pending !== junction.strategy && (
         <div className={styles.note}>{`${t("Panel.PendingLayout", "Next review changes to")}: ${t("Strategy." + PlanStrategy[autopilot.pending], PlanStrategy[autopilot.pending])}`}</div>
       )}
+      <div className={styles.faint}>{nextReview(junction, t)}</div>
       {autopilot.signalAdvice === SignalAdvice.RemoveSignals && (
         <div className={styles.note}>{t("Panel.RemoveSignals", "Priority rules would mean less waiting here than signals.")}</div>
       )}

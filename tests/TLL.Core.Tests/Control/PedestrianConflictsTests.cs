@@ -20,18 +20,38 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
-        public void StaysDivertedUntilConflictsAlmostStop()
+        public void QuietGreensAloneDoNotEndIt()
+        {
+            Assert.True(After("........", After("xxxxx")).Divert);
+        }
+
+        [Fact]
+        public void TheReviewEndsItOnceConflictsAlmostStopped()
         {
             PedestrianConflicts diverted = After("xxxxx");
-            Assert.True(After("......", diverted).Divert, "6 quiet greens leave 2 conflicts in the window");
-            Assert.False(After(".......", diverted).Divert, "7 quiet greens leave 1");
+            PedestrianConflicts two = After("......", diverted);
+            two.Review();
+            Assert.True(two.Divert, "6 quiet greens leave 2 conflicts in the window");
+            PedestrianConflicts one = After(".......", diverted);
+            one.Review();
+            Assert.False(one.Divert, "7 quiet greens leave 1");
+        }
+
+        [Fact]
+        public void TheReviewDoesNotStartIt()
+        {
+            PedestrianConflicts four = After("x.x.x.x.");
+            four.Review();
+            Assert.False(four.Divert);
         }
 
         [Fact]
         public void FourConflictsNeitherStartNorEndIt()
         {
             Assert.False(After("x.x.x.x.").Divert);
-            Assert.True(After("x.x.x.x.", After("xxxxx")).Divert);
+            PedestrianConflicts diverted = After("x.x.x.x.", After("xxxxx"));
+            diverted.Review();
+            Assert.True(diverted.Divert);
         }
 
         [Fact]

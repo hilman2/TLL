@@ -106,6 +106,7 @@ const managed = {
   scrambleOnDemand: true,
   scrambleActive: false,
   conflicts: 3,
+  reviewMinutes: 44.6,
   phases: [phase([0, 1, 3], [1]), { ...phase([2, 4]), walkGreen: 19 }],
 };
 const summary = {
@@ -135,6 +136,7 @@ const scenarios = {
     "tll.selected": {
       ...managed,
       movements: managed.movements.map((m, i) => ({ ...m, volume: i === 0 ? -1 : 120 * i })),
+      scrambleActive: true,
       autopilot: {
         majorVolume: 840, minorVolume: 210, signalAdvice: 2, pending: 1,
         estimates: [
@@ -145,6 +147,8 @@ const scenarios = {
         ],
       },
     },
+    // Texts the open panel must show; the stand-in translation gives the fallbacks.
+    expect: [">Next review in 45 min<", "active (3/8) · Next review in 45 min"],
   },
   "vanilla junction": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: true } },
   "junction without signals": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false } },
@@ -164,7 +168,15 @@ for (const [label, data] of Object.entries(scenarios)) {
     for (const { target, component } of appended) {
       try {
         const html = renderToString(React.createElement(component));
-        if (open && target === "Game") preview.push(`<h3>${label}</h3><div class="stage">${html}</div>`);
+        if (open && target === "Game") {
+          preview.push(`<h3>${label}</h3><div class="stage">${html}</div>`);
+          for (const text of data.expect ?? []) {
+            if (!html.includes(text)) {
+              failures++;
+              console.error(`FAIL ${label}: the open panel does not show "${text}"`);
+            }
+          }
+        }
       } catch (e) {
         failures++;
         console.error(`FAIL ${target}, ${label}, panel ${open ? "open" : "closed"}: ${e.message}`);

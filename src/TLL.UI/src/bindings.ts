@@ -147,6 +147,8 @@ export interface JunctionInfo extends EntityRef {
   scrambleActive: boolean;
   /** Vehicle greens with such a clash among the last eight. */
   conflicts: number;
+  /** Game minutes until the next review, which decides the layout and whether the scramble stays. */
+  reviewMinutes: number;
   stageSeconds: number;
   cycleSeconds: number;
   /** Yellow, all red and prepare between two greens, seconds. */

@@ -592,12 +592,19 @@ namespace TLL.Systems
                 });
             }
 
-            // A rebuilt plan starts its controller from scratch.
+            // A rebuilt plan starts its controller from scratch. The
+            // pedestrian conflicts are about the crossing, not the plan: the
+            // scramble stays until its review, whatever else changes.
             var runtime = new JunctionRuntime();
             if (EntityManager.HasComponent<JunctionRuntime>(node))
+            {
+                runtime.Conflicts = EntityManager.GetComponentData<JunctionRuntime>(node).Conflicts;
                 EntityManager.SetComponentData(node, runtime);
+            }
             else
+            {
                 EntityManager.AddComponentData(node, runtime);
+            }
         }
 
         private void WriteDetectors(Entity node, List<DetectorLane> detectors)

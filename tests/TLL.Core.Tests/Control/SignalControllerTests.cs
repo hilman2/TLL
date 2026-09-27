@@ -434,6 +434,43 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
+        public void CalledScrambleComesAtTheNextPhaseEnd()
+        {
+            // Two vehicle phases with steady queues and a scramble that
+            // pedestrians are diverted into. The scramble has no pressure of
+            // its own; before, it came only at the maximum wait. As a called
+            // phase it comes at the next phase end once pedestrians have
+            // waited a while, without cutting a vehicle green short.
+            PhaseData a = ControllerHarness.Phase(5, 30, 20);
+            PhaseData b = ControllerHarness.Phase(5, 30, 20);
+            PhaseData walk = ControllerHarness.Phase(5, 30, 10, PhaseFlags.Pedestrian | PhaseFlags.Scramble);
+            walk.WalkGreen = (ushort)SimTime.ToSteps(12f);
+            var config = ControllerConfig.Default(ControlMode.Adaptive);
+            config.DivertPedestrians = true;
+            var h = new ControllerHarness(config, a, b, walk);
+            h.Run(0, 1200, (s, p) =>
+            {
+                p[0].Demand = 5f;
+                p[0].Pressure = 5f;
+                p[1].Demand = 6f;
+                p[1].Pressure = 6f;
+                p[2].PedestrianCall = true;
+            });
+            // It comes well before the maximum wait, and again in every cycle.
+            long last = 0;
+            var scrambles = h.GreenStarts().Where(g => g.phase == 2).ToList();
+            Assert.True(scrambles.Count >= 3, $"scramble served {scrambles.Count} times");
+            foreach (var (step, _) in scrambles)
+            {
+                Assert.True(step - last < config.MaxWait, $"scramble green at step {step}, {step - last} steps after the one before, maximum wait {config.MaxWait}");
+                last = step;
+            }
+            // And no vehicle green is cut below its maximum for it.
+            foreach (var (phase, length) in h.GreenLengths().Where(g => g.phase < 2).Skip(1))
+                Assert.True(length >= h.Phases[phase].MaxGreen, $"phase {phase} green cut to {length} steps");
+        }
+
+        [Fact]
         public void LongRestDoesNotBlockTheJunction()
         {
             // A quiet junction rests in one green for days (more steps than a
