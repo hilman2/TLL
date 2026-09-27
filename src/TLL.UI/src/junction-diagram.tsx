@@ -10,6 +10,8 @@ interface Props {
   permitted: number[];
   leftHandTraffic: boolean;
   cameraYaw: number;
+  /** Replaces the default size, e.g. for small diagrams in a list. */
+  className?: string;
 }
 
 type Vec = { x: number; y: number };
@@ -28,7 +30,7 @@ const laneOffset = 6;
  * It is turned to match the camera, so "left" in the diagram is left on
  * screen. Arrows keep to the side of the road the city drives on.
  */
-export const JunctionDiagram = ({ approaches, movements, green, permitted, leftHandTraffic, cameraYaw }: Props) => {
+export const JunctionDiagram = ({ approaches, movements, green, permitted, leftHandTraffic, cameraYaw, className }: Props) => {
   const yaw = (cameraYaw * Math.PI) / 180;
   // World direction to screen direction (x right, y up). The camera looks
   // along (sin yaw, cos yaw) in the world's x-z plane.
@@ -70,7 +72,7 @@ export const JunctionDiagram = ({ approaches, movements, green, permitted, leftH
   });
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className={styles.diagram}>
+    <svg viewBox={`0 0 ${size} ${size}`} className={className ?? styles.diagram}>
       {dirs.map((d, i) => {
         const end = at(d, 58);
         return <line key={`road${i}`} x1={centre} y1={centre} x2={end.x} y2={end.y} className={styles.road} />;

@@ -1,4 +1,5 @@
 using Colossal.IO.AssetDatabase;
+using Game.Input;
 using Game.Modding;
 using Game.Settings;
 using TLL.Core.Control;
@@ -28,14 +29,19 @@ namespace TLL
     }
 
     [FileLocation("ModsSettings/TLL/TLL")]
-    [SettingsUIGroupOrder(kAutomation, kRules, kMap, kMaintenance, kDebug)]
-    [SettingsUIShowGroupName(kAutomation, kRules, kMap, kMaintenance, kDebug)]
+    [SettingsUIGroupOrder(kAutomation, kRules, kMap, kKeys, kMaintenance, kDebug)]
+    [SettingsUIShowGroupName(kAutomation, kRules, kMap, kKeys, kMaintenance, kDebug)]
+    [SettingsUIKeyboardAction(kTogglePanel, Usages.kDefaultUsage, Usages.kToolUsage)]
     public class Setting : ModSetting
     {
         public const string kSection = "Main";
         public const string kAutomation = "Automation";
         public const string kRules = "Rules";
         public const string kMap = "Map";
+        public const string kKeys = "Keys";
+
+        /// <summary>Input action that opens and closes the TLL panel.</summary>
+        public const string kTogglePanel = "TogglePanel";
         public const string kMaintenance = "Maintenance";
         public const string kDebug = "Debug";
 
@@ -70,6 +76,10 @@ namespace TLL
 
         [SettingsUISection(kSection, kMap)]
         public bool ShowCongestion { get; set; }
+
+        [SettingsUIKeyboardBinding(BindingKeyboard.T, kTogglePanel, alt: true)]
+        [SettingsUISection(kSection, kKeys)]
+        public ProxyBinding TogglePanelBinding { get; set; }
 
         [SettingsUIButton]
         [SettingsUIConfirmation]

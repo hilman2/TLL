@@ -36,6 +36,8 @@ namespace TLL.UI
         /// <summary>Width of a lane line in metres: a thin line on a 3 m lane.</summary>
         private const float kLaneWidth = 0.35f;
         private static readonly Color kProblem = new Color(0.9f, 0.2f, 0.2f, 1f);
+        private static readonly Color kHover = new Color(1f, 0.85f, 0.3f, 1f);
+        private static readonly Color kHoverFill = new Color(1f, 0.85f, 0.3f, 0.15f);
 
         /// <summary>
         /// Rush-hour queue, in vehicles on the worst movement, from which a
@@ -98,7 +100,10 @@ namespace TLL.UI
             Entity selected = m_UI.PanelOpen ? m_UI.Selected : Entity.Null;
             if (selected != Entity.Null && (!EntityManager.Exists(selected) || !EntityManager.HasComponent<Node>(selected)))
                 selected = Entity.Null;
-            if (!problems && !congestion && selected == Entity.Null)
+            Entity hovered = m_UI.PanelOpen ? m_UI.Hovered : Entity.Null;
+            if (hovered != Entity.Null && (!EntityManager.Exists(hovered) || !EntityManager.HasComponent<Node>(hovered)))
+                hovered = Entity.Null;
+            if (!problems && !congestion && selected == Entity.Null && hovered == Entity.Null)
                 return;
 
             if (DateTime.UtcNow - m_Collected >= kRefresh)
@@ -134,6 +139,12 @@ namespace TLL.UI
             }
             if (selected != Entity.Null)
                 DrawSelected(buffer, selected);
+            if (hovered != Entity.Null && hovered != selected)
+            {
+                // A row of the panel's lists under the pointer: where is that?
+                float3 position = EntityManager.GetComponentData<Node>(hovered).m_Position;
+                buffer.DrawCircle(kHover, kHoverFill, 1.5f, OverlayRenderSystem.StyleFlags.Projected, new float2(0f, 1f), position, 60f);
+            }
         }
 
         private void DrawSelected(OverlayRenderSystem.Buffer buffer, Entity node)

@@ -88,6 +88,7 @@ const phase = (movements, permitted = []) => ({
 const managed = {
   index: 7, version: 1, name: "Main Street / Oak Avenue", managed: true, hasSignals: true,
   mode: 2, strategy: 0, group: 3, manual: false, stage: 0, phase: 1, next: 1, stageSeconds: 8.5, cycleSeconds: 64,
+  intergreenSeconds: 4.3, cyclePosition: -1,
   leftHandTraffic: false, cameraYaw: 35,
   approaches: [
     { x: 1, z: 0, name: "Main Street" },
@@ -123,6 +124,8 @@ const scenarios = {
   "problems tab, none": { tab: "problems" },
   "managed junction": { "tll.selected": managed },
   "manual junction": { "tll.selected": { ...managed, manual: true } },
+  "junction in a green wave": { "tll.selected": { ...managed, mode: 3, group: 2, cyclePosition: 41.5 } },
+  "nothing selected": {},
   "junction in transition": { "tll.selected": { ...managed, stage: 1, phase: 0, next: 1 } },
   "flashing junction": { "tll.selected": { ...managed, mode: 4, stage: 4 } },
   "autopilot measuring": {
@@ -154,10 +157,10 @@ let failures = 0;
 const preview = [];
 for (const [label, data] of Object.entries(scenarios)) {
   for (const open of [false, true]) {
-    scenario = data;
-    // Boolean local values say whether the panel is open; the string one is
-    // the tab, chosen by the scenario's "tab" entry.
-    for (const b of localBindings) b.value = typeof b.initial === "boolean" ? open : (data.tab ?? b.initial);
+    // The C# side says whether the panel is open; the one local value is the
+    // tab, chosen by the scenario's "tab" entry.
+    scenario = { ...data, "tll.panelOpen": open };
+    for (const b of localBindings) b.value = data.tab ?? b.initial;
     for (const { target, component } of appended) {
       try {
         const html = renderToString(React.createElement(component));

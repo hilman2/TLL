@@ -92,6 +92,10 @@ namespace TLL.Localization
             {
                 if (parts.Length == 2 && parts[1] == "Title")
                     return setting.GetSettingsLocaleID();
+                if (parts.Length == 2 && parts[1] == "BindingMap")
+                    return setting.GetBindingMapLocaleID();
+                if (parts.Length == 3 && parts[1] == "Binding")
+                    return setting.GetBindingKeyLocaleID(parts[2]);
                 if (parts.Length != 3)
                     return null;
                 switch (parts[1])

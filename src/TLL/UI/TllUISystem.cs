@@ -47,13 +47,22 @@ namespace TLL.UI
         private Game.City.CityConfigurationSystem m_CityConfiguration;
 
         private Entity m_Selected;
+        private Entity m_Hovered;
         private bool m_PanelOpen;
         private DateTime m_SummaryTime;
+        private Game.Simulation.SimulationSystem m_Simulation;
+        private Game.Input.ProxyAction m_ToggleAction;
 
         /// <summary>The junction shown in the panel, or Null.</summary>
         public Entity Selected => m_Selected;
 
-        /// <summary>Whether the player has the panel open; the panel reports it.</summary>
+        /// <summary>The junction whose row in a list the pointer is over, or Null; marked on the map.</summary>
+        public Entity Hovered => m_Hovered;
+
+        /// <summary>
+        /// Whether the panel is open. Kept here, not in the panel, so the
+        /// key binding can open and close it.
+        /// </summary>
         public bool PanelOpen => m_PanelOpen;
         private DateTime m_DetailTime;
         private Summary m_Summary = new Summary();
@@ -87,6 +96,10 @@ namespace TLL.UI
             public ControllerState State;
             public PedestrianConflicts Conflicts;
             public int Cycle;
+            public int Intergreen;
+
+            /// <summary>Steps into the cycle in the timed modes, whose schedule is fixed; -1 otherwise.</summary>
+            public int CyclePosition = -1;
             public readonly List<PhaseRow> Phases = new List<PhaseRow>();
             public readonly List<MovementRow> Movements = new List<MovementRow>();
             public readonly List<ApproachRow> Approaches = new List<ApproachRow>();
@@ -129,6 +142,12 @@ namespace TLL.UI
             m_Tool = World.GetOrCreateSystemManaged<JunctionToolSystem>();
             m_Coordination = World.GetOrCreateSystemManaged<CoordinationSystem>();
             m_CityConfiguration = World.GetOrCreateSystemManaged<Game.City.CityConfigurationSystem>();
+            m_Simulation = World.GetOrCreateSystemManaged<Game.Simulation.SimulationSystem>();
+            if (Mod.Settings != null)
+            {
+                m_ToggleAction = Mod.Settings.GetAction(Setting.kTogglePanel);
+                m_ToggleAction.shouldBeEnabled = true;
+            }
             m_ManagedQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[] { ComponentType.ReadOnly<ManagedJunction>(), ComponentType.ReadOnly<JunctionPhase>() },
@@ -147,6 +166,9 @@ namespace TLL.UI
             AddBinding(new TriggerBinding(kGroup, "release", OnRelease));
             AddBinding(new TriggerBinding(kGroup, "manage", OnManage));
             AddBinding(new TriggerBinding<bool>(kGroup, "setPanelOpen", open => m_PanelOpen = open));
+            AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "panelOpen", () => m_PanelOpen));
+            AddBinding(new TriggerBinding<int, int>(kGroup, "hover", (index, version) => m_Hovered = ToEntity(index, version)));
+            AddBinding(new TriggerBinding(kGroup, "unhover", () => m_Hovered = Entity.Null));
             AddBinding(new TriggerBinding(kGroup, "rebuildGreenWaves", () => Requests.RebuildGreenWaves = true));
             AddBinding(new TriggerBinding(kGroup, "toggleTool", () => m_Tool.Toggle()));
             AddBinding(new TriggerBinding(kGroup, "diagnose", OnDiagnose));
@@ -160,6 +182,12 @@ namespace TLL.UI
         {
             try
             {
+                if (m_ToggleAction != null && m_ToggleAction.WasPerformedThisFrame())
+                {
+                    m_PanelOpen = !m_PanelOpen;
+                    if (!m_PanelOpen)
+                        m_Hovered = Entity.Null;
+                }
                 base.OnUpdate();
             }
             catch (Exception e)
@@ -306,6 +334,10 @@ namespace TLL.UI
             writer.Write(SimTime.ToSeconds(d.State.StageSteps));
             writer.PropertyName("cycleSeconds");
             writer.Write(SimTime.ToSeconds(d.Cycle));
+            writer.PropertyName("intergreenSeconds");
+            writer.Write(SimTime.ToSeconds(d.Intergreen));
+            writer.PropertyName("cyclePosition");
+            writer.Write(d.CyclePosition >= 0 ? SimTime.ToSeconds(d.CyclePosition) : -1f);
             writer.PropertyName("leftHandTraffic");
             writer.Write(d.LeftHandTraffic);
             writer.PropertyName("cameraYaw");
@@ -444,6 +476,12 @@ namespace TLL.UI
                 detail.Phases.Add(new PhaseRow { Data = phases[i].Data, Movements = phases[i].Movements, Permitted = phases[i].Permitted });
                 detail.Cycle += phases[i].Data.Green + intergreen;
             }
+            detail.Intergreen = intergreen;
+            // The same position the controller computes (SignalController),
+            // for the cursor on the panel's cycle bar.
+            ControlMode mode = detail.Junction.Mode;
+            if ((mode == ControlMode.FixedTime || mode == ControlMode.Coordinated) && detail.Cycle > 0)
+                detail.CyclePosition = SimTime.Mod(SimTime.StepOfFrame(m_Simulation.frameIndex) - detail.Junction.Offset, detail.Cycle);
 
             detail.LeftHandTraffic = m_CityConfiguration.leftHandTraffic;
             IGameCameraController camera = m_CameraSystem.activeCameraController;

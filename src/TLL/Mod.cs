@@ -26,6 +26,7 @@ namespace TLL
             Log.Info($"Loading TLL {typeof(Mod).Assembly.GetName().Version}");
 
             Settings = new Setting(this);
+            Settings.RegisterKeyBindings();
             Settings.RegisterInOptionsUI();
             LocaleSource.RegisterAll(Settings);
             AssetDatabase.global.LoadSettings("TLL", Settings, new Setting(this));

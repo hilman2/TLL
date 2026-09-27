@@ -2,11 +2,34 @@
 // direction; the game's layout engine does not wrap inline text like a
 // browser (see tll-panel.tsx).
 
+$green: #3dbf6b;
+$amber: #f5b83d;
+$red: #e5484d;
+$blue: #4fb3ff;
+$card: rgba(255, 255, 255, 0.045);
+$line: rgba(255, 255, 255, 0.12);
+
+.hidden {
+  display: none;
+}
+
 .panel {
-  position: absolute;
-  top: 120rem;
-  left: 20rem;
   width: 440rem;
+  // initialPosition puts the panel in the top left corner; this keeps it
+  // clear of the game's buttons there.
+  margin: 64rem 0 0 8rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.logo {
+  width: 22rem;
+  height: 22rem;
+  margin-right: 8rem;
 }
 
 .title {
@@ -14,8 +37,44 @@
 }
 
 .scroll {
-  max-height: 760rem;
+  max-height: 720rem;
 }
+
+// ---- Tabs ----
+
+.tabs {
+  display: flex;
+  flex-direction: row;
+  padding: 6rem 8rem 4rem 8rem;
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin: 0 3rem;
+  padding: 5rem 6rem;
+  opacity: 0.65;
+}
+
+.tabActive {
+  opacity: 1;
+}
+
+.tabIcon {
+  width: 18rem;
+  height: 18rem;
+  margin-right: 6rem;
+}
+
+.tabLabel {
+  font-size: 14rem;
+  white-space: nowrap;
+}
+
+// ---- Building blocks ----
 
 .row {
   display: flex;
@@ -26,11 +85,13 @@
 
 .grow {
   flex: 1;
+  font-size: 14rem;
 }
 
 .small {
   flex-shrink: 0;
   padding: 4rem 10rem;
+  margin-left: 6rem;
   white-space: nowrap;
 }
 
@@ -38,58 +99,439 @@
   flex: 1;
   padding: 6rem 10rem;
   white-space: nowrap;
-}
-
-.choice {
-  flex: 1;
-  margin: 0 3rem;
-  padding: 4rem 6rem;
-  white-space: nowrap;
-  font-size: 14rem;
   justify-content: center;
 }
 
-.heading {
+.picking {
+  color: $amber;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  margin: 6rem 8rem;
+  padding: 6rem 0;
+  background-color: $card;
+  border-radius: 4rem;
+}
+
+.cardTitle {
   font-weight: bold;
-  padding: 14rem 12rem 4rem 12rem;
-  font-size: 14rem;
-  text-transform: uppercase;
+  font-size: 16rem;
+  padding: 2rem 12rem 4rem 12rem;
+}
+
+.cardHead {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding-right: 12rem;
 }
 
 .label {
-  padding: 10rem 12rem 2rem 12rem;
-  font-size: 13rem;
-  opacity: 0.8;
+  flex: 1;
+  padding: 6rem 12rem 3rem 12rem;
+  font-size: 12rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5rem;
+  opacity: 0.7;
 }
 
 .muted {
-  padding: 0 12rem;
-  opacity: 0.7;
-  font-size: 14rem;
+  padding: 2rem 12rem;
+  opacity: 0.75;
+  font-size: 13rem;
+}
+
+.faint {
+  font-size: 12rem;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.empty {
+  padding: 18rem 16rem;
+  font-size: 13rem;
+  opacity: 0.6;
+  text-align: center;
 }
 
 .note {
-  padding: 2rem 12rem 4rem 12rem;
+  padding: 3rem 12rem;
   font-size: 13rem;
   color: #c9a8ff;
 }
 
 .warning {
-  margin: 8rem 12rem;
+  margin: 6rem 12rem;
   padding: 8rem;
+  font-size: 13rem;
   background-color: rgba(229, 72, 77, 0.25);
+  border-radius: 4rem;
 }
 
-.problem {
+.tooltip {
+  max-width: 360rem;
+  font-size: 13rem;
+  white-space: pre-line;
+}
+
+// ---- Chips ----
+
+.chips {
+  display: flex;
+  flex-direction: row;
+  padding: 2rem 10rem 6rem 10rem;
+}
+
+.chip {
+  margin: 0 2rem;
+  padding: 2rem 8rem;
+  font-size: 12rem;
+  white-space: nowrap;
+  border-radius: 10rem;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.chip_green {
+  background-color: rgba(61, 191, 107, 0.25);
+  color: #bdf0cf;
+}
+
+.chip_amber {
+  background-color: rgba(245, 184, 61, 0.25);
+  color: #fbe2ae;
+}
+
+.chip_blue {
+  background-color: rgba(79, 179, 255, 0.25);
+  color: #c4e4ff;
+}
+
+.chip_red {
+  background-color: rgba(229, 72, 77, 0.3);
+  color: #f7c2c4;
+}
+
+.chip_grey {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #d0d4da;
+}
+
+// ---- Cycle bar ----
+
+.cycle {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  height: 18rem;
+  margin: 2rem 12rem 6rem 12rem;
+}
+
+.segmentBar {
+  position: relative;
+  height: 100%;
+  margin-right: 2rem;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 2rem;
+  overflow: hidden;
+}
+
+.segmentBarActive {
+  background-color: rgba(61, 191, 107, 0.3);
+}
+
+.segmentBarNext {
+  background-color: rgba(245, 184, 61, 0.3);
+}
+
+.segmentFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background-color: $green;
+}
+
+.segmentLabel {
+  position: relative;
+  width: 100%;
+  font-size: 11rem;
+  line-height: 18rem;
+  text-align: center;
+}
+
+.cursor {
+  position: absolute;
+  top: -3rem;
+  width: 2rem;
+  height: 24rem;
+  margin-left: -1rem;
+  background-color: #ffffff;
+}
+
+// ---- Choices ----
+
+.segments {
+  display: flex;
+  flex-direction: row;
+  padding: 2rem 12rem;
+}
+
+.segment {
+  flex: 1;
+  margin: 0 2rem;
+  padding: 4rem 6rem;
+  font-size: 13rem;
+  white-space: nowrap;
+  justify-content: center;
+  opacity: 0.8;
+}
+
+.segmentOn {
+  opacity: 1;
+  font-weight: bold;
+}
+
+.switchButton {
+  flex-shrink: 0;
+  padding: 2rem;
+  background-color: transparent;
+}
+
+.switch {
+  flex-shrink: 0;
+  width: 40rem;
+  height: 20rem;
+  padding: 2rem;
+  border-radius: 10rem;
+  background-color: rgba(255, 255, 255, 0.15);
   display: flex;
   flex-direction: row;
   align-items: center;
+}
+
+.switchOn {
+  background-color: rgba(61, 191, 107, 0.6);
+}
+
+.knob {
+  width: 16rem;
+  height: 16rem;
+  border-radius: 8rem;
+  background-color: #ffffff;
+  margin-left: 0;
+  transition: margin-left 0.15s;
+}
+
+.knobOn {
+  margin-left: 20rem;
+}
+
+// ---- Autopilot chart ----
+
+.chartRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 2rem 12rem;
+}
+
+.chartLabel {
+  width: 130rem;
+  font-size: 13rem;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 0.8;
+}
+
+.chartLabelCurrent {
+  opacity: 1;
+  font-weight: bold;
+}
+
+.chartTrack {
+  flex: 1;
+  height: 10rem;
+  margin: 0 8rem;
+  background-color: rgba(255, 255, 255, 0.07);
+  border-radius: 2rem;
+}
+
+.chartBar {
+  height: 100%;
+  border-radius: 2rem;
+  background-color: rgba(255, 255, 255, 0.35);
+}
+
+.chartBarCurrent {
+  background-color: $green;
+}
+
+.chartBarPending {
+  background-color: $amber;
+}
+
+.chartBarOver {
+  background-color: $red;
+}
+
+.chartValue {
+  width: 52rem;
+  font-size: 12rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.over {
+  color: $red;
+}
+
+// ---- Phases ----
+
+.phase {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 2rem 8rem;
+  padding: 4rem 6rem;
+  border-radius: 3rem;
+}
+
+.phaseActive {
+  background-color: rgba(61, 191, 107, 0.15);
+}
+
+.phaseDiagram {
+  width: 64rem;
+  height: 64rem;
+  flex-shrink: 0;
+  margin: 0 8rem;
+}
+
+.phaseInfo {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.phaseTitle {
+  font-weight: bold;
+  font-size: 14rem;
+}
+
+.phaseLine {
+  font-size: 12rem;
+  opacity: 0.8;
+}
+
+.walking {
+  opacity: 1;
+  color: $green;
+}
+
+.lamp {
+  width: 10rem;
+  height: 10rem;
+  border-radius: 5rem;
+  flex-shrink: 0;
+}
+
+.lampGreen {
+  background-color: $green;
+}
+
+.lampYellow {
+  background-color: $amber;
+}
+
+.lampRed {
+  background-color: $red;
+}
+
+.preempt {
+  color: $amber;
+  font-weight: bold;
+  font-size: 12rem;
+}
+
+.footer {
+  display: flex;
+  flex-direction: row;
+  padding: 4rem 9rem 8rem 9rem;
+}
+
+.footerButton {
+  flex: 1;
+  margin: 0 3rem;
+  padding: 4rem 6rem;
+  font-size: 12rem;
+  white-space: nowrap;
+  justify-content: center;
+  opacity: 0.8;
+}
+
+// ---- City ----
+
+.tiles {
+  display: flex;
+  flex-direction: row;
+  padding: 3rem 5rem;
+}
+
+.tile {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin: 0 3rem;
+  padding: 8rem 10rem;
+  background-color: $card;
+  border-radius: 4rem;
+}
+
+.tileValue {
+  font-size: 24rem;
+  font-weight: bold;
+}
+
+.tile_green {
+  color: $green;
+}
+
+.tile_amber {
+  color: $amber;
+}
+
+.tile_blue {
+  color: $blue;
+}
+
+.tile_red {
+  color: $red;
+}
+
+.tileLabel {
+  font-size: 12rem;
+  opacity: 0.7;
+}
+
+// ---- Problems ----
+
+.problem {
+  display: flex;
+  flex-direction: column;
   width: 100%;
   padding: 5rem 12rem;
 }
 
 .selected {
   background-color: rgba(255, 255, 255, 0.12);
+}
+
+.problemTop {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
 }
 
 .problemName {
@@ -103,115 +545,31 @@
 .problemStats {
   flex-shrink: 0;
   padding-left: 8rem;
-  font-size: 13rem;
+  font-size: 12rem;
   opacity: 0.8;
   white-space: nowrap;
 }
 
-.detail {
-  display: flex;
-  flex-direction: column;
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-  margin-top: 8rem;
-  padding-bottom: 10rem;
+.severityTrack {
+  height: 4rem;
+  margin-top: 3rem;
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 2rem;
 }
 
-.phase {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  margin: 4rem 12rem;
-  padding: 6rem;
-  background-color: rgba(255, 255, 255, 0.05);
+.severityBar {
+  height: 100%;
+  border-radius: 2rem;
 }
 
-.phaseActive {
-  background-color: rgba(61, 191, 107, 0.18);
+.severityLow {
+  background-color: $amber;
 }
 
-.phaseInfo {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  padding-left: 12rem;
+.severityMid {
+  background-color: #f08a3c;
 }
 
-.phaseTitleRow {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  padding-bottom: 4rem;
-}
-
-.phaseTitle {
-  font-weight: bold;
-  padding-left: 8rem;
-}
-
-.phaseLine {
-  font-size: 13rem;
-  opacity: 0.8;
-}
-
-.lamp {
-  width: 12rem;
-  height: 12rem;
-  border-radius: 6rem;
-}
-
-.lampGreen {
-  background-color: #3dbf6b;
-}
-
-.lampYellow {
-  background-color: #f5b83d;
-}
-
-.lampRed {
-  background-color: #e5484d;
-}
-
-.tabs {
-  display: flex;
-  flex-direction: row;
-  padding: 6rem 9rem 2rem 9rem;
-}
-
-.tab {
-  flex: 1;
-  margin: 0 3rem;
-  padding: 5rem 6rem;
-  white-space: nowrap;
-  font-size: 14rem;
-  justify-content: center;
-  opacity: 0.7;
-}
-
-.tabActive {
-  opacity: 1;
-  font-weight: bold;
-}
-
-.autopilot {
-  padding: 4rem 12rem 0 12rem;
-  font-size: 13rem;
-  color: #8fd3ff;
-}
-
-.tooltip {
-  max-width: 360rem;
-  font-size: 13rem;
-  white-space: pre-line;
-}
-
-.walking {
-  opacity: 1;
-  color: #3dbf6b;
-}
-
-.preempt {
-  color: #f5b83d;
-  font-weight: bold;
-  font-size: 13rem;
+.severityHigh {
+  background-color: $red;
 }

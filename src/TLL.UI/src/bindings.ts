@@ -149,6 +149,10 @@ export interface JunctionInfo extends EntityRef {
   conflicts: number;
   stageSeconds: number;
   cycleSeconds: number;
+  /** Yellow, all red and prepare between two greens, seconds. */
+  intergreenSeconds: number;
+  /** Seconds into the fixed cycle in the timed modes; -1 when the cycle is not fixed. */
+  cyclePosition: number;
   leftHandTraffic: boolean;
   /** Camera heading in degrees, so the diagram can face the way the player looks. */
   cameraYaw: number;
@@ -166,11 +170,11 @@ export const selected$ = bindValue<JunctionInfo | null>(group, "selected", null)
 export const toolActive$ = bindValue<boolean>(group, "toolActive", false);
 
 /**
- * Whether the panel is open. The button and the panel share it; change it
- * through setPanelOpen so the C# side, which marks the selected junction on
- * the map while the panel is open, knows too.
+ * Whether the panel is open. The C# side owns it, so its key binding can
+ * open and close the panel; the button and the close box ask through
+ * setPanelOpen.
  */
-export const panelOpen$ = bindLocalValue(false);
+export const panelOpen$ = bindValue<boolean>(group, "panelOpen", false);
 
 export type Tab = "junction" | "city" | "problems";
 
@@ -178,7 +182,6 @@ export type Tab = "junction" | "city" | "problems";
 export const tab$ = bindLocalValue<Tab>("junction");
 
 export function setPanelOpen(open: boolean) {
-  panelOpen$.update(open);
   trigger(group, "setPanelOpen", open);
 }
 
@@ -195,6 +198,8 @@ export const actions = {
   diagnose: () => trigger(group, "diagnose"),
   toggleScramble: () => trigger(group, "toggleScramble"),
   makeAutomatic: () => trigger(group, "makeAutomatic"),
+  hover: (e: EntityRef) => trigger(group, "hover", e.index, e.version),
+  unhover: () => trigger(group, "unhover"),
   resetAllToAutomatic: () => trigger(group, "resetAllToAutomatic"),
   toggleShowProblems: () => trigger(group, "toggleShowProblems"),
   toggleShowCongestion: () => trigger(group, "toggleShowCongestion"),
