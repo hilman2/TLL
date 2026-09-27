@@ -1,0 +1,432 @@
+using System;
+using System.Collections.Generic;
+using Colossal.UI.Binding;
+using Game;
+using Game.Common;
+using Game.Net;
+using Game.Rendering;
+using Game.Tools;
+using Game.UI;
+using TLL.Components;
+using TLL.Core;
+using TLL.Core.Control;
+using TLL.Core.Planning;
+using TLL.Systems;
+using Unity.Collections;
+using Unity.Entities;
+
+namespace TLL.UI
+{
+    /// <summary>
+    /// Connects the TLL panel (src/TLL.UI) with the simulation.
+    ///
+    /// Two values go to the panel: a city overview with the junctions that
+    /// need attention, and the details of the selected junction. Both are
+    /// collected from the ECS data at a limited rate, since reading the phase
+    /// buffers waits for the running control job. The panel talks back
+    /// through triggers, all in the binding group "tll".
+    /// </summary>
+    public class TllUISystem : UISystemBase
+    {
+        private const string kGroup = "tll";
+
+        /// <summary>Junctions listed as needing attention.</summary>
+        private const int kProblemCount = 12;
+
+        private static readonly TimeSpan kSummaryInterval = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan kDetailInterval = TimeSpan.FromMilliseconds(250);
+
+        private EntityQuery m_ManagedQuery;
+        private NameSystem m_NameSystem;
+        private CameraUpdateSystem m_CameraSystem;
+        private SignalControlSystem m_Control;
+
+        private Entity m_Selected;
+        private DateTime m_SummaryTime;
+        private DateTime m_DetailTime;
+        private Summary m_Summary = new Summary();
+        private Detail m_Detail;
+
+        private struct ProblemRow
+        {
+            public Entity Node;
+            public string Name;
+            public float LongestWait;
+            public uint MaxOuts;
+            public float Score;
+        }
+
+        private sealed class Summary
+        {
+            public bool Available;
+            public int Managed;
+            public readonly int[] ByMode = new int[5];
+            public readonly List<ProblemRow> Problems = new List<ProblemRow>();
+        }
+
+        private sealed class Detail
+        {
+            public Entity Node;
+            public string Name;
+            public ManagedJunction Junction;
+            public ControllerState State;
+            public int Cycle;
+            public readonly List<PhaseRow> Phases = new List<PhaseRow>();
+            public readonly List<string> Movements = new List<string>();
+        }
+
+        private struct PhaseRow
+        {
+            public PhaseData Data;
+            public ulong Movements;
+            public ulong Permitted;
+        }
+
+        protected override void OnCreate()
+        {
+            base.OnCreate();
+            m_NameSystem = World.GetOrCreateSystemManaged<NameSystem>();
+            m_CameraSystem = World.GetOrCreateSystemManaged<CameraUpdateSystem>();
+            m_Control = World.GetOrCreateSystemManaged<SignalControlSystem>();
+            m_ManagedQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<ManagedJunction>(), ComponentType.ReadOnly<JunctionPhase>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
+            });
+
+            AddUpdateBinding(new RawValueBinding(kGroup, "summary", WriteSummary));
+            AddUpdateBinding(new RawValueBinding(kGroup, "selected", WriteDetail));
+            AddBinding(new TriggerBinding(kGroup, "toggleAutomation", OnToggleAutomation));
+            AddBinding(new TriggerBinding<int, int>(kGroup, "select", (index, version) => Select(ToEntity(index, version), false)));
+            AddBinding(new TriggerBinding<int, int>(kGroup, "goto", (index, version) => Select(ToEntity(index, version), true)));
+            AddBinding(new TriggerBinding<int>(kGroup, "setMode", OnSetMode));
+            AddBinding(new TriggerBinding<int>(kGroup, "setStrategy", OnSetStrategy));
+            AddBinding(new TriggerBinding(kGroup, "release", OnRelease));
+        }
+
+        protected override void OnUpdate()
+        {
+            try
+            {
+                base.OnUpdate();
+            }
+            catch (Exception e)
+            {
+                Mod.Log.Critical(e, "The TLL panel failed and was switched off until the game is restarted.");
+                Enabled = false;
+            }
+        }
+
+        private static Entity ToEntity(int index, int version)
+        {
+            return new Entity { Index = index, Version = version };
+        }
+
+        // ---- Overview ----
+
+        private void WriteSummary(IJsonWriter writer)
+        {
+            if (DateTime.UtcNow - m_SummaryTime >= kSummaryInterval)
+            {
+                m_SummaryTime = DateTime.UtcNow;
+                m_Summary = CollectSummary();
+            }
+            Summary s = m_Summary;
+            writer.TypeBegin("tll.Summary");
+            writer.PropertyName("available");
+            writer.Write(s.Available);
+            writer.PropertyName("automation");
+            writer.Write(Mod.Settings != null && Mod.Settings.AutoManageAll);
+            writer.PropertyName("managed");
+            writer.Write(s.Managed);
+            writer.PropertyName("byMode");
+            writer.ArrayBegin((uint)s.ByMode.Length);
+            foreach (int count in s.ByMode)
+                writer.Write(count);
+            writer.ArrayEnd();
+            writer.PropertyName("problems");
+            writer.ArrayBegin((uint)s.Problems.Count);
+            foreach (ProblemRow p in s.Problems)
+            {
+                writer.TypeBegin("tll.Problem");
+                WriteEntity(writer, p.Node);
+                writer.PropertyName("name");
+                writer.Write(p.Name);
+                writer.PropertyName("longestWait");
+                writer.Write(p.LongestWait);
+                writer.PropertyName("maxOuts");
+                writer.Write(p.MaxOuts);
+                writer.TypeEnd();
+            }
+            writer.ArrayEnd();
+            writer.TypeEnd();
+        }
+
+        private Summary CollectSummary()
+        {
+            var summary = new Summary { Available = m_Control.Available };
+            var rows = new List<ProblemRow>();
+            using (NativeArray<Entity> nodes = m_ManagedQuery.ToEntityArray(Allocator.Temp))
+            {
+                summary.Managed = nodes.Length;
+                foreach (Entity node in nodes)
+                {
+                    ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
+                    int mode = (int)junction.Mode;
+                    if (mode >= 0 && mode < summary.ByMode.Length)
+                        summary.ByMode[mode]++;
+
+                    DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(node, true);
+                    int longestWait = 0;
+                    uint maxOuts = 0;
+                    for (int i = 0; i < phases.Length; i++)
+                    {
+                        longestWait = Math.Max(longestWait, phases[i].Data.WaitSteps);
+                        maxOuts += phases[i].Data.Stats.MaxOuts;
+                    }
+                    float wait = SimTime.ToSeconds(longestWait);
+                    // A long wait now and repeated max-outs both mean demand the
+                    // junction cannot serve; a max-out counts like ten seconds.
+                    float score = wait + 10f * maxOuts;
+                    if (score > 0f)
+                        rows.Add(new ProblemRow { Node = node, LongestWait = wait, MaxOuts = maxOuts, Score = score });
+                }
+            }
+            rows.Sort((a, b) => b.Score.CompareTo(a.Score));
+            for (int i = 0; i < rows.Count && i < kProblemCount; i++)
+            {
+                ProblemRow row = rows[i];
+                row.Name = JunctionName(row.Node);
+                summary.Problems.Add(row);
+            }
+            return summary;
+        }
+
+        // ---- Selected junction ----
+
+        private void WriteDetail(IJsonWriter writer)
+        {
+            if (DateTime.UtcNow - m_DetailTime >= kDetailInterval)
+            {
+                m_DetailTime = DateTime.UtcNow;
+                m_Detail = CollectDetail();
+            }
+            Detail d = m_Detail;
+            if (d == null)
+            {
+                writer.WriteNull();
+                return;
+            }
+            writer.TypeBegin("tll.Junction");
+            WriteEntity(writer, d.Node);
+            writer.PropertyName("name");
+            writer.Write(d.Name);
+            writer.PropertyName("mode");
+            writer.Write((int)d.Junction.Mode);
+            writer.PropertyName("strategy");
+            writer.Write((int)d.Junction.Strategy);
+            writer.PropertyName("manual");
+            writer.Write(d.Junction.Origin == JunctionOrigin.Manual);
+            writer.PropertyName("stage");
+            writer.Write((int)d.State.Stage);
+            writer.PropertyName("phase");
+            writer.Write((int)d.State.Phase);
+            writer.PropertyName("next");
+            writer.Write((int)d.State.Next);
+            writer.PropertyName("stageSeconds");
+            writer.Write(SimTime.ToSeconds(d.State.StageSteps));
+            writer.PropertyName("cycleSeconds");
+            writer.Write(SimTime.ToSeconds(d.Cycle));
+            writer.PropertyName("movements");
+            writer.ArrayBegin((uint)d.Movements.Count);
+            foreach (string m in d.Movements)
+                writer.Write(m);
+            writer.ArrayEnd();
+            writer.PropertyName("phases");
+            writer.ArrayBegin((uint)d.Phases.Count);
+            foreach (PhaseRow p in d.Phases)
+            {
+                writer.TypeBegin("tll.Phase");
+                writer.PropertyName("minGreen");
+                writer.Write(SimTime.ToSeconds(p.Data.MinGreen));
+                writer.PropertyName("maxGreen");
+                writer.Write(SimTime.ToSeconds(p.Data.MaxGreen));
+                writer.PropertyName("green");
+                writer.Write(SimTime.ToSeconds(p.Data.Green));
+                writer.PropertyName("demand");
+                writer.Write(p.Data.Demand);
+                writer.PropertyName("pressure");
+                writer.Write(p.Data.Pressure);
+                writer.PropertyName("wait");
+                writer.Write(SimTime.ToSeconds(p.Data.WaitSteps));
+                writer.PropertyName("busy");
+                writer.Write(p.Data.Busy);
+                writer.PropertyName("preempt");
+                writer.Write(p.Data.Preempt);
+                writer.PropertyName("movements");
+                WriteBits(writer, p.Movements);
+                writer.PropertyName("permitted");
+                WriteBits(writer, p.Permitted);
+                writer.TypeEnd();
+            }
+            writer.ArrayEnd();
+            writer.TypeEnd();
+        }
+
+        private Detail CollectDetail()
+        {
+            Entity node = m_Selected;
+            if (node == Entity.Null || !EntityManager.Exists(node) || !EntityManager.HasComponent<ManagedJunction>(node)
+                || !EntityManager.HasBuffer<JunctionPhase>(node))
+                return null;
+
+            var detail = new Detail
+            {
+                Node = node,
+                Name = JunctionName(node),
+                Junction = EntityManager.GetComponentData<ManagedJunction>(node),
+            };
+            if (EntityManager.HasComponent<JunctionRuntime>(node))
+                detail.State = EntityManager.GetComponentData<JunctionRuntime>(node).State;
+
+            DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(node, true);
+            int intergreen = detail.Junction.Yellow + detail.Junction.AllRed + detail.Junction.Prepare;
+            for (int i = 0; i < phases.Length; i++)
+            {
+                detail.Phases.Add(new PhaseRow { Data = phases[i].Data, Movements = phases[i].Movements, Permitted = phases[i].Permitted });
+                detail.Cycle += phases[i].Data.Green + intergreen;
+            }
+
+            if (EntityManager.HasBuffer<JunctionMovement>(node))
+            {
+                DynamicBuffer<JunctionMovement> movements = EntityManager.GetBuffer<JunctionMovement>(node, true);
+                for (int i = 0; i < movements.Length; i++)
+                    detail.Movements.Add(MovementLabel(movements[i]));
+            }
+            return detail;
+        }
+
+        // ---- Triggers ----
+
+        private void OnToggleAutomation()
+        {
+            if (Mod.Settings == null)
+                return;
+            Mod.Settings.AutoManageAll = !Mod.Settings.AutoManageAll;
+            Mod.Settings.ApplyAndSave();
+            m_SummaryTime = default;
+        }
+
+        private void Select(Entity node, bool moveCamera)
+        {
+            m_Selected = node;
+            m_DetailTime = default;
+            if (!moveCamera || node == Entity.Null || !EntityManager.Exists(node) || !EntityManager.HasComponent<Node>(node))
+                return;
+            IGameCameraController camera = m_CameraSystem.activeCameraController;
+            if (camera != null)
+                camera.pivot = EntityManager.GetComponentData<Node>(node).m_Position;
+        }
+
+        private void OnSetMode(int mode)
+        {
+            if (!TryGetSelected(out ManagedJunction junction) || mode < 0 || mode > (int)ControlMode.Flashing)
+                return;
+            junction.Mode = (ControlMode)mode;
+            junction.Origin = JunctionOrigin.Manual;
+            EntityManager.SetComponentData(m_Selected, junction);
+            m_DetailTime = default;
+        }
+
+        private void OnSetStrategy(int strategy)
+        {
+            if (!TryGetSelected(out ManagedJunction junction) || strategy < 0 || strategy > (int)PlanStrategy.ExclusivePedestrian)
+                return;
+            junction.Strategy = (PlanStrategy)strategy;
+            junction.Origin = JunctionOrigin.Manual;
+            EntityManager.SetComponentData(m_Selected, junction);
+            // An empty plan makes JunctionInitSystem generate a new one. The
+            // node is rebuilt as a whole, so the signal poles follow the new
+            // phase count.
+            EntityManager.GetBuffer<JunctionPhase>(m_Selected).Clear();
+            EntityManager.AddComponent<RebuildRequest>(m_Selected);
+            m_DetailTime = default;
+        }
+
+        private void OnRelease()
+        {
+            if (!TryGetSelected(out _))
+                return;
+            // Excluded, so the automation does not take it straight back.
+            JunctionInitSystem.Release(EntityManager, m_Selected, exclude: true);
+            m_Selected = Entity.Null;
+            m_SummaryTime = default;
+            m_DetailTime = default;
+        }
+
+        private bool TryGetSelected(out ManagedJunction junction)
+        {
+            junction = default;
+            if (m_Selected == Entity.Null || !EntityManager.Exists(m_Selected) || !EntityManager.HasComponent<ManagedJunction>(m_Selected))
+                return false;
+            junction = EntityManager.GetComponentData<ManagedJunction>(m_Selected);
+            return true;
+        }
+
+        // ---- Helpers ----
+
+        /// <summary>A junction is named after the roads meeting there, e.g. "Main Street / Oak Avenue".</summary>
+        private string JunctionName(Entity node)
+        {
+            if (!EntityManager.HasBuffer<ConnectedEdge>(node))
+                return node.ToString();
+            var names = new List<string>();
+            DynamicBuffer<ConnectedEdge> edges = EntityManager.GetBuffer<ConnectedEdge>(node, true);
+            for (int i = 0; i < edges.Length && names.Count < 3; i++)
+            {
+                string name = m_NameSystem.GetRenderedLabelName(edges[i].m_Edge);
+                if (!string.IsNullOrEmpty(name) && !names.Contains(name))
+                    names.Add(name);
+            }
+            return names.Count > 0 ? string.Join(" / ", names) : node.ToString();
+        }
+
+        private string MovementLabel(JunctionMovement movement)
+        {
+            string source = RoadName(movement.Source);
+            if (movement.Kind == MovementKind.Pedestrian)
+                return $"{movement.Kind}|{source}|";
+            return $"{movement.Kind}|{source}|{RoadName(movement.Target)}";
+        }
+
+        private string RoadName(Entity edge)
+        {
+            if (edge == Entity.Null || !EntityManager.Exists(edge))
+                return "";
+            return m_NameSystem.GetRenderedLabelName(edge) ?? "";
+        }
+
+        private static void WriteEntity(IJsonWriter writer, Entity entity)
+        {
+            writer.PropertyName("index");
+            writer.Write(entity.Index);
+            writer.PropertyName("version");
+            writer.Write(entity.Version);
+        }
+
+        /// <summary>Writes the set bits of a movement mask as an array of indices.</summary>
+        private static void WriteBits(IJsonWriter writer, ulong bits)
+        {
+            var indices = new List<int>();
+            for (int i = 0; i < 64; i++)
+            {
+                if ((bits & (1UL << i)) != 0)
+                    indices.Add(i);
+            }
+            writer.ArrayBegin((uint)indices.Count);
+            foreach (int i in indices)
+                writer.Write(i);
+            writer.ArrayEnd();
+        }
+    }
+}

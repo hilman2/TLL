@@ -1,0 +1,338 @@
+using System;
+using System.Collections.Generic;
+
+namespace TLL.Core.Planning
+{
+    public enum PlanStrategy : byte
+    {
+        /// <summary>Oncoming traffic runs together, long turns give way. Fewest phases.</summary>
+        Permissive,
+
+        /// <summary>Long turns and U-turns get their own green instead of giving way to oncoming traffic.</summary>
+        ProtectedTurns,
+
+        /// <summary>Each approach runs alone.</summary>
+        Split,
+
+        /// <summary>Like <see cref="Permissive"/>, plus one phase in which only pedestrians walk, in all directions.</summary>
+        ExclusivePedestrian,
+    }
+
+    /// <summary>
+    /// Builds a phase plan for a junction.
+    ///
+    /// The plan uses as few phases as the conflicts allow: the phases are a
+    /// minimum colouring of the graph whose edges are the hard conflicts.
+    /// Afterwards every phase is widened by all movements that fit, so a
+    /// movement keeps its green across consecutive phases where it can.
+    /// </summary>
+    public static class PhasePlanner
+    {
+        /// <summary>The game stores signal groups in a 16-bit mask.</summary>
+        public const int MaxPhases = 16;
+
+        /// <summary>Search budget of the exact colouring before it settles for the best found.</summary>
+        private const int ColouringBudget = 200000;
+
+        public static PhasePlan Build(JunctionModel junction, PlanStrategy strategy)
+        {
+            if (junction.Movements.Count > 64)
+                throw new ArgumentException("A junction can have at most 64 movements.", nameof(junction));
+
+            ConflictMatrix conflicts = Adjust(junction, strategy);
+            int n = junction.Movements.Count;
+
+            int[] colour = MinimumColouring(conflicts, n);
+            int colourCount = 0;
+            for (int i = 0; i < n; i++)
+                colourCount = Math.Max(colourCount, colour[i] + 1);
+
+            var phases = new List<Phase>();
+            for (int c = 0; c < colourCount; c++)
+            {
+                ulong members = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    if (colour[i] == c)
+                        members |= 1UL << i;
+                }
+                phases.Add(new Phase { Green = members });
+            }
+
+            for (int p = 0; p < phases.Count; p++)
+                phases[p] = Widen(phases[p], conflicts, n);
+
+            RemoveDuplicates(phases);
+            SortPhases(phases, junction);
+
+            var plan = new PhasePlan();
+            foreach (Phase phase in phases)
+            {
+                Phase p = phase;
+                p.Permitted = PermittedWithin(p.Green, conflicts, n);
+                plan.Phases.Add(p);
+            }
+            if (plan.Phases.Count > MaxPhases)
+                throw new InvalidOperationException($"Junction needs {plan.Phases.Count} phases, the game supports {MaxPhases}.");
+            return plan;
+        }
+
+        /// <summary>
+        /// Returns the relations the strategy works with. Strategies only ever
+        /// add hard conflicts; they never allow what the geometry forbids.
+        /// </summary>
+        public static ConflictMatrix Adjust(JunctionModel junction, PlanStrategy strategy)
+        {
+            ConflictMatrix m = junction.Conflicts.Clone();
+            int n = junction.Movements.Count;
+            for (int a = 0; a < n; a++)
+            {
+                Movement ma = junction.Movements[a];
+                for (int b = a + 1; b < n; b++)
+                {
+                    Movement mb = junction.Movements[b];
+                    bool vehicles = !ma.IsPedestrian && !mb.IsPedestrian;
+                    switch (strategy)
+                    {
+                        case PlanStrategy.ProtectedTurns:
+                            if (vehicles && m.Get(a, b) != Relation.Compatible && m.Get(a, b) != Relation.Hard
+                                && (IsLongTurn(ma, junction.LeftHandTraffic) || IsLongTurn(mb, junction.LeftHandTraffic)))
+                                m.Set(a, b, Relation.Hard);
+                            break;
+                        case PlanStrategy.Split:
+                            if (vehicles && ma.Source != mb.Source)
+                                m.Set(a, b, Relation.Hard);
+                            break;
+                        case PlanStrategy.ExclusivePedestrian:
+                            if (ma.IsPedestrian != mb.IsPedestrian)
+                                m.Set(a, b, Relation.Hard);
+                            break;
+                    }
+                }
+            }
+            return m;
+        }
+
+        private static bool IsLongTurn(Movement m, bool leftHandTraffic)
+        {
+            if (m.Kind == MovementKind.UTurn)
+                return true;
+            return m.Kind == (leftHandTraffic ? MovementKind.Right : MovementKind.Left);
+        }
+
+        private static Phase Widen(Phase phase, ConflictMatrix conflicts, int n)
+        {
+            ulong green = phase.Green;
+            for (int candidate = 0; candidate < n; candidate++)
+            {
+                if ((green & (1UL << candidate)) != 0)
+                    continue;
+                if (FitsInto(candidate, green, conflicts, n))
+                    green |= 1UL << candidate;
+            }
+            return new Phase { Green = green };
+        }
+
+        private static bool FitsInto(int candidate, ulong green, ConflictMatrix conflicts, int n)
+        {
+            for (int member = 0; member < n; member++)
+            {
+                if ((green & (1UL << member)) != 0 && !conflicts.CanShare(candidate, member))
+                    return false;
+            }
+            return true;
+        }
+
+        private static ulong PermittedWithin(ulong green, ConflictMatrix conflicts, int n)
+        {
+            ulong permitted = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if ((green & (1UL << i)) != 0 && conflicts.YieldsWithin(i, green))
+                    permitted |= 1UL << i;
+            }
+            return permitted;
+        }
+
+        private static void RemoveDuplicates(List<Phase> phases)
+        {
+            // Widening can make one phase a subset of another. It then adds
+            // nothing but a switch, so it goes.
+            for (int i = phases.Count - 1; i >= 0; i--)
+            {
+                for (int j = 0; j < phases.Count; j++)
+                {
+                    if (i == j)
+                        continue;
+                    ulong a = phases[i].Green;
+                    ulong b = phases[j].Green;
+                    if ((a & ~b) == 0 && (a != b || j < i))
+                    {
+                        phases.RemoveAt(i);
+                        break;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Puts the phases in the order a driver would expect: grouped by axis,
+        /// protected turns ahead of the straight traffic of the same axis, and
+        /// a pedestrian-only phase last.
+        /// </summary>
+        private static void SortPhases(List<Phase> phases, JunctionModel junction)
+        {
+            var keys = new Dictionary<ulong, int>();
+            foreach (Phase p in phases)
+                keys[p.Green] = SortKey(p, junction);
+            phases.Sort((x, y) => keys[x.Green].CompareTo(keys[y.Green]));
+        }
+
+        private static int SortKey(Phase phase, JunctionModel junction)
+        {
+            int axis = int.MaxValue;
+            bool hasStraight = false;
+            for (int i = 0; i < junction.Movements.Count; i++)
+            {
+                if (!phase.Has(i))
+                    continue;
+                Movement m = junction.Movements[i];
+                if (m.IsPedestrian)
+                    continue;
+                int a = m.Source;
+                int opposite = junction.OppositeOf != null && a < junction.OppositeOf.Length ? junction.OppositeOf[a] : -1;
+                if (opposite >= 0 && opposite < a)
+                    a = opposite;
+                if (m.Kind == MovementKind.Straight || m.Kind == MovementKind.Track)
+                {
+                    if (!hasStraight || a < axis)
+                        axis = a;
+                    hasStraight = true;
+                }
+                else if (!hasStraight && a < axis)
+                {
+                    axis = a;
+                }
+            }
+            if (axis == int.MaxValue)
+                return int.MaxValue;
+            return axis * 2 + (hasStraight ? 1 : 0);
+        }
+
+        /// <summary>
+        /// Exact minimum colouring by DSATUR branch and bound. Junction graphs
+        /// are small, so the search normally finishes; if it runs out of budget
+        /// the best colouring found so far is used.
+        /// </summary>
+        public static int[] MinimumColouring(ConflictMatrix conflicts, int n)
+        {
+            var best = Greedy(conflicts, n);
+            int bestCount = CountColours(best);
+            var current = new int[n];
+            for (int i = 0; i < n; i++)
+                current[i] = -1;
+            int budget = ColouringBudget;
+            Search(conflicts, n, current, 0, 0, ref best, ref bestCount, ref budget);
+            return best;
+        }
+
+        private static void Search(ConflictMatrix conflicts, int n, int[] current, int coloured, int used,
+            ref int[] best, ref int bestCount, ref int budget)
+        {
+            if (used >= bestCount || --budget < 0)
+                return;
+            if (coloured == n)
+            {
+                best = (int[])current.Clone();
+                bestCount = used;
+                return;
+            }
+
+            int v = PickVertex(conflicts, n, current);
+            for (int c = 0; c <= used && c < bestCount; c++)
+            {
+                if (!ColourFree(conflicts, n, current, v, c))
+                    continue;
+                current[v] = c;
+                Search(conflicts, n, current, coloured + 1, Math.Max(used, c + 1), ref best, ref bestCount, ref budget);
+                current[v] = -1;
+            }
+        }
+
+        /// <summary>Uncoloured vertex with most distinct neighbour colours, ties by degree.</summary>
+        private static int PickVertex(ConflictMatrix conflicts, int n, int[] colour)
+        {
+            int best = -1;
+            int bestSaturation = -1;
+            int bestDegree = -1;
+            for (int v = 0; v < n; v++)
+            {
+                if (colour[v] >= 0)
+                    continue;
+                ulong seen = 0;
+                int degree = 0;
+                for (int u = 0; u < n; u++)
+                {
+                    if (u == v || conflicts.CanShare(u, v))
+                        continue;
+                    degree++;
+                    if (colour[u] >= 0)
+                        seen |= 1UL << colour[u];
+                }
+                int saturation = PopCount(seen);
+                if (saturation > bestSaturation || (saturation == bestSaturation && degree > bestDegree))
+                {
+                    best = v;
+                    bestSaturation = saturation;
+                    bestDegree = degree;
+                }
+            }
+            return best;
+        }
+
+        private static bool ColourFree(ConflictMatrix conflicts, int n, int[] colour, int v, int c)
+        {
+            for (int u = 0; u < n; u++)
+            {
+                if (colour[u] == c && !conflicts.CanShare(u, v))
+                    return false;
+            }
+            return true;
+        }
+
+        private static int[] Greedy(ConflictMatrix conflicts, int n)
+        {
+            var colour = new int[n];
+            for (int i = 0; i < n; i++)
+                colour[i] = -1;
+            for (int step = 0; step < n; step++)
+            {
+                int v = PickVertex(conflicts, n, colour);
+                int c = 0;
+                while (!ColourFree(conflicts, n, colour, v, c))
+                    c++;
+                colour[v] = c;
+            }
+            return colour;
+        }
+
+        private static int CountColours(int[] colour)
+        {
+            int max = -1;
+            foreach (int c in colour)
+                max = Math.Max(max, c);
+            return max + 1;
+        }
+
+        private static int PopCount(ulong bits)
+        {
+            int count = 0;
+            while (bits != 0)
+            {
+                bits &= bits - 1;
+                count++;
+            }
+            return count;
+        }
+    }
+}

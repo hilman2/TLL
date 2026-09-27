@@ -1,0 +1,75 @@
+{
+  "Settings.Title": "Traffic Lights & Lanes",
+  "Settings.Tab.Main": "Allgemein",
+  "Settings.Group.Automation": "Stadtweite Automatik",
+  "Settings.Group.Maintenance": "Wartung",
+  "Settings.Group.Debug": "Diagnose",
+
+  "Settings.AutoManageAll.Label": "Alle Ampeln automatisch steuern",
+  "Settings.AutoManageAll.Description": "TLL übernimmt jede Kreuzung mit Ampel, erstellt aus ihrer Form einen Phasenplan und passt die Zeiten an den gemessenen Verkehr an. Kreuzungen, die du selbst eingestellt hast, bleiben unberührt. Bahnübergänge und bewegliche Brücken bleiben beim Spiel.",
+
+  "Settings.AutoMode.Label": "Steuerung automatischer Kreuzungen",
+  "Settings.AutoMode.Description": "Adaptiv: Die Phase mit dem größten Druck kommt als Nächstes, Grünzeiten passen sich dem Verkehr an. Verkehrsabhängig: Phasen in fester Reihenfolge, ohne Bedarf übersprungen, Grün endet, wenn die Schlange abgebaut ist. Festzeit: feste Grünzeiten, alle paar Minuten optimiert.",
+
+  "Settings.AutoStrategy.Label": "Phasenaufbau automatischer Kreuzungen",
+  "Settings.AutoStrategy.Description": "Bedingt verträglich: Gegenverkehr fährt gemeinsam, Abbieger warten. Geschützt abbiegen: Abbieger über den Gegenverkehr bekommen eigenes Grün. Getrennt: eine Zufahrt nach der anderen. Rundum-Grün für Fußgänger: eine zusätzliche Phase nur für Fußgänger.",
+
+  "Settings.ReleaseAll.Label": "Alle Kreuzungen an das Spiel zurückgeben",
+  "Settings.ReleaseAll.Description": "Beendet die Steuerung durch TLL an allen Kreuzungen, auch an selbst eingestellten. Das Spiel baut seine eigenen Signalgruppen neu auf.",
+  "Settings.ReleaseAll.Warning": "Alle Kreuzungen an das Spiel zurückgeben? Deine eigenen Phasenpläne gehen verloren.",
+
+  "Settings.RebuildVanilla.Label": "Signaldaten anderer Mods reparieren",
+  "Settings.RebuildVanilla.Description": "Lässt das Spiel die Signalgruppen aller Kreuzungen neu aufbauen, die TLL nicht steuert. Einmal ausführen, nachdem ein anderer Ampel-Mod entfernt wurde, dessen Einstellungen im Spielstand zurückbleiben können.",
+  "Settings.RebuildVanilla.Warning": "Die Signalgruppen aller Kreuzungen neu aufbauen, die TLL nicht steuert?",
+
+  "Settings.VerboseLogging.Label": "Ausführliches Protokoll",
+  "Settings.VerboseLogging.Description": "Schreibt pro Kreuzungsplan eine Zeile nach Logs/TLL.log. Hilfreich, wenn du ein Problem meldest.",
+
+  "Enum.AutoControlMode.Adaptive": "Adaptiv",
+  "Enum.AutoControlMode.Actuated": "Verkehrsabhängig",
+  "Enum.AutoControlMode.FixedTime": "Festzeit",
+
+  "Enum.PlanStrategy.Permissive": "Bedingt verträglich",
+  "Enum.PlanStrategy.ProtectedTurns": "Geschützt abbiegen",
+  "Enum.PlanStrategy.Split": "Getrennt",
+  "Enum.PlanStrategy.ExclusivePedestrian": "Rundum-Grün für Fußgänger",
+
+  "Panel.Title": "Traffic Lights & Lanes",
+  "Panel.Unavailable": "Das Spiel hat sich so geändert, dass TLL es nicht wiedererkennt. Alle Ampeln bleiben beim Spiel.",
+  "Panel.Managed": "Von TLL gesteuerte Kreuzungen",
+  "Panel.AutomationOn": "Automatik an",
+  "Panel.AutomationOff": "Automatik aus",
+  "Panel.Problems": "Braucht Aufmerksamkeit",
+  "Panel.NoProblems": "Gerade hat keine Kreuzung Probleme.",
+  "Panel.MaxOut": "ausgeschöpft",
+  "Panel.Manual": "Von dir eingestellt",
+  "Panel.Automatic": "Automatisch",
+  "Panel.Cycle": "Umlauf",
+  "Panel.Mode": "Steuerung",
+  "Panel.Strategy": "Phasenaufbau",
+  "Panel.Phases": "Phasen",
+  "Panel.Phase": "Phase",
+  "Panel.Emergency": "Einsatz",
+  "Panel.Demand": "Bedarf",
+  "Panel.Waiting": "wartet",
+  "Panel.Yield": "wartepflichtig",
+  "Panel.Release": "Ans Spiel zurückgeben",
+
+  "Mode.Adaptive": "Adaptiv",
+  "Mode.Actuated": "Verkehrsabhängig",
+  "Mode.FixedTime": "Festzeit",
+  "Mode.Coordinated": "Grüne Welle",
+  "Mode.Flashing": "Gelb blinkend",
+
+  "Strategy.Permissive": "Bedingt verträglich",
+  "Strategy.ProtectedTurns": "Geschützt abbiegen",
+  "Strategy.Split": "Getrennt",
+  "Strategy.ExclusivePedestrian": "Rundum-Grün Fußgänger",
+
+  "Movement.Straight": "geradeaus",
+  "Movement.Left": "links",
+  "Movement.Right": "rechts",
+  "Movement.UTurn": "Wenden",
+  "Movement.Track": "Tram",
+  "Movement.Pedestrian": "Fußgängerüberweg"
+}

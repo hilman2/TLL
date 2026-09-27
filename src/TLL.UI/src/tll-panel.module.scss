@@ -1,0 +1,164 @@
+// Sizes in rem follow the game's UI scale.
+
+.panel {
+  position: absolute;
+  top: 120rem;
+  left: 20rem;
+  width: 460rem;
+}
+
+.title {
+  font-weight: bold;
+}
+
+.scroll {
+  max-height: 720rem;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8rem 12rem;
+}
+
+.toggle {
+  padding: 4rem 10rem;
+}
+
+.heading {
+  font-weight: bold;
+  padding: 12rem 12rem 4rem 12rem;
+  text-transform: uppercase;
+  font-size: 13rem;
+}
+
+.label {
+  padding: 10rem 12rem 4rem 12rem;
+  font-size: 13rem;
+  opacity: 0.8;
+}
+
+.muted {
+  padding: 0 12rem;
+  opacity: 0.65;
+}
+
+.warning {
+  margin: 8rem 12rem;
+  padding: 8rem;
+  background-color: rgba(229, 72, 77, 0.25);
+}
+
+.problem {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6rem 12rem;
+}
+
+.selected {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.problemName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problemStats {
+  opacity: 0.8;
+  padding-left: 8rem;
+}
+
+.detail {
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  margin-top: 8rem;
+  padding-bottom: 12rem;
+}
+
+.choices {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  padding: 0 8rem;
+}
+
+.choice {
+  margin: 2rem 4rem;
+  padding: 4rem 8rem;
+}
+
+.phase {
+  margin: 4rem 12rem;
+  padding: 6rem 8rem;
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.phaseActive {
+  background-color: rgba(61, 191, 107, 0.18);
+}
+
+.phaseHeader {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+
+  > * {
+    margin-right: 8rem;
+  }
+}
+
+.lamp {
+  width: 12rem;
+  height: 12rem;
+  border-radius: 6rem;
+}
+
+.lampGreen {
+  background-color: #3dbf6b;
+}
+
+.lampYellow {
+  background-color: #f5b83d;
+}
+
+.lampRed {
+  background-color: #e5484d;
+}
+
+.preempt {
+  color: #f5b83d;
+  font-weight: bold;
+}
+
+.phaseStats {
+  font-size: 12rem;
+  opacity: 0.75;
+  padding-top: 2rem;
+}
+
+.movements {
+  padding-top: 4rem;
+}
+
+.movement {
+  font-size: 12rem;
+}
+
+.permitted {
+  opacity: 0.85;
+}
+
+.yield {
+  color: #f5b83d;
+}
+
+.release {
+  margin: 12rem 12rem 0 12rem;
+  padding: 6rem 10rem;
+}

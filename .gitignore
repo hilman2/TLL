@@ -1,0 +1,11 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+Logs/
+Library/
+node_modules/
+src/TLL/Local.props
+src/TLL.UI/build/

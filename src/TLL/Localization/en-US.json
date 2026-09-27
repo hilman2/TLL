@@ -1,0 +1,75 @@
+{
+  "Settings.Title": "Traffic Lights & Lanes",
+  "Settings.Tab.Main": "General",
+  "Settings.Group.Automation": "City-wide automation",
+  "Settings.Group.Maintenance": "Maintenance",
+  "Settings.Group.Debug": "Diagnostics",
+
+  "Settings.AutoManageAll.Label": "Manage all traffic lights automatically",
+  "Settings.AutoManageAll.Description": "TLL takes over every signalled junction, builds a phase plan from its layout and adjusts the timing to the measured traffic. Junctions you configured yourself are left alone. Level crossings and movable bridges stay with the game.",
+
+  "Settings.AutoMode.Label": "Control mode for automatic junctions",
+  "Settings.AutoMode.Description": "Adaptive: the phase with the most pressure goes next, and green adapts to traffic. Actuated: phases in fixed order, skipped without demand, green ends when the queue is gone. Fixed time: fixed greens, optimised every few minutes.",
+
+  "Settings.AutoStrategy.Label": "Phase layout for automatic junctions",
+  "Settings.AutoStrategy.Description": "Permissive: oncoming traffic runs together, turning traffic gives way. Protected turns: turns across oncoming traffic get their own green. Split: one approach at a time. Pedestrian scramble: an extra phase in which only pedestrians walk.",
+
+  "Settings.ReleaseAll.Label": "Return all junctions to the game",
+  "Settings.ReleaseAll.Description": "Removes TLL's control from every junction, including the ones you configured. The game rebuilds its own signal groups.",
+  "Settings.ReleaseAll.Warning": "Return all junctions to the game's control? Your own phase plans are lost.",
+
+  "Settings.RebuildVanilla.Label": "Repair signal data from other mods",
+  "Settings.RebuildVanilla.Description": "Makes the game rebuild the signal groups of every junction TLL does not manage. Use it once after removing another traffic light mod, whose settings can stay behind in the save.",
+  "Settings.RebuildVanilla.Warning": "Rebuild the signal groups of all junctions not managed by TLL?",
+
+  "Settings.VerboseLogging.Label": "Detailed log",
+  "Settings.VerboseLogging.Description": "Writes one line per junction plan to Logs/TLL.log. Useful when reporting a problem.",
+
+  "Enum.AutoControlMode.Adaptive": "Adaptive",
+  "Enum.AutoControlMode.Actuated": "Actuated",
+  "Enum.AutoControlMode.FixedTime": "Fixed time",
+
+  "Enum.PlanStrategy.Permissive": "Permissive",
+  "Enum.PlanStrategy.ProtectedTurns": "Protected turns",
+  "Enum.PlanStrategy.Split": "Split",
+  "Enum.PlanStrategy.ExclusivePedestrian": "Pedestrian scramble",
+
+  "Panel.Title": "Traffic Lights & Lanes",
+  "Panel.Unavailable": "The game has changed in a way TLL does not recognise. All traffic lights are left to the game.",
+  "Panel.Managed": "Junctions controlled by TLL",
+  "Panel.AutomationOn": "Automation on",
+  "Panel.AutomationOff": "Automation off",
+  "Panel.Problems": "Needs attention",
+  "Panel.NoProblems": "No junction is struggling right now.",
+  "Panel.MaxOut": "maxed",
+  "Panel.Manual": "Set by you",
+  "Panel.Automatic": "Automatic",
+  "Panel.Cycle": "cycle",
+  "Panel.Mode": "Control",
+  "Panel.Strategy": "Phase layout",
+  "Panel.Phases": "Phases",
+  "Panel.Phase": "Phase",
+  "Panel.Emergency": "Emergency",
+  "Panel.Demand": "Demand",
+  "Panel.Waiting": "waiting",
+  "Panel.Yield": "yields",
+  "Panel.Release": "Return to the game's control",
+
+  "Mode.Adaptive": "Adaptive",
+  "Mode.Actuated": "Actuated",
+  "Mode.FixedTime": "Fixed time",
+  "Mode.Coordinated": "Green wave",
+  "Mode.Flashing": "Flashing yellow",
+
+  "Strategy.Permissive": "Permissive",
+  "Strategy.ProtectedTurns": "Protected turns",
+  "Strategy.Split": "Split",
+  "Strategy.ExclusivePedestrian": "Pedestrian scramble",
+
+  "Movement.Straight": "straight",
+  "Movement.Left": "left",
+  "Movement.Right": "right",
+  "Movement.UTurn": "U-turn",
+  "Movement.Track": "tram",
+  "Movement.Pedestrian": "Crosswalk"
+}

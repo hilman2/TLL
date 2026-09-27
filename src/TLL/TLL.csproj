@@ -1,0 +1,88 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>TLL</AssemblyName>
+    <RootNamespace>TLL</RootNamespace>
+    <Configurations>Debug;Release</Configurations>
+    <Version>0.1.0</Version>
+    <!-- Mod metadata for Paradox Mods, read by the toolchain's publish targets. -->
+    <PublishConfigurationPath>Properties\PublishConfiguration.xml</PublishConfigurationPath>
+  </PropertyGroup>
+
+  <!--
+    Two ways to build:
+
+    With the game's modding toolchain installed (Options > Modding in the game),
+    CSII_TOOLPATH points at the official Mod.props and Mod.targets. They add
+    Burst compilation, deployment to the local Mods folder and publishing.
+
+    Without it, Standalone.props and Standalone.targets reference the game's
+    DLLs directly and copy the build to the local Mods folder. Jobs then run
+    without Burst, which works but is slower.
+  -->
+  <!-- The toolchain counts as installed only once the Unity mods project has
+       been opened in Unity: its Library folder holds the Burst compiler and
+       the Entities code generators that Mod.props points at. A cancelled
+       installation leaves the environment variables and Mod.props behind
+       without it, and would fail every build. -->
+  <PropertyGroup>
+    <ToolchainPath>$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))</ToolchainPath>
+    <UnityModsProject>$([System.Environment]::GetEnvironmentVariable('CSII_UNITYMODPROJECTPATH', 'EnvironmentVariableTarget.User'))</UnityModsProject>
+    <UseToolchain Condition="'$(ToolchainPath)' != '' And Exists('$(ToolchainPath)\Mod.props') And Exists('$(UnityModsProject)\Library\PackageCache')">true</UseToolchain>
+  </PropertyGroup>
+
+  <Import Project="$(ToolchainPath)\Mod.props" Condition="'$(UseToolchain)' == 'true'" />
+  <Import Project="$(ToolchainPath)\Mod.targets" Condition="'$(UseToolchain)' == 'true'" />
+  <Import Project="Standalone.props" Condition="'$(UseToolchain)' != 'true'" />
+  <Import Project="Standalone.targets" Condition="'$(UseToolchain)' != 'true'" />
+
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The traffic control logic is compiled into the mod assembly, so the mod ships as a single DLL. -->
+    <Compile Include="..\TLL.Core\**\*.cs" Exclude="..\TLL.Core\obj\**;..\TLL.Core\bin\**" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Game" Private="false" />
+    <Reference Include="Colossal.Core" Private="false" />
+    <Reference Include="Colossal.Collections" Private="false" />
+    <Reference Include="Colossal.Logging" Private="false" />
+    <Reference Include="Colossal.Mathematics" Private="false" />
+    <Reference Include="Colossal.IO.AssetDatabase" Private="false" />
+    <Reference Include="Colossal.UI" Private="false" />
+    <Reference Include="Colossal.UI.Binding" Private="false" />
+    <Reference Include="Colossal.Localization" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" Private="false" />
+    <Reference Include="Unity.Burst" Private="false" />
+    <Reference Include="Unity.Collections" Private="false" />
+    <Reference Include="Unity.Entities" Private="false" />
+    <Reference Include="Unity.Mathematics" Private="false" />
+    <Reference Include="Unity.InputSystem" Private="false" />
+    <Reference Include="Newtonsoft.Json" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Localization\*.json" LogicalName="TLL.Localization.%(Filename).json" />
+  </ItemGroup>
+
+  <!-- The in-game panel, built separately (build/docker/compose.yml). The game
+       loads TLL.mjs from the same folder as TLL.dll, so it travels with the
+       build output and from there into the Mods folder and the upload. -->
+  <ItemGroup>
+    <None Include="..\TLL.UI\build\dist\**\*" Link="%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="WarnMissingPanel" BeforeTargets="Build" Condition="!Exists('..\TLL.UI\build\dist\TLL.mjs')">
+    <Warning Text="The panel is not built, the mod will run without it. Build it with: docker compose -f build/docker/compose.yml run --rm ui" />
+  </Target>
+
+  <ItemGroup>
+    <Reference Update="System" Private="false" />
+    <Reference Update="System.Core" Private="false" />
+    <Reference Update="System.Data" Private="false" />
+  </ItemGroup>
+
+</Project>

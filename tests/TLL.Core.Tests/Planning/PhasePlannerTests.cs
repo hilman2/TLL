@@ -1,0 +1,161 @@
+using System;
+using System.Collections.Generic;
+using TLL.Core.Planning;
+using Xunit;
+
+namespace TLL.Core.Tests.Planning
+{
+    public class PhasePlannerTests
+    {
+        private static readonly float[] Cross = { 0f, 90f, 180f, 270f };
+
+        public static IEnumerable<object[]> Junctions()
+        {
+            var random = new Random(4711);
+            var strategies = (PlanStrategy[])Enum.GetValues(typeof(PlanStrategy));
+            for (int i = 0; i < 60; i++)
+            {
+                int n = 3 + random.Next(4);
+                var angles = new float[n];
+                float a = (float)random.NextDouble() * 360f;
+                for (int k = 0; k < n; k++)
+                {
+                    // Spread the arms so no two are closer than 25 degrees.
+                    a += 25f + (float)random.NextDouble() * (360f - 25f * n) / n;
+                    angles[k] = a % 360f;
+                }
+                yield return new object[] { angles, random.Next(2) == 0, random.Next(2) == 0, strategies[i % strategies.Length] };
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(Junctions))]
+        public void NoPhaseHoldsAHardConflict(float[] angles, bool lht, bool uTurns, PlanStrategy strategy)
+        {
+            JunctionModel m = ChordModel.Build(angles, lht, uTurns);
+            PhasePlan plan = PhasePlanner.Build(m, strategy);
+            ConflictMatrix rules = PhasePlanner.Adjust(m, strategy);
+            foreach (Phase p in plan.Phases)
+            {
+                for (int x = 0; x < m.Movements.Count; x++)
+                {
+                    for (int y = 0; y < m.Movements.Count; y++)
+                    {
+                        if (p.Has(x) && p.Has(y))
+                            Assert.True(rules.Get(x, y) != Relation.Hard, $"{m.Movements[x]} and {m.Movements[y]} share a phase");
+                    }
+                }
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(Junctions))]
+        public void EveryMovementGetsGreen(float[] angles, bool lht, bool uTurns, PlanStrategy strategy)
+        {
+            JunctionModel m = ChordModel.Build(angles, lht, uTurns);
+            PhasePlan plan = PhasePlanner.Build(m, strategy);
+            Assert.Equal(0UL, plan.Uncovered(m.Movements.Count));
+        }
+
+        [Theory]
+        [MemberData(nameof(Junctions))]
+        public void PermittedIsExactlyWhoMustYield(float[] angles, bool lht, bool uTurns, PlanStrategy strategy)
+        {
+            JunctionModel m = ChordModel.Build(angles, lht, uTurns);
+            PhasePlan plan = PhasePlanner.Build(m, strategy);
+            foreach (Phase p in plan.Phases)
+            {
+                for (int x = 0; x < m.Movements.Count; x++)
+                {
+                    bool mustYield = false;
+                    for (int y = 0; y < m.Movements.Count; y++)
+                        mustYield |= p.Has(x) && p.Has(y) && m.Conflicts.Get(x, y) == Relation.Yields;
+                    Assert.Equal(mustYield, (p.Permitted & (1UL << x)) != 0);
+                }
+            }
+        }
+
+        [Fact]
+        public void PermissiveCrossNeedsTwoPhases()
+        {
+            PhasePlan plan = PhasePlanner.Build(ChordModel.Build(Cross, false), PlanStrategy.Permissive);
+            Assert.Equal(2, plan.Phases.Count);
+        }
+
+        [Fact]
+        public void ProtectedCrossNeedsFourPhasesAndNeverRunsLeftAgainstOncoming()
+        {
+            JunctionModel m = ChordModel.Build(Cross, false);
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.ProtectedTurns);
+            Assert.Equal(4, plan.Phases.Count);
+            int left = m.IndexOf(1, 0, MovementKind.Left);
+            int oncoming = m.IndexOf(3, 1, MovementKind.Straight);
+            foreach (Phase p in plan.Phases)
+                Assert.False(p.Has(left) && p.Has(oncoming));
+        }
+
+        [Fact]
+        public void ProtectedPlanRunsTurnsBeforeStraightsOfTheSameAxis()
+        {
+            JunctionModel m = ChordModel.Build(Cross, false);
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.ProtectedTurns);
+            int firstLeft = IndexOfPhaseWith(plan, m.IndexOf(1, 0, MovementKind.Left));
+            int firstStraight = IndexOfPhaseWith(plan, m.IndexOf(1, 3, MovementKind.Straight));
+            Assert.True(firstLeft < firstStraight, $"left in phase {firstLeft}, straight in phase {firstStraight}");
+        }
+
+        [Fact]
+        public void SplitPlanGivesEachApproachItsOwnPhase()
+        {
+            JunctionModel m = ChordModel.Build(Cross, false);
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.Split);
+            Assert.Equal(4, plan.Phases.Count);
+            foreach (Phase p in plan.Phases)
+            {
+                int source = -1;
+                for (int i = 0; i < m.Movements.Count; i++)
+                {
+                    if (!p.Has(i) || m.Movements[i].IsPedestrian)
+                        continue;
+                    Assert.True(source < 0 || source == m.Movements[i].Source);
+                    source = m.Movements[i].Source;
+                }
+            }
+        }
+
+        [Fact]
+        public void ExclusivePedestrianPhaseHoldsAllCrosswalksAndNoVehicle()
+        {
+            JunctionModel m = ChordModel.Build(Cross, false);
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.ExclusivePedestrian);
+            Phase last = plan.Phases[plan.Phases.Count - 1];
+            for (int i = 0; i < m.Movements.Count; i++)
+                Assert.Equal(m.Movements[i].IsPedestrian, last.Has(i));
+        }
+
+        [Fact]
+        public void MovementKeepsGreenAcrossPhasesWhereItFits()
+        {
+            // In a T junction the right turn out of the stem conflicts with
+            // nothing on the main road that cannot yield, so it should not be
+            // confined to a single phase.
+            JunctionModel m = ChordModel.Build(new[] { 0f, 180f, 270f }, false, crosswalks: false);
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.Permissive);
+            int stemRight = m.IndexOf(2, 0, MovementKind.Right);
+            int phases = 0;
+            foreach (Phase p in plan.Phases)
+                phases += p.Has(stemRight) ? 1 : 0;
+            Assert.True(phases >= 2, $"stem right turn is green in {phases} phase(s)");
+        }
+
+        private static int IndexOfPhaseWith(PhasePlan plan, int movement)
+        {
+            for (int i = 0; i < plan.Phases.Count; i++)
+            {
+                if (plan.Phases[i].Has(movement))
+                    return i;
+            }
+            return -1;
+        }
+    }
+}
