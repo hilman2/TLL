@@ -9,6 +9,7 @@ using Game.Pathfind;
 using Game.Tools;
 using TLL.Components;
 using TLL.Core;
+using TLL.Core.Advisor;
 using TLL.Core.Control;
 using TLL.Core.Planning;
 using Unity.Collections;
@@ -150,6 +151,7 @@ namespace TLL.Systems
             {
                 JunctionPhase phase = phases[p];
                 phase.TurnOnRed = PhasePlanner.TurnOnRed(model, phase.Movements);
+                phase.Data.WalkGreen = WalkGreen(phase.Movements, lanes, keys, junction);
                 phases[p] = phase;
             }
 
@@ -342,6 +344,32 @@ namespace TLL.Systems
             }
         }
 
+        /// <summary>Walk signal shown before the flashing don't-walk, as in most signal timing guides.</summary>
+        private const float kWalkInterval = 7f;
+
+        /// <summary>
+        /// Green a phase needs once pedestrians walk in it: the walk interval,
+        /// then time for someone who stepped off at its end to cross the
+        /// longest of its crosswalks. The yellow and all-red that follow count
+        /// towards that clearance. Zero for a phase without a crosswalk.
+        /// </summary>
+        private ushort WalkGreen(ulong movements, List<LaneInfo> lanes, List<MovementKey> keys, ManagedJunction junction)
+        {
+            float longest = -1f;
+            foreach (LaneInfo lane in lanes)
+            {
+                if ((lane.Flags & JunctionLaneFlags.Pedestrian) == 0 || (movements & (1UL << keys.IndexOf(lane.Key))) == 0)
+                    continue;
+                float length = EntityManager.HasComponent<Curve>(lane.Lane) ? EntityManager.GetComponentData<Curve>(lane.Lane).m_Length : 0f;
+                longest = Math.Max(longest, length);
+            }
+            if (longest < 0f)
+                return 0;
+            int walk = SimTime.ToSteps(kWalkInterval);
+            int clearance = SimTime.ToSteps(longest / DelayModel.WalkingSpeed) - junction.Yellow - junction.AllRed;
+            return (ushort)(walk + Math.Max(0, clearance));
+        }
+
         private static List<JunctionPhase> NewPlan(JunctionModel model, PlanStrategy strategy)
         {
             PhasePlan plan = PhasePlanner.Build(model, strategy);
@@ -364,7 +392,10 @@ namespace TLL.Systems
                     Permitted = phase.Permitted,
                     Data = new PhaseData
                     {
-                        MinGreen = (ushort)SimTime.ToSteps(pedestrian ? 7f : 5f),
+                        // The walk time comes on top only when someone calls
+                        // (see WalkGreen); a phase of crosswalks alone has no
+                        // other reason to run.
+                        MinGreen = (ushort)SimTime.ToSteps(5f),
                         MaxGreen = (ushort)SimTime.ToSteps(straight ? 45f : 25f),
                         Green = (ushort)SimTime.ToSteps(straight ? 20f : 10f),
                         Flags = pedestrian ? PhaseFlags.Pedestrian : PhaseFlags.None,

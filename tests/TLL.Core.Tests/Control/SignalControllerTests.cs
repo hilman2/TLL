@@ -241,6 +241,110 @@ namespace TLL.Core.Tests.Control
             Assert.Contains(h.GreenStarts(), g => g.phase == 1 && g.step <= bound);
         }
 
+        /// <summary>
+        /// Phase 0 has a crosswalk (walk 15 s, vehicle minimum 5 s) and a car
+        /// at the start; phase 1 always has demand. <paramref name="callAt"/>
+        /// is the step from which a pedestrian waits at phase 0's crosswalk,
+        /// -1 for nobody.
+        /// </summary>
+        private static ControllerHarness PushButtonCase(ControlMode mode, long callAt, float maxGreenSeconds = 40f, int steps = 200)
+        {
+            PhaseData crossing = ControllerHarness.Phase(5, maxGreenSeconds, 20, PhaseFlags.Pedestrian);
+            crossing.WalkGreen = (ushort)SimTime.ToSteps(15f);
+            var h = new ControllerHarness(ControllerConfig.Default(mode), crossing, ControllerHarness.Phase(5, 40, 20));
+            h.Run(0, steps, (s, p) =>
+            {
+                bool call = callAt >= 0 && s >= callAt;
+                p[0].PedestrianCall = call;
+                p[0].Demand = s < 3 ? 1f : 0f;
+                p[0].Pressure = p[0].Demand + (call ? 1f : 0f);
+                p[1].Demand = s < 3 ? 0f : 2f;
+                p[1].Pressure = p[1].Demand;
+            });
+            return h;
+        }
+
+        /// <summary>Length of phase 0's first green, in steps.</summary>
+        private static int FirstGreenOfPhase0(ControllerHarness h)
+        {
+            return h.GreenLengths().First(g => g.phase == 0).length;
+        }
+
+        [Theory]
+        [InlineData(ControlMode.Actuated)]
+        [InlineData(ControlMode.Adaptive)]
+        public void NoWalkAndShortGreenWithoutPedestrianCall(ControlMode mode)
+        {
+            ControllerHarness h = PushButtonCase(mode, callAt: -1);
+            Assert.DoesNotContain(h.Trace, r => r.Walk);
+            Assert.True(FirstGreenOfPhase0(h) < SimTime.ToSteps(15f), $"green {FirstGreenOfPhase0(h)} steps without a call");
+        }
+
+        [Theory]
+        [InlineData(ControlMode.Actuated)]
+        [InlineData(ControlMode.Adaptive)]
+        public void CallAtTheStartWalksForTheWalkTime(ControlMode mode)
+        {
+            ControllerHarness h = PushButtonCase(mode, callAt: 0);
+            Assert.True(h.Trace.First(r => r.Stage == Stage.Green && r.Phase == 0).Walk, "no walk although called before the green");
+            Assert.True(FirstGreenOfPhase0(h) >= SimTime.ToSteps(15f), $"green {FirstGreenOfPhase0(h)} steps, walk needs {SimTime.ToSteps(15f)}");
+        }
+
+        [Fact]
+        public void LateCallStartsTheWalkAndExtendsTheGreen()
+        {
+            // The call comes after the vehicle minimum is nearly over.
+            ControllerHarness h = PushButtonCase(ControlMode.Actuated, callAt: 12);
+            int walkStart = h.Trace.FindIndex(r => r.Walk);
+            Assert.True(walkStart >= 12, $"walk began at step {walkStart}");
+            Assert.True(FirstGreenOfPhase0(h) >= 12 + SimTime.ToSteps(15f) - 1, $"green {FirstGreenOfPhase0(h)} steps");
+        }
+
+        [Fact]
+        public void CallTooLateForTheMaximumWaitsForTheNextGreen()
+        {
+            // Maximum green 16 s: at step 12 (3.2 s) there is no room for a 15 s walk.
+            ControllerHarness h = PushButtonCase(ControlMode.Actuated, callAt: 12, maxGreenSeconds: 16f, steps: 400);
+            var firstGreen = h.Trace
+                .SkipWhile(r => !(r.Stage == Stage.Green && r.Phase == 0))
+                .TakeWhile(r => r.Stage == Stage.Green && r.Phase == 0);
+            Assert.DoesNotContain(firstGreen, r => r.Walk);
+            Assert.Contains(h.Trace, r => r.Walk);
+        }
+
+        [Fact]
+        public void PedestrianCallDoesNotHoldTheVehicleGreen()
+        {
+            // Maximum green 16 s, so the late call gets no walk; the green
+            // must still end at the vehicle minimum, not run to the maximum.
+            ControllerHarness h = PushButtonCase(ControlMode.Actuated, callAt: 12, maxGreenSeconds: 16f);
+            Assert.True(FirstGreenOfPhase0(h) < SimTime.ToSteps(16f) - 2, $"green {FirstGreenOfPhase0(h)} steps");
+        }
+
+        [Fact]
+        public void RestingGreenServesALateCall()
+        {
+            // Nobody else asks, so the green rests past its maximum; a call
+            // then still gets its walk.
+            PhaseData crossing = ControllerHarness.Phase(5, 16, 20, PhaseFlags.Pedestrian);
+            crossing.WalkGreen = (ushort)SimTime.ToSteps(15f);
+            var h = new ControllerHarness(ControllerConfig.Default(ControlMode.Actuated), crossing, ControllerHarness.Phase(5, 40, 20));
+            h.Run(0, 300, (s, p) =>
+            {
+                p[0].Demand = s < 3 ? 1f : 0f;
+                p[0].PedestrianCall = s >= 150 && s < 160;
+            });
+            Assert.Contains(h.Trace, r => r.Walk && r.Step >= 150);
+        }
+
+        [Fact]
+        public void FixedTimeWalksInEveryCycle()
+        {
+            ControllerHarness h = PushButtonCase(ControlMode.FixedTime, callAt: -1, steps: 600);
+            foreach (var (step, phase) in h.GreenStarts().Where(g => g.phase == 0))
+                Assert.True(h.Trace.First(r => r.Step == step).Walk, $"no walk in the green starting at step {step}");
+        }
+
         [Fact]
         public void AdaptiveSwitchesToMuchHigherPressure()
         {

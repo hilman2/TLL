@@ -289,6 +289,8 @@ namespace TLL.UI
             writer.Write((int)d.State.Phase);
             writer.PropertyName("next");
             writer.Write((int)d.State.Next);
+            writer.PropertyName("walk");
+            writer.Write(d.State.Walk);
             writer.PropertyName("stageSeconds");
             writer.Write(SimTime.ToSeconds(d.State.StageSteps));
             writer.PropertyName("cycleSeconds");
@@ -335,6 +337,8 @@ namespace TLL.UI
                 writer.TypeBegin("tll.Phase");
                 writer.PropertyName("minGreen");
                 writer.Write(SimTime.ToSeconds(p.Data.MinGreen));
+                writer.PropertyName("walkGreen");
+                writer.Write(SimTime.ToSeconds(p.Data.WalkGreen));
                 writer.PropertyName("maxGreen");
                 writer.Write(SimTime.ToSeconds(p.Data.MaxGreen));
                 writer.PropertyName("green");

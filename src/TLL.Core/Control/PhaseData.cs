@@ -30,6 +30,13 @@ namespace TLL.Core.Control
         /// <summary>Planned green in the fixed-time and coordinated modes.</summary>
         public ushort Green;
 
+        /// <summary>
+        /// Shortest green once pedestrians walk in this phase, so they can
+        /// cross. Without a pedestrian call the phase only needs
+        /// <see cref="MinGreen"/>. Zero means the same as MinGreen.
+        /// </summary>
+        public ushort WalkGreen;
+
         public PhaseFlags Flags;
 
         // Sensor readings, written by the caller before every step.
@@ -57,6 +64,9 @@ namespace TLL.Core.Control
         /// <summary>An emergency vehicle is asking for this phase.</summary>
         public bool Preempt;
 
+        /// <summary>Someone waits to cross on one of this phase's crosswalks: the push button.</summary>
+        public bool PedestrianCall;
+
         // Kept by the controller.
 
         /// <summary>Steps this phase has had demand without green. Reset when it gets green.</summary>
@@ -69,6 +79,13 @@ namespace TLL.Core.Control
         {
             return (Flags & flag) != 0;
         }
+
+        /// <summary>
+        /// Least green a timed plan gives the phase: long enough for the walk
+        /// if it has a crosswalk, since the fixed schedule cannot stretch a
+        /// green when a pedestrian calls.
+        /// </summary>
+        public int PlannedMinimum => HasFlag(PhaseFlags.Pedestrian) && WalkGreen > MinGreen ? WalkGreen : MinGreen;
     }
 
     public struct PhaseStatistics

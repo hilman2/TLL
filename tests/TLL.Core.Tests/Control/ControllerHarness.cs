@@ -21,6 +21,7 @@ namespace TLL.Core.Tests.Control
             public int Phase;
             public int Next;
             public int StageSteps;
+            public bool Walk;
         }
 
         public ControllerHarness(ControllerConfig config, params PhaseData[] phases)
@@ -41,7 +42,7 @@ namespace TLL.Core.Tests.Control
             {
                 sense?.Invoke(step, Phases);
                 SignalController.Step(ref State, in Config, ref access, step);
-                Trace.Add(new Record { Step = step, Stage = State.Stage, Phase = State.Phase, Next = State.Next, StageSteps = State.StageSteps });
+                Trace.Add(new Record { Step = step, Stage = State.Stage, Phase = State.Phase, Next = State.Next, StageSteps = State.StageSteps, Walk = State.Walk });
             }
         }
 

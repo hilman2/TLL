@@ -105,6 +105,8 @@
   "Panel.ProblemsTitle": "Schlangen im Berufsverkehr",
   "Panel.ProblemsHint": "Kreuzungen, an denen sich im Berufsverkehr Schlangen bilden, gemessen über Spieltage. Anklicken, um hinzuspringen.",
   "Panel.Vehicles": "Fahrzeuge",
+  "Panel.Walking": "Fußgänger gehen",
+  "Panel.WalkOnCall": "Überweg auf Anforderung",
   "ModeHint.Adaptive": "Die Phase mit dem größten Druck kommt als Nächstes. Grün passt sich dem Verkehr an und hält für ankommende Kolonnen.",
   "ModeHint.Actuated": "Feste Reihenfolge. Phasen ohne Bedarf werden übersprungen, Grün endet, wenn die Schlange abgebaut ist.",
   "ModeHint.FixedTime": "Feste Grünzeiten, alle paar Minuten an den gemessenen Verkehr angepasst.",

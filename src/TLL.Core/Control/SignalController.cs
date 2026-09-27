@@ -95,6 +95,16 @@ namespace TLL.Core.Control
 
         /// <summary>Set after the first step, so a fresh controller can pick its start phase.</summary>
         public bool Started;
+
+        /// <summary>
+        /// The crosswalks of the green phase show walk. Only with a
+        /// pedestrian call, except in fixed-time mode, where pedestrians
+        /// walk in every cycle.
+        /// </summary>
+        public bool Walk;
+
+        /// <summary>Value of StageSteps when the walk began; a call during the green starts it late.</summary>
+        public ushort WalkSince;
     }
 
     /// <summary>
@@ -182,7 +192,7 @@ namespace TLL.Core.Control
             {
                 ref PhaseData p = ref phases[i];
                 bool served = s.Stage == Stage.Green && s.Phase == i;
-                if (served || p.Demand <= 0f)
+                if (served || !Requested(ref p))
                     p.WaitSteps = 0;
                 else if (p.WaitSteps < ushort.MaxValue)
                     p.WaitSteps++;
@@ -199,7 +209,8 @@ namespace TLL.Core.Control
             if (s.GreenLeft > 0)
                 s.GreenLeft--;
 
-            bool pastMin = s.StageSteps >= current.MinGreen;
+            LateWalk(ref s, in c, ref phases);
+            bool pastMin = s.StageSteps >= current.MinGreen && (!s.Walk || s.StageSteps - s.WalkSince >= WalkGreenOf(ref current));
 
             if (s.Preempting)
             {
@@ -270,7 +281,7 @@ namespace TLL.Core.Control
             for (int k = 1; k < count; k++)
             {
                 int candidate = (s.Phase + k) % count;
-                if (phases[candidate].Demand > 0f)
+                if (Requested(ref phases[candidate]))
                 {
                     CountEnd(ref current, maxedOut, gappedOut);
                     return candidate;
@@ -295,7 +306,7 @@ namespace TLL.Core.Control
                 if (i == s.Phase)
                     continue;
                 ref PhaseData p = ref phases[i];
-                if (p.Demand <= 0f)
+                if (!Requested(ref p))
                     continue;
                 bool starved = p.WaitSteps >= c.MaxWait;
                 // A starved phase beats any unstarved one; among equals the
@@ -320,6 +331,54 @@ namespace TLL.Core.Control
                 return -1;
             CountEnd(ref current, maxedOut, gappedOut);
             return best;
+        }
+
+        /// <summary>
+        /// Whether anyone asks for the phase: vehicles, or a pedestrian at
+        /// the push button. A call asks for the green but does not keep it
+        /// going; that is what the walk time does once the walk has begun.
+        /// </summary>
+        private static bool Requested(ref PhaseData phase)
+        {
+            return phase.Demand > 0f || phase.PedestrianCall;
+        }
+
+        private static bool OthersRequested<TPhases>(ref TPhases phases, int current)
+            where TPhases : struct, IPhaseAccess
+        {
+            for (int i = 0; i < phases.Count; i++)
+            {
+                if (i != current && Requested(ref phases[i]))
+                    return true;
+            }
+            return false;
+        }
+
+        private static int WalkGreenOf(ref PhaseData phase)
+        {
+            return phase.WalkGreen > phase.MinGreen ? phase.WalkGreen : phase.MinGreen;
+        }
+
+        /// <summary>
+        /// A pedestrian call during a green that started without one: the
+        /// walk starts now if the green can still last the walk time, within
+        /// its maximum (or, in the timed modes, before its force-off), or if
+        /// the green rests because nobody else asks. Otherwise the pedestrian
+        /// waits for the next green of the phase.
+        /// </summary>
+        private static void LateWalk<TPhases>(ref ControllerState s, in ControllerConfig c, ref TPhases phases)
+            where TPhases : struct, IPhaseAccess
+        {
+            ref PhaseData current = ref phases[s.Phase];
+            if (s.Walk || !current.PedestrianCall || !current.HasFlag(PhaseFlags.Pedestrian))
+                return;
+            int walk = WalkGreenOf(ref current);
+            bool timed = c.Mode == ControlMode.FixedTime || c.Mode == ControlMode.Coordinated;
+            bool room = timed ? s.GreenLeft >= walk : s.StageSteps + walk <= current.MaxGreen || !OthersRequested(ref phases, s.Phase);
+            if (!room)
+                return;
+            s.Walk = true;
+            s.WalkSince = s.StageSteps;
         }
 
         /// <summary>Fewest vehicles on their way that are worth holding a green for.</summary>
@@ -404,6 +463,10 @@ namespace TLL.Core.Control
             p.Stats.Greens++;
             p.WaitSteps = 0;
             s.Preempting = p.Preempt;
+            // Push button: pedestrians walk only when someone asked, except
+            // in fixed-time mode, which serves them in every cycle.
+            s.Walk = p.HasFlag(PhaseFlags.Pedestrian) && (c.Mode == ControlMode.FixedTime || p.PedestrianCall);
+            s.WalkSince = 0;
             s.GreenLeft = 0;
             if (c.Mode == ControlMode.FixedTime || c.Mode == ControlMode.Coordinated)
             {
@@ -421,7 +484,7 @@ namespace TLL.Core.Control
                 return NextTimedPhase(in c, ref phases, globalStep, -1);
             for (int i = 0; i < phases.Count; i++)
             {
-                if (phases[i].Demand > 0f)
+                if (Requested(ref phases[i]))
                     return i;
             }
             return 0;
@@ -460,7 +523,7 @@ namespace TLL.Core.Control
                     continue;
                 ref PhaseData p = ref phases[i];
                 bool coordinated = p.HasFlag(PhaseFlags.Coordinated);
-                if (c.Mode == ControlMode.Coordinated && !coordinated && p.Demand <= 0f)
+                if (c.Mode == ControlMode.Coordinated && !coordinated && !Requested(ref p))
                     continue;
                 int room = SimTime.Mod(EndOf(in c, ref phases, i) - t, cycle);
                 if (room >= p.MinGreen || coordinated)

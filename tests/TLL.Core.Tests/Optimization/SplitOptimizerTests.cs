@@ -42,6 +42,21 @@ namespace TLL.Core.Tests.Optimization
         }
 
         [Fact]
+        public void TimedPlanLeavesRoomForTheWalk()
+        {
+            // The crosswalk phase carries almost no traffic, so its share would
+            // be its vehicle minimum; its walk needs 60 steps.
+            var phases = Phases((5, 10), (5, 900));
+            phases[0].Flags = PhaseFlags.Pedestrian;
+            phases[0].WalkGreen = 60;
+            float[] ratios = SplitOptimizer.FlowRatios(phases, 3000);
+            SplitResult r = SplitOptimizer.Splits(phases, ratios, 200, Intergreen);
+            Assert.True(r.Green[0] >= 60, $"crosswalk phase planned {r.Green[0]} steps, walk needs 60");
+            SplitResult blended = SplitOptimizer.Optimize(phases, 3000, Intergreen, OptimizerLimits.Default);
+            Assert.True(blended.Green[0] >= 60, $"after blending {blended.Green[0]} steps");
+        }
+
+        [Fact]
         public void GreenFollowsUsedGreen()
         {
             var phases = Phases((5, 300), (5, 100));

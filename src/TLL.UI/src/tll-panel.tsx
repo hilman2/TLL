@@ -260,6 +260,13 @@ const PhaseCard = ({ index, phase, junction, t }: { index: number; phase: PhaseI
         </div>
         <div className={styles.phaseLine}>{timing}</div>
         <div className={styles.phaseLine}>{`${t("Panel.Waiting", "waiting")}: ${phase.demand.toFixed(0)} · ${seconds(phase.wait)}`}</div>
+        {phase.walkGreen > 0 && (
+          <div className={classNames(styles.phaseLine, active && junction.walk && styles.walking)}>
+            {active && junction.walk
+              ? t("Panel.Walking", "Pedestrians walk")
+              : `${t("Panel.WalkOnCall", "Crosswalk on request")} · ${seconds(phase.walkGreen)}`}
+          </div>
+        )}
         {phase.preempt && <div className={styles.preempt}>{t("Panel.Emergency", "Emergency")}</div>}
       </div>
     </div>

@@ -294,6 +294,7 @@ namespace TLL.Systems
                 bool* blocked = stackalloc bool[movementCount];
                 bool* busy = stackalloc bool[movementCount];
                 bool* preempt = stackalloc bool[movementCount];
+                bool* call = stackalloc bool[movementCount];
                 for (int m = 0; m < movementCount; m++)
                 {
                     waiting[m] = 0f;
@@ -303,6 +304,7 @@ namespace TLL.Systems
                     blocked[m] = false;
                     busy[m] = false;
                     preempt[m] = false;
+                    call[m] = false;
                 }
 
                 for (int l = 0; l < lanes.Length; l++)
@@ -314,10 +316,17 @@ namespace TLL.Systems
 
                     // Requests the game's road users made since the last step.
                     // Reading them uses them up, as the game's own system does.
-                    // A request means someone is at the line.
+                    // A request means someone is at the line. On a crosswalk
+                    // it is the push button: pedestrians ask when their next
+                    // step is the crosswalk, and wait there while it is red.
                     LaneSignal signal = LaneSignals[lane.Lane];
                     if (signal.m_Priority > 0)
-                        soon[m] += 1f;
+                    {
+                        if ((lane.Flags & JunctionLaneFlags.Pedestrian) != 0)
+                            call[m] = true;
+                        else
+                            soon[m] += 1f;
+                    }
                     if (signal.m_Priority >= kEmergencyPriority)
                         preempt[m] = true;
                     signal.m_Petitioner = Entity.Null;
@@ -398,6 +407,7 @@ namespace TLL.Systems
                     float demand = 0f;
                     float pressure = 0f;
                     float approaching = 0f;
+                    bool phaseCall = false;
                     bool phaseBusy = false;
                     bool phasePreempt = false;
                     for (int m = 0; m < movementCount; m++)
@@ -416,12 +426,21 @@ namespace TLL.Systems
                         // A platoon held for is only worth it if it can leave.
                         if (!blocked[m])
                             approaching += near[m];
+                        // A waiting crosswalk weighs like one vehicle in the
+                        // choice of the next phase; the maximum wait makes
+                        // sure it is served even against heavy traffic.
+                        if (call[m])
+                        {
+                            phaseCall = true;
+                            pressure += 1f;
+                        }
                         phaseBusy |= busy[m];
                         phasePreempt |= preempt[m];
                     }
                     phase.Data.Demand = demand;
                     phase.Data.Pressure = pressure;
                     phase.Data.Approaching = approaching;
+                    phase.Data.PedestrianCall = phaseCall;
                     phase.Data.Busy = phaseBusy;
                     phase.Data.Preempt = phasePreempt;
                 }
@@ -559,6 +578,17 @@ namespace TLL.Systems
                     TrafficLightSystem.UpdateLaneSignal(light, ref signal);
                     ulong bit = 1UL << lane.Movement;
                     bool vehicle = (lane.Flags & (JunctionLaneFlags.Pedestrian | JunctionLaneFlags.Track)) == 0;
+                    bool crosswalk = (lane.Flags & JunctionLaneFlags.Pedestrian) != 0;
+                    if (crosswalk && signal.m_Signal != LaneSignalType.Stop)
+                    {
+                        // Push button: a crosswalk shows walk only while the
+                        // controller serves pedestrians, and through a
+                        // transition only if the walk goes on into the next
+                        // phase. Otherwise it stays red with the cars on green.
+                        bool continuing = state.Stage != Stage.Green && (movementsNext & bit) != 0;
+                        if (!state.Walk || (state.Stage != Stage.Green && !continuing))
+                            signal.m_Signal = LaneSignalType.Stop;
+                    }
                     if (signal.m_Signal == LaneSignalType.Go)
                     {
                         bool continuing = state.Stage != Stage.Green && (movementsNext & bit) != 0;

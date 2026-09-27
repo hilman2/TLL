@@ -109,6 +109,8 @@ export interface Summary {
 
 export interface PhaseInfo {
   minGreen: number;
+  /** Green once pedestrians walk, seconds; 0 for a phase without crosswalk. */
+  walkGreen: number;
   maxGreen: number;
   green: number;
   demand: number;
@@ -135,6 +137,8 @@ export interface JunctionInfo extends EntityRef {
   stage: Stage;
   phase: number;
   next: number;
+  /** The crosswalks of the green phase show walk (someone pressed the button, or fixed time). */
+  walk: boolean;
   stageSeconds: number;
   cycleSeconds: number;
   leftHandTraffic: boolean;

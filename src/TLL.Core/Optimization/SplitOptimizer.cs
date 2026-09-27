@@ -78,7 +78,8 @@ namespace TLL.Core.Optimization
 
         /// <summary>
         /// Divides the green time of <paramref name="cycle"/> among the phases
-        /// in proportion to their ratios, keeping every minimum green.
+        /// in proportion to their ratios, keeping every minimum green
+        /// (<see cref="PhaseData.PlannedMinimum"/>, which includes the walk).
         /// The greens plus the intergreens add up to the cycle exactly, unless
         /// the minimum greens alone need more, in which case the cycle grows.
         /// </summary>
@@ -89,11 +90,11 @@ namespace TLL.Core.Optimization
             int available = cycle - n * intergreen;
             int minimumSum = 0;
             for (int i = 0; i < n; i++)
-                minimumSum += phases[i].MinGreen;
+                minimumSum += phases[i].PlannedMinimum;
             if (available <= minimumSum)
             {
                 for (int i = 0; i < n; i++)
-                    green[i] = phases[i].MinGreen;
+                    green[i] = (ushort)phases[i].PlannedMinimum;
                 return new SplitResult { Cycle = minimumSum + n * intergreen, Green = green };
             }
 
@@ -113,7 +114,7 @@ namespace TLL.Core.Optimization
                 Remaining(phases, ratios, total, pinned, available, out int free, out float freeRatio);
                 for (int i = 0; i < n; i++)
                 {
-                    if (!pinned[i] && free * Share(ratios, total, i) / freeRatio < phases[i].MinGreen)
+                    if (!pinned[i] && free * Share(ratios, total, i) / freeRatio < phases[i].PlannedMinimum)
                     {
                         pinned[i] = true;
                         changed = true;
@@ -127,7 +128,7 @@ namespace TLL.Core.Optimization
                 Remaining(phases, ratios, total, pinned, available, out int free, out float freeRatio);
                 for (int i = 0; i < n; i++)
                 {
-                    int g = pinned[i] ? phases[i].MinGreen : (int)Math.Floor(free * Share(ratios, total, i) / freeRatio);
+                    int g = pinned[i] ? phases[i].PlannedMinimum : (int)Math.Floor(free * Share(ratios, total, i) / freeRatio);
                     green[i] = (ushort)g;
                     assigned += g;
                     if (!pinned[i] && (largest < 0 || g > green[largest]))
@@ -186,14 +187,14 @@ namespace TLL.Core.Optimization
                 // only moves time between phases and does not change the cycle.
                 float scaled = phases[i].Green * (freshSum / (float)currentSum);
                 int g = (int)Math.Floor(inertia * scaled + (1f - inertia) * fresh.Green[i]);
-                g = Math.Max(g, phases[i].MinGreen);
+                g = Math.Max(g, phases[i].PlannedMinimum);
                 green[i] = (ushort)g;
                 assigned += g;
                 if (green[i] > green[largest])
                     largest = i;
             }
             int diff = freshSum - assigned;
-            green[largest] = (ushort)Math.Max(phases[largest].MinGreen, green[largest] + diff);
+            green[largest] = (ushort)Math.Max(phases[largest].PlannedMinimum, green[largest] + diff);
             return new SplitResult { Cycle = fresh.Cycle, Green = green };
         }
 
@@ -212,7 +213,7 @@ namespace TLL.Core.Optimization
             for (int i = 0; i < phases.Length; i++)
             {
                 if (pinned[i])
-                    free -= phases[i].MinGreen;
+                    free -= phases[i].PlannedMinimum;
                 else
                     freeRatio += Share(ratios, total, i);
             }
