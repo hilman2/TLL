@@ -81,7 +81,7 @@ namespace TLL.UI
         {
             public bool Available;
             public int Managed;
-            public readonly int[] ByMode = new int[5];
+            public readonly int[] ByMode = new int[(int)ControlMode.Drain + 1];
             public readonly List<ProblemRow> Problems = new List<ProblemRow>();
         }
 
@@ -574,7 +574,7 @@ namespace TLL.UI
 
         private void OnSetMode(int mode)
         {
-            if (!TryGetSelected(out ManagedJunction junction) || mode < 0 || mode > (int)ControlMode.Flashing)
+            if (!TryGetSelected(out ManagedJunction junction) || mode < 0 || mode > (int)ControlMode.Drain)
                 return;
             TakeOverByPlayer(ref junction);
             junction.Mode = (ControlMode)mode;

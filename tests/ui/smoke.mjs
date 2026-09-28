@@ -130,6 +130,7 @@ const scenarios = {
   "nothing selected": {},
   "junction in transition": { "tll.selected": { ...managed, stage: 1, phase: 0, next: 1 } },
   "flashing junction": { "tll.selected": { ...managed, mode: 4, stage: 4 } },
+  "draining junction": { "tll.selected": { ...managed, mode: 5 }, expect: [">Drain<"] },
   "autopilot measuring": {
     "tll.selected": { ...managed, autopilot: { majorVolume: 0, minorVolume: 0, signalAdvice: 0, pending: -1, estimates: [] } },
   },

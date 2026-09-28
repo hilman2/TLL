@@ -61,23 +61,26 @@ namespace TLL.Core.Control
 
         /// <summary>
         /// Largest gap in metres, front to front, between two standing
-        /// vehicles of one queue: a car length plus the room a driver leaves
-        /// while moving off.
+        /// vehicles of one queue: an articulated bus or a truck with trailer
+        /// plus the room a driver leaves behind it. Sized for cars, the queue
+        /// ended behind every bus, and the vehicles there dropped out of the
+        /// count as soon as they rolled.
         /// </summary>
-        public const float QueueGap = 15f;
+        public const float QueueGap = 22f;
 
         /// <summary>
         /// Seconds of headway added to the allowed gap per m/s of speed: a
         /// queue pulls apart as it accelerates, and is still one queue while
         /// each vehicle follows the one ahead this closely.
         /// </summary>
-        public const float QueueHeadway = 1.5f;
+        public const float QueueHeadway = 2f;
 
         /// <summary>
         /// A vehicle of the queue faster than this, in m/s, is driving
-        /// through: it counts as soon at the line, not as waiting.
+        /// through: it counts as soon at the line, not as waiting. 36 km/h,
+        /// most of the way to the speed of a town road.
         /// </summary>
-        public const float QueueSpeed = 8f;
+        public const float QueueSpeed = 10f;
 
         public static ApproachReading Read<TVehicles>(ref TVehicles vehicles)
             where TVehicles : struct, IVehicleSamples

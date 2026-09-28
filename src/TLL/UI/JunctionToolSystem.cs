@@ -145,6 +145,8 @@ namespace TLL.UI
             {
                 case ControlMode.Adaptive:
                     return new Color(0.24f, 0.75f, 0.42f, 0.9f);
+                case ControlMode.Drain:
+                    return new Color(0.2f, 0.72f, 0.72f, 0.9f);
                 case ControlMode.Actuated:
                     return new Color(0.24f, 0.6f, 0.9f, 0.9f);
                 case ControlMode.Coordinated:

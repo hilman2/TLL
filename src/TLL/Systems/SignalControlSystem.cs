@@ -452,6 +452,8 @@ namespace TLL.Systems
                     float demand = 0f;
                     float queue = 0f;
                     float pressure = 0f;
+                    bool queued = false;
+                    bool allQueuedBlocked = true;
                     float approaching = 0f;
                     bool phaseCall = false;
                     bool phaseBusy = false;
@@ -465,6 +467,11 @@ namespace TLL.Systems
                         // gap setting of a real actuated controller.
                         demand += waiting[m] + soon[m];
                         queue += waiting[m];
+                        if (waiting[m] >= 0.5f)
+                        {
+                            queued = true;
+                            allQueuedBlocked &= blocked[m];
+                        }
                         // Max-pressure: the queue plus part of what is on its
                         // way. Green for a movement whose exit is full moves
                         // nobody, so it hardly counts.
@@ -492,6 +499,7 @@ namespace TLL.Systems
                     // served against steady traffic.
                     phase.Data.Demand = demand;
                     phase.Data.Queue = queue;
+                    phase.Data.Blocked = queued && allQueuedBlocked;
                     phase.Data.Pressure = pressure;
                     phase.Data.Approaching = approaching;
                     phase.Data.PedestrianCall = phaseCall;

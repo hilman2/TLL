@@ -35,11 +35,22 @@ namespace TLL.Core.Tests.Control
         [Fact]
         public void FastLeadersDoNotCutOffTheQueueBehind()
         {
-            // A queue a few seconds into its green: the first cars have picked
-            // up speed, the ones behind are still accelerating or standing.
+            // A queue a few seconds into its green: the first car has picked
+            // up speed and drives through, the ones behind are still
+            // accelerating or standing.
             ApproachReading r = Read((3f, 10f), (14f, 9f), (24f, 6f), (33f, 4f), (41f, 2f), (48f, 0f), (55f, 0f));
-            Assert.Equal(5f, r.Waiting);
-            Assert.Equal(2f, r.Soon);
+            Assert.Equal(6f, r.Waiting);
+            Assert.Equal(1f, r.Soon);
+        }
+
+        [Fact]
+        public void BusesAndTrucksDoNotBreakTheQueue()
+        {
+            // A discharging queue with an articulated bus as its third
+            // vehicle: the car behind it has its front 21 m back, the bus's
+            // length and the room left behind it. It is still the same queue.
+            ApproachReading r = Read((2f, 6f), (10f, 4.5f), (18f, 3.5f), (39f, 2.5f), (47f, 2f), (54f, 1.6f));
+            Assert.Equal(6f, r.Waiting);
         }
 
         [Fact]

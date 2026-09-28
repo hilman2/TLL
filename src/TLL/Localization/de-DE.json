@@ -9,7 +9,7 @@
   "Settings.AutoManageAll.Description": "TLL übernimmt jede Kreuzung mit Ampel, erstellt aus ihrer Form einen Phasenplan und passt die Zeiten an den gemessenen Verkehr an. Kreuzungen, die du selbst eingestellt hast, bleiben unberührt. Bahnübergänge und bewegliche Brücken bleiben beim Spiel.",
 
   "Settings.AutoMode.Label": "Steuerung automatischer Kreuzungen",
-  "Settings.AutoMode.Description": "Automatisch: Der Autopilot entscheidet; Kreuzungen außerhalb grüner Wellen laufen adaptiv. Adaptiv: Die Phase mit dem größten Druck kommt als Nächstes, Grünzeiten passen sich dem Verkehr an. Verkehrsabhängig: Phasen in fester Reihenfolge, ohne Bedarf übersprungen, Grün endet, wenn die Schlange abgebaut ist. Festzeit: feste Grünzeiten, alle paar Minuten optimiert.",
+  "Settings.AutoMode.Description": "Automatisch: Der Autopilot entscheidet; Kreuzungen außerhalb grüner Wellen laufen adaptiv. Adaptiv: Die Phase mit dem größten Druck kommt als Nächstes, Grünzeiten passen sich dem Verkehr an. Verkehrsabhängig: Phasen in fester Reihenfolge, ohne Bedarf übersprungen, Grün endet, wenn die Schlange abgebaut ist. Festzeit: feste Grünzeiten, alle paar Minuten optimiert. Leerfahren: Jede Grünphase läuft, bis ihre Schlange abgeflossen ist oder die Ausfahrt zurückstaut, höchstens 90 s.",
 
   "Settings.AutoLayout.Label": "Phasenaufbau automatischer Kreuzungen",
   "Settings.AutoLayout.Description": "Automatisch: Der Autopilot vergleicht alle Varianten mit dem über Tage gemessenen Verkehr jeder Kreuzung und nimmt die mit der geringsten Wartezeit. Bedingt verträglich: Gegenverkehr fährt gemeinsam, Abbieger warten. Geschützt abbiegen: Abbieger über den Gegenverkehr bekommen eigenes Grün. Getrennt: eine Zufahrt nach der anderen. Rundum-Grün für Fußgänger: eine zusätzliche Phase nur für Fußgänger.",
@@ -62,6 +62,7 @@
   "Enum.AutoLayout.ExclusivePedestrian": "Rundum-Grün für Fußgänger",
   "Enum.AutoControlMode.Actuated": "Verkehrsabhängig",
   "Enum.AutoControlMode.FixedTime": "Festzeit",
+  "Enum.AutoControlMode.Drain": "Leerfahren",
 
   "Enum.PlanStrategy.Permissive": "Bedingt verträglich",
   "Enum.PlanStrategy.ProtectedTurns": "Geschützt abbiegen",
@@ -151,6 +152,7 @@
   "ModeHint.Actuated": "Feste Reihenfolge. Phasen ohne Bedarf werden übersprungen, Grün endet, wenn die Schlange abgebaut ist.",
   "ModeHint.FixedTime": "Feste Grünzeiten, alle paar Minuten an den gemessenen Verkehr angepasst.",
   "ModeHint.Flashing": "Ampeln aus, gelb blinkend. Die Hauptstraße fährt, die Nebenstraßen achten die Vorfahrt.",
+  "ModeHint.Drain": "Jede Grünphase läuft, bis ihre Schlange abgeflossen ist, höchstens 90 s. Sie endet früher nur, wenn die Ausfahrt zurückstaut. Keine andere Phase schneidet sie ab; der Druck bestimmt nur, wer als Nächstes drankommt.",
   "StrategyHint.Permissive": "Gegenverkehr fährt gemeinsam, Abbieger warten auf eine Lücke.",
   "StrategyHint.ProtectedTurns": "Abbieger über den Gegenverkehr bekommen eigenes Grün.",
   "StrategyHint.Split": "Eine Zufahrt nach der anderen.",
@@ -161,6 +163,7 @@
   "Mode.FixedTime": "Festzeit",
   "Mode.Coordinated": "Grüne Welle",
   "Mode.Flashing": "Gelb blinkend",
+  "Mode.Drain": "Leerfahren",
 
   "Strategy.Permissive": "Bedingt verträglich",
   "Strategy.ProtectedTurns": "Geschützt abbiegen",

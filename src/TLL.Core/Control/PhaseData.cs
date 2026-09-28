@@ -73,6 +73,13 @@ namespace TLL.Core.Control
         /// <summary>Traffic is moving through the junction on this phase's lanes right now.</summary>
         public bool Busy;
 
+        /// <summary>
+        /// Every movement of the phase with a queue leads into an exit backed
+        /// up to the junction: green would move nobody. Ends a green in the
+        /// drain mode.
+        /// </summary>
+        public bool Blocked;
+
         /// <summary>An emergency vehicle is asking for this phase.</summary>
         public bool Preempt;
 

@@ -16,6 +16,14 @@ namespace TLL.Core.Control
 
         /// <summary>Signals off: main road has priority, side roads yield.</summary>
         Flashing,
+
+        /// <summary>
+        /// Like adaptive, but every green runs until its queue has left: it
+        /// ends early only when the exits back up, and at the latest after
+        /// <see cref="ControllerConfig.DrainMax"/>. No other phase cuts it
+        /// short; the pressure only decides which comes next.
+        /// </summary>
+        Drain,
     }
 
     public enum Stage : byte
@@ -57,6 +65,9 @@ namespace TLL.Core.Control
         /// <summary>Adaptive mode: after this many steps of waiting a phase is served regardless of pressure.</summary>
         public ushort MaxWait;
 
+        /// <summary>Drain mode: longest green, whatever the phase's own maximum.</summary>
+        public ushort DrainMax;
+
         /// <summary>
         /// Pedestrians cross in the scramble phase instead of alongside the
         /// vehicles: set while turning vehicles keep being held up by people
@@ -74,6 +85,7 @@ namespace TLL.Core.Control
                 Prepare = 1,
                 SwitchRatio = 1.5f,
                 MaxWait = (ushort)SimTime.ToSteps(120f),
+                DrainMax = (ushort)SimTime.ToSteps(90f),
             };
         }
 
@@ -283,6 +295,7 @@ namespace TLL.Core.Control
                     next = ActuatedDecision(ref s, in c, ref phases, pastMin);
                     break;
                 case ControlMode.Adaptive:
+                case ControlMode.Drain:
                     next = AdaptiveDecision(ref s, in c, ref phases, pastMin);
                     break;
             }
@@ -400,19 +413,24 @@ namespace TLL.Core.Control
             // pressure instead.
             int called = CallCounts(in c, ref phases[longest]) ? longest : -1;
 
-            bool maxedOut = s.StageSteps >= current.MaxGreen;
-            bool gappedOut = current.Demand <= 0f;
+            // The drain mode lets a green run until its queue has left or its
+            // exits back up; neither stragglers nor a starved phase end it,
+            // only its own limit does.
+            bool drain = c.Mode == ControlMode.Drain;
+            bool maxedOut = s.StageSteps >= (drain ? c.DrainMax : current.MaxGreen);
+            bool gappedOut = drain ? current.Queue < 1f || current.Blocked : current.Demand <= 0f;
+            bool starvedCut = bestStarved && !drain;
             // A heavier queue elsewhere takes over only once the running
             // phase's own queue has left and it serves stragglers. Cutting
             // into a queue still leaving costs the change and the start-up
             // again, and its rest waits a whole round more; with a tram
             // counting ten cars, the phase opposite a tram line got hardly
             // more than its minimum green.
-            bool outweighed = !bestStarved && current.Queue < 1f
+            bool outweighed = !drain && !bestStarved && current.Queue < 1f
                 && phases[best].Pressure > current.Pressure * c.SwitchRatio && phases[best].Pressure > current.Pressure + 1f;
-            if (!(maxedOut || gappedOut || bestStarved || outweighed))
+            if (!(maxedOut || gappedOut || starvedCut || outweighed))
                 return -1;
-            if (!maxedOut && !bestStarved && HoldForPlatoon(ref current, ref phases[best]))
+            if (!drain && !maxedOut && !bestStarved && HoldForPlatoon(ref current, ref phases[best]))
                 return -1;
             CountEnd(ref current, maxedOut, gappedOut);
             return called >= 0 && !bestStarved ? called : best;

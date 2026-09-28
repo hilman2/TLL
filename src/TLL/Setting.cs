@@ -15,6 +15,9 @@ namespace TLL
         Adaptive,
         Actuated,
         FixedTime,
+
+        /// <summary>Every green runs until its queue has left, at most 90 s (ControlMode.Drain).</summary>
+        Drain,
     }
 
     /// <summary>Phase layouts offered for the city-wide automation.</summary>
@@ -117,6 +120,8 @@ namespace TLL
                     return ControlMode.Actuated;
                 case AutoControlMode.FixedTime:
                     return ControlMode.FixedTime;
+                case AutoControlMode.Drain:
+                    return ControlMode.Drain;
                 default:
                     return ControlMode.Adaptive;
             }

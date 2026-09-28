@@ -11,6 +11,7 @@ export enum ControlMode {
   Adaptive = 2,
   Coordinated = 3,
   Flashing = 4,
+  Drain = 5,
 }
 
 /** Numbers as in TLL.Core.Control.Stage. */

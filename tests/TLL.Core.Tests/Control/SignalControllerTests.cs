@@ -517,6 +517,94 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
+        public void DrainRunsUntilTheQueueHasLeft()
+        {
+            // 30 vehicles leave at one every 2 s: about 58 s until fewer than
+            // one is left. The phase's maximum green of 30 s does not end it,
+            // nor does the far heavier pressure of the other phase.
+            var config = ControllerConfig.Default(ControlMode.Drain);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 30, 20), ControllerHarness.Phase(5, 30, 20));
+            float queue = 30f;
+            h.Run(0, 1200, (s, p) =>
+            {
+                if (h.State.Stage == Stage.Green && h.State.Phase == 0)
+                    queue = Math.Max(0f, queue - SimTime.SecondsPerStep / 2f);
+                p[0].Queue = queue;
+                p[0].Demand = queue + 1f;
+                p[0].Pressure = queue + 1f;
+                p[1].Queue = 20f;
+                p[1].Demand = 20f;
+                p[1].Pressure = 200f;
+            });
+            var green = h.GreenLengths().First(g => g.phase == 0);
+            Assert.InRange(green.length, SimTime.ToSteps(56f), SimTime.ToSteps(60f));
+        }
+
+        [Fact]
+        public void DrainStopsAtNinetySecondsEvenWithAStarvedPhase()
+        {
+            // The queue never clears. The other phase waits past its maximum
+            // wait, which in the adaptive mode would cut the green; here only
+            // the 90 s end it.
+            var config = ControllerConfig.Default(ControlMode.Drain);
+            config.MaxWait = (ushort)SimTime.ToSteps(30f);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 30, 20), ControllerHarness.Phase(5, 30, 20));
+            h.Run(0, 800, (s, p) =>
+            {
+                p[0].Queue = 10f;
+                p[0].Demand = 10f;
+                p[0].Pressure = 10f;
+                bool later = h.GreenStarts().Any(g => g.phase == 0);
+                p[1].Queue = later ? 10f : 0f;
+                p[1].Demand = later ? 10f : 0f;
+                p[1].Pressure = later ? 10f : 0f;
+            });
+            var green = h.GreenLengths().First(g => g.phase == 0);
+            Assert.InRange(green.length, config.DrainMax - 1, config.DrainMax + 1);
+        }
+
+        [Fact]
+        public void DrainEndsWhenTheExitBacksUp()
+        {
+            var config = ControllerConfig.Default(ControlMode.Drain);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 30, 20), ControllerHarness.Phase(5, 30, 20));
+            int green0 = 0;
+            h.Run(0, 800, (s, p) =>
+            {
+                green0 = h.State.Stage == Stage.Green && h.State.Phase == 0 ? green0 + 1 : 0;
+                p[0].Queue = 10f;
+                p[0].Demand = 10f;
+                p[0].Pressure = 10f;
+                p[0].Blocked = green0 >= SimTime.ToSteps(20f);
+                bool later = h.GreenStarts().Any(g => g.phase == 0);
+                p[1].Queue = later ? 5f : 0f;
+                p[1].Demand = later ? 5f : 0f;
+                p[1].Pressure = later ? 5f : 0f;
+            });
+            var green = h.GreenLengths().First(g => g.phase == 0);
+            Assert.InRange(green.length, SimTime.ToSteps(20f), SimTime.ToSteps(20f) + 2);
+        }
+
+        [Fact]
+        public void DrainedGreenDoesNotWaitForStragglers()
+        {
+            var config = ControllerConfig.Default(ControlMode.Drain);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 30, 20), ControllerHarness.Phase(5, 30, 20));
+            h.Run(0, 400, (s, p) =>
+            {
+                p[0].Queue = 0f;
+                p[0].Demand = 2f;
+                p[0].Pressure = 2f;
+                bool later = h.GreenStarts().Any(g => g.phase == 0);
+                p[1].Queue = later ? 1f : 0f;
+                p[1].Demand = later ? 1f : 0f;
+                p[1].Pressure = later ? 1f : 0f;
+            });
+            var green = h.GreenLengths().First(g => g.phase == 0);
+            Assert.InRange(green.length, h.Phases[0].MinGreen, h.Phases[0].MinGreen + 1);
+        }
+
+        [Fact]
         public void LongRestDoesNotBlockTheJunction()
         {
             // A quiet junction rests in one green for days (more steps than a

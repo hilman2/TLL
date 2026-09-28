@@ -37,7 +37,7 @@ import styles from "tll-panel.module.scss";
 
 type Translate = ReturnType<typeof useTranslate>;
 
-const modes = [ControlMode.Adaptive, ControlMode.Actuated, ControlMode.FixedTime, ControlMode.Flashing];
+const modes = [ControlMode.Adaptive, ControlMode.Drain, ControlMode.Actuated, ControlMode.FixedTime, ControlMode.Flashing];
 const strategies = [PlanStrategy.Permissive, PlanStrategy.ProtectedTurns, PlanStrategy.Split, PlanStrategy.ExclusivePedestrian];
 
 /** Icons that ship with the game. */
