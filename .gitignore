@@ -7,5 +7,7 @@ obj/
 Logs/
 Library/
 node_modules/
+__pycache__/
+*.sqlite
 src/TLL/Local.props
 src/TLL.UI/build/

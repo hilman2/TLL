@@ -1,0 +1,19 @@
+[project]
+name = "tll-metrics"
+version = "0.1.0"
+description = "Loads the TLL mod's metrics log into SQLite and reports on it."
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 140
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.mypy]
+strict = true
+files = ["tll_metrics", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--timeout=60 -p no:cacheprovider"

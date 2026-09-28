@@ -1,0 +1,33 @@
+# Checks and tests tools/metrics in a pinned Python image.
+#
+#   docker compose -f tools/metrics/docker/compose.yml run --rm tests
+#   docker compose -f tools/metrics/docker/compose.yml run --rm tests-live   (one line per test, with logs)
+#
+# The repository is mounted read-only; pip, the checkers and the tests write
+# to a tmpfs under /tmp.
+x-test: &test
+  image: python:3.12.7-slim
+  user: "1000:1000"
+  read_only: true
+  working_dir: /src/tools/metrics
+  volumes:
+    - ../../..:/src:ro
+  tmpfs:
+    - /tmp:exec,size=512m
+  environment:
+    HOME: /tmp
+    PIP_CACHE_DIR: /tmp/pip
+    PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    PYTHONUNBUFFERED: "1"
+    PYTHONDONTWRITEBYTECODE: "1"
+    MYPY_CACHE_DIR: /tmp/mypy
+    RUFF_CACHE_DIR: /tmp/ruff
+  entrypoint: ["sh", "/src/tools/metrics/docker/run.sh"]
+
+services:
+  tests:
+    <<: *test
+    command: ["-q"]
+  tests-live:
+    <<: *test
+    command: ["-v", "-s", "--log-cli-level=INFO"]
