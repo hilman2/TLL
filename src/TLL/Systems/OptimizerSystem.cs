@@ -25,9 +25,6 @@ namespace TLL.Systems
         /// <summary>Statistics must cover at least this long before they are used.</summary>
         private static readonly int kMinimumSample = SimTime.ToSteps(120f);
 
-        /// <summary>Longest green the adaptive and actuated modes may give one phase.</summary>
-        private static readonly ushort kMaxGreenCap = (ushort)SimTime.ToSteps(90f);
-
         private SimulationSystem m_Simulation;
         private EntityQuery m_Query;
 
@@ -124,11 +121,10 @@ namespace TLL.Systems
             {
                 ref JunctionPhase phase = ref buffer.ElementAt(i);
                 phase.Data.Green = result.Green[i];
-                // The demand-driven modes use the split as the typical green
-                // and allow half as much again before forcing a change, but
-                // never less than the walk, so a late pedestrian call fits.
-                int max = result.Green[i] + result.Green[i] / 2;
-                phase.Data.MaxGreen = (ushort)Math.Max(phase.Data.PlannedMinimum + 1, Math.Min(max, kMaxGreenCap));
+                // The demand-driven modes end a green when its queue has left;
+                // the maximum only caps it, and follows how often the greens
+                // were cut off there (MaxGreenTuner), not the split.
+                phase.Data.MaxGreen = (ushort)MaxGreenTuner.Next(in phase.Data);
             }
         }
 

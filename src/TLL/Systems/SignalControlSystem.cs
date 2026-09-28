@@ -46,9 +46,6 @@ namespace TLL.Systems
         /// <summary>Road length a queued vehicle takes up, including the gap to the next one.</summary>
         private const float kVehicleSpacing = 7f;
 
-        /// <summary>Exit lane fill above which traffic sent there would only block the junction.</summary>
-        private const float kBlockedOccupancy = 0.85f;
-
         /// <summary>
         /// Speed in m/s above which a vehicle entering the junction did not
         /// stop at the line. One released from the queue starts from
@@ -402,7 +399,13 @@ namespace TLL.Systems
                         }
                     }
 
-                    if (lane.Exit != Entity.Null && Occupancy(lane.Exit) > kBlockedOccupancy)
+                    // Backed up means a standing vehicle right behind the
+                    // junction, as for keeping it clear. How full the exit
+                    // lane is says little: on a short first piece of road,
+                    // two cars driving on counted as a full exit, and the
+                    // green was cut with the queue still there and room on
+                    // the road beyond.
+                    if (lane.Exit != Entity.Null && FreeSpaceAtStart(lane.Exit) < kKeepClearGap)
                         blocked[m] = true;
                 }
 
@@ -701,14 +704,6 @@ namespace TLL.Systems
                 return false;
             }
 
-            /// <summary>How full a lane is, as a share of the vehicles it can hold.</summary>
-            private float Occupancy(Entity lane)
-            {
-                if (!LaneObjects.TryGetBuffer(lane, out DynamicBuffer<LaneObject> objects) || !Curves.HasComponent(lane))
-                    return 0f;
-                float capacity = math.max(1f, Curves[lane].m_Length / kVehicleSpacing);
-                return objects.Length / capacity;
-            }
 
             /// <summary>Translates the controller stage into the game's signal states on every junction lane.</summary>
             private void Show(ControllerState state, DynamicBuffer<JunctionPhase> phases, DynamicBuffer<JunctionLane> lanes,
