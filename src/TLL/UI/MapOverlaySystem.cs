@@ -22,7 +22,9 @@ namespace TLL.UI
     /// - the junction shown in the panel, with its signalled lanes in the
     ///   colour they show right now, while the panel is open;
     /// - problem junctions, from TLL's long-term measurement (setting);
-    /// - congested roads, from the game's own traffic flow data (setting).
+    /// - congested roads, from the game's own traffic flow data (setting);
+    /// - junctions whose plan TLL changed after their roads changed
+    ///   (PlanNotice), while the panel is open.
     ///
     /// The last two change over hours, so they are collected every couple of
     /// seconds and drawn from that list in every frame.
@@ -38,6 +40,8 @@ namespace TLL.UI
         private static readonly Color kProblem = new Color(0.9f, 0.2f, 0.2f, 1f);
         private static readonly Color kHover = new Color(1f, 0.85f, 0.3f, 1f);
         private static readonly Color kHoverFill = new Color(1f, 0.85f, 0.3f, 0.15f);
+        private static readonly Color kNotice = new Color(0.79f, 0.66f, 1f, 1f);
+        private static readonly Color kNoticeFill = new Color(0.79f, 0.66f, 1f, 0.12f);
 
         /// <summary>
         /// Rush-hour queue, in vehicles on the worst movement, from which a
@@ -68,6 +72,7 @@ namespace TLL.UI
         private TllUISystem m_UI;
         private EntityQuery m_ProblemQuery;
         private EntityQuery m_RoadQuery;
+        private EntityQuery m_NoticeQuery;
         private readonly List<Mark> m_Problems = new List<Mark>();
         private readonly List<Mark> m_Congestion = new List<Mark>();
         private DateTime m_Collected;
@@ -88,6 +93,11 @@ namespace TLL.UI
                 All = new[] { ComponentType.ReadOnly<Road>(), ComponentType.ReadOnly<Curve>(), ComponentType.ReadOnly<Edge>() },
                 None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
             });
+            m_NoticeQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<PlanNotice>(), ComponentType.ReadOnly<Node>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
+            });
         }
 
         protected override void OnSafeUpdate()
@@ -103,7 +113,8 @@ namespace TLL.UI
             Entity hovered = m_UI.PanelOpen ? m_UI.Hovered : Entity.Null;
             if (hovered != Entity.Null && (!EntityManager.Exists(hovered) || !EntityManager.HasComponent<Node>(hovered)))
                 hovered = Entity.Null;
-            if (!problems && !congestion && selected == Entity.Null && hovered == Entity.Null)
+            bool notices = m_UI.PanelOpen && !m_NoticeQuery.IsEmptyIgnoreFilter;
+            if (!problems && !congestion && !notices && selected == Entity.Null && hovered == Entity.Null)
                 return;
 
             if (DateTime.UtcNow - m_Collected >= kRefresh)
@@ -135,6 +146,16 @@ namespace TLL.UI
                     Color fill = kProblem;
                     fill.a = 0.1f + 0.25f * m.Strength;
                     buffer.DrawCircle(kProblem, fill, 2f + 2f * m.Strength, OverlayRenderSystem.StyleFlags.Projected, new float2(0f, 1f), m.Position, 40f);
+                }
+            }
+            if (notices)
+            {
+                // Plans TLL changed on its own after their roads changed,
+                // until the player has looked at them.
+                using (NativeArray<Node> nodes = m_NoticeQuery.ToComponentDataArray<Node>(Allocator.Temp))
+                {
+                    foreach (Node node in nodes)
+                        buffer.DrawCircle(kNotice, kNoticeFill, 1.5f, OverlayRenderSystem.StyleFlags.Projected, new float2(0f, 1f), node.m_Position, 30f);
                 }
             }
             if (selected != Entity.Null)

@@ -41,6 +41,7 @@ namespace TLL.UI
         private static readonly TimeSpan kDetailInterval = TimeSpan.FromMilliseconds(250);
 
         private EntityQuery m_ManagedQuery;
+        private EntityQuery m_NoticeQuery;
         private NameSystem m_NameSystem;
         private CameraUpdateSystem m_CameraSystem;
         private SignalControlSystem m_Control;
@@ -86,6 +87,9 @@ namespace TLL.UI
             public int Managed;
             public readonly int[] ByMode = new int[(int)ControlMode.Drain + 1];
             public readonly List<ProblemRow> Problems = new List<ProblemRow>();
+
+            /// <summary>Junctions whose plan TLL changed after their roads changed (PlanNotice), with the kind of change.</summary>
+            public readonly List<(Entity Node, string Name, PlanNoticeKind Kind)> Notices = new List<(Entity Node, string Name, PlanNoticeKind Kind)>();
         }
 
         private sealed class Detail
@@ -119,6 +123,10 @@ namespace TLL.UI
 
             /// <summary>The sign on each approach; empty where signals decide.</summary>
             public readonly List<SignRow> Signs = new List<SignRow>();
+
+            /// <summary>What TLL did to the player's plan after the roads changed, if the player has not looked yet.</summary>
+            public bool HasNotice;
+            public PlanNotice Notice;
         }
 
         private struct SignRow
@@ -203,6 +211,11 @@ namespace TLL.UI
                 All = new[] { ComponentType.ReadOnly<ManagedJunction>(), ComponentType.ReadOnly<JunctionPhase>() },
                 None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
             });
+            m_NoticeQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<PlanNotice>(), ComponentType.ReadOnly<ManagedJunction>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
+            });
 
             AddUpdateBinding(new RawValueBinding(kGroup, "summary", WriteSummary));
             AddUpdateBinding(new RawValueBinding(kGroup, "selected", WriteDetail));
@@ -235,6 +248,17 @@ namespace TLL.UI
             AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "toolActive", () => m_Tool.IsActive));
             AddBinding(new TriggerBinding(kGroup, "toggleLaneTool", () => m_LaneTool.Toggle(m_Selected)));
             AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "laneToolActive", () => m_LaneTool.IsActive));
+            AddBinding(new TriggerBinding(kGroup, "dismissNotice", OnDismissNotice));
+        }
+
+        /// <summary>The player has seen what TLL did to the selected junction's plan.</summary>
+        private void OnDismissNotice()
+        {
+            if (m_Selected == Entity.Null || !EntityManager.Exists(m_Selected) || !EntityManager.HasComponent<PlanNotice>(m_Selected))
+                return;
+            EntityManager.RemoveComponent<PlanNotice>(m_Selected);
+            m_DetailTime = default;
+            m_SummaryTime = default;
         }
 
         protected override void OnUpdate()
@@ -306,6 +330,19 @@ namespace TLL.UI
                 writer.TypeEnd();
             }
             writer.ArrayEnd();
+            writer.PropertyName("notices");
+            writer.ArrayBegin((uint)s.Notices.Count);
+            foreach ((Entity node, string name, PlanNoticeKind kind) in s.Notices)
+            {
+                writer.TypeBegin("tll.NoticeRow");
+                WriteEntity(writer, node);
+                writer.PropertyName("name");
+                writer.Write(name);
+                writer.PropertyName("kind");
+                writer.Write((int)kind);
+                writer.TypeEnd();
+            }
+            writer.ArrayEnd();
             writer.TypeEnd();
         }
 
@@ -338,6 +375,11 @@ namespace TLL.UI
                 ProblemRow row = rows[i];
                 row.Name = JunctionName(row.Node);
                 summary.Problems.Add(row);
+            }
+            using (NativeArray<Entity> nodes = m_NoticeQuery.ToEntityArray(Allocator.Temp))
+            {
+                for (int i = 0; i < nodes.Length && i < kProblemCount; i++)
+                    summary.Notices.Add((nodes[i], JunctionName(nodes[i]), EntityManager.GetComponentData<PlanNotice>(nodes[i]).Kind));
             }
             return summary;
         }
@@ -468,6 +510,24 @@ namespace TLL.UI
             }
             writer.ArrayEnd();
             WriteAutopilot(writer, d);
+            writer.PropertyName("notice");
+            if (d.HasNotice)
+            {
+                writer.TypeBegin("tll.Notice");
+                writer.PropertyName("kind");
+                writer.Write((int)d.Notice.Kind);
+                writer.PropertyName("added");
+                writer.Write(d.Notice.Added);
+                writer.PropertyName("moved");
+                writer.Write(d.Notice.Moved);
+                writer.PropertyName("dropped");
+                writer.Write(d.Notice.Dropped);
+                writer.TypeEnd();
+            }
+            else
+            {
+                writer.WriteNull();
+            }
             writer.PropertyName("phases");
             writer.ArrayBegin((uint)d.Phases.Count);
             foreach (PhaseRow p in d.Phases)
@@ -637,6 +697,9 @@ namespace TLL.UI
             detail.HasAutopilot = EntityManager.HasComponent<AutopilotState>(node);
             if (detail.HasAutopilot)
                 detail.Autopilot = EntityManager.GetComponentData<AutopilotState>(node);
+            detail.HasNotice = EntityManager.HasComponent<PlanNotice>(node);
+            if (detail.HasNotice)
+                detail.Notice = EntityManager.GetComponentData<PlanNotice>(node);
             return detail;
         }
 

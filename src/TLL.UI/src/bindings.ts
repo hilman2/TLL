@@ -152,6 +152,27 @@ export interface Problem extends EntityRef {
   queue: number;
 }
 
+/** Numbers as in TLL.Components.PlanNoticeKind. */
+export enum NoticeKind {
+  /** The player's plan was carried over to changed roads, with changes. */
+  Adapted = 1,
+  /** The player's plan could not be carried over and was replaced by a generated one. */
+  Replaced = 2,
+}
+
+/** What TLL did to the player's plan after the junction's roads changed. */
+export interface Notice {
+  kind: NoticeKind;
+  added: number;
+  moved: number;
+  dropped: number;
+}
+
+export interface NoticeRow extends EntityRef {
+  name: string;
+  kind: NoticeKind;
+}
+
 export interface Summary {
   available: boolean;
   /** Name of another traffic light mod TLL stands back for, "?" if unknown, "" for none. */
@@ -164,6 +185,8 @@ export interface Summary {
   coordinated: number;
   byMode: number[];
   problems: Problem[];
+  /** Junctions whose plan TLL changed after their roads changed; missing from a C# side older than the panel. */
+  notices?: NoticeRow[];
 }
 
 export interface PhaseInfo {
@@ -224,6 +247,8 @@ export interface JunctionInfo extends EntityRef {
   phases: PhaseInfo[];
   /** Null where the autopilot does not run: manual junctions, or automation off. */
   autopilot: AutopilotInfo | null;
+  /** What TLL did to the player's plan after the roads changed, until dismissed; null or missing otherwise. */
+  notice?: Notice | null;
 }
 
 const emptySummary: Summary = { available: true, conflict: "", automation: false, showProblems: false, showCongestion: false, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] };
@@ -273,4 +298,5 @@ export const actions = {
   resetAllToAutomatic: () => trigger(group, "resetAllToAutomatic"),
   toggleShowProblems: () => trigger(group, "toggleShowProblems"),
   toggleShowCongestion: () => trigger(group, "toggleShowCongestion"),
+  dismissNotice: () => trigger(group, "dismissNotice"),
 };

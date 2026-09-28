@@ -9,6 +9,9 @@ import {
   Estimate,
   JunctionInfo,
   MovementKind,
+  Notice,
+  NoticeKind,
+  NoticeRow,
   panelOpen$,
   PhaseInfo,
   PlanStrategy,
@@ -373,8 +376,39 @@ const TurnRow = ({ turn, junction, t }: { turn: Turn; junction: JunctionInfo; t:
 const modeTone = (mode: ControlMode): "green" | "amber" | "blue" | "grey" =>
   mode === ControlMode.Coordinated ? "blue" : mode === ControlMode.Flashing ? "amber" : mode === ControlMode.FixedTime ? "grey" : "green";
 
+/** How many movements a notice counts, as "2 added, 1 moved", leaving out the zeros. */
+function noticeCounts(notice: Notice, t: Translate): string {
+  const parts: string[] = [];
+  if (notice.added > 0) parts.push(`${notice.added} ${t("Panel.NoticeAdded", "added")}`);
+  if (notice.moved > 0) parts.push(`${notice.moved} ${t("Panel.NoticeMoved", "moved to another phase")}`);
+  if (notice.dropped > 0) parts.push(`${notice.dropped} ${t("Panel.NoticeDropped", "gone with a road")}`);
+  return parts.join(", ");
+}
+
+/**
+ * What TLL did to the player's plan after the junction's roads changed,
+ * until the player has seen it.
+ */
+const NoticeCard = ({ notice, t }: { notice: Notice; t: Translate }) => {
+  const text =
+    notice.kind === NoticeKind.Replaced
+      ? t("Panel.NoticeReplaced", "Your plan no longer fitted the changed roads and was replaced by a generated one.")
+      : `${t("Panel.NoticeAdapted", "Your plan was adapted to the changed roads. Ways through the junction")}: ${noticeCounts(notice, t)}.`;
+  return (
+    <div className={styles.noticeCard}>
+      <div className={styles.noticeText}>{text}</div>
+      <div className={styles.row}>
+        <Button variant="flat" className={styles.wide} onSelect={actions.dismissNotice}>
+          {t("Panel.NoticeSeen", "Got it")}
+        </Button>
+      </div>
+    </div>
+  );
+};
+
 const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }) => (
   <>
+    {junction.notice && <NoticeCard notice={junction.notice} t={t} />}
     <div className={styles.card}>
       <div className={styles.cardTitle}>{junction.name}</div>
       <div className={styles.chips}>
@@ -723,6 +757,16 @@ const CityTab = ({ summary, t }: { summary: Summary; t: Translate }) => {
 
 const ProblemsTab = ({ summary, selected, t }: { summary: Summary; selected: JunctionInfo | null; t: Translate }) => (
   <>
+    {summary.notices && summary.notices.length > 0 && (
+      <>
+        <Hint text={t("Panel.NoticesHint", "")}>
+          <div className={styles.label}>{t("Panel.NoticesTitle", "Plans TLL changed after a road changed")}</div>
+        </Hint>
+        {summary.notices.map((n) => (
+          <NoticeListRow key={n.index} notice={n} t={t} selected={selected?.index === n.index} />
+        ))}
+      </>
+    )}
     <Hint text={t("Panel.ProblemsHint", "")}>
       <div className={styles.label}>{t("Panel.ProblemsTitle", "Queues in the rush hour")}</div>
     </Hint>
@@ -732,6 +776,27 @@ const ProblemsTab = ({ summary, selected, t }: { summary: Summary; selected: Jun
       summary.problems.map((p) => <ProblemRow key={p.index} problem={p} t={t} selected={selected?.index === p.index} />)
     )}
   </>
+);
+
+/** A junction whose plan TLL changed; a click goes there, where the notice says what changed. */
+const NoticeListRow = ({ notice, t, selected }: { notice: NoticeRow; t: Translate; selected: boolean }) => (
+  <div onMouseEnter={() => actions.hover(notice)} onMouseLeave={actions.unhover}>
+    <Button
+      variant="flat"
+      className={classNames(styles.problem, selected && styles.selected)}
+      onSelect={() => {
+        actions.goto(notice);
+        tab$.update("junction");
+      }}
+    >
+      <div className={styles.problemTop}>
+        <div className={styles.problemName}>{notice.name}</div>
+        <div className={styles.problemStats}>
+          {notice.kind === NoticeKind.Replaced ? t("Panel.NoticeReplacedShort", "replaced") : t("Panel.NoticeAdaptedShort", "adapted")}
+        </div>
+      </div>
+    </Button>
+  </div>
 );
 
 /** One problem spot: name, a bar for how long the queue is, and the figure. Hovering marks it on the map. */

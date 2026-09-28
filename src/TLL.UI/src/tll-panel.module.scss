@@ -170,6 +170,22 @@ $line: rgba(255, 255, 255, 0.12);
   border-radius: 4rem;
 }
 
+// A change TLL made on its own, in the violet of its map mark.
+.noticeCard {
+  display: flex;
+  flex-direction: column;
+  margin: 6rem 8rem;
+  padding: 6rem 0 2rem 0;
+  background-color: rgba(201, 168, 255, 0.14);
+  border-left: 3rem solid #c9a8ff;
+  border-radius: 4rem;
+}
+
+.noticeText {
+  padding: 2rem 12rem;
+  font-size: 13rem;
+}
+
 .tooltip {
   max-width: 360rem;
   font-size: 13rem;

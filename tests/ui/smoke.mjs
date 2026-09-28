@@ -198,6 +198,19 @@ const scenarios = {
     },
     expect: [">forbidden · you<", ">Right of way<", ">Now: Priority road<", ">Now: Give way · autopilot<", ">Now: right before left<", ">Stop<", ">Automatic<"],
   },
+  "plan adapted after a road change": {
+    "tll.selected": { ...managed, manual: true, notice: { kind: 1, added: 2, moved: 1, dropped: 0 } },
+    expect: [">Your plan was adapted to the changed roads. Ways through the junction: 2 added, 1 moved to another phase.<", ">Got it<"],
+  },
+  "plan replaced after a road change": {
+    "tll.selected": { ...managed, manual: true, notice: { kind: 2, added: 0, moved: 0, dropped: 0 } },
+    expect: [">Your plan no longer fitted the changed roads and was replaced by a generated one.<"],
+  },
+  "problems tab with changed plans": {
+    tab: "problems",
+    "tll.summary": { ...summary, notices: [{ index: 11, version: 1, name: "Harbour Road / Pier Street", kind: 1 }, { index: 12, version: 1, name: "Elm Road", kind: 2 }] },
+    expect: [">Plans TLL changed after a road changed<", ">adapted<", ">replaced<"],
+  },
   "vanilla junction": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: true } },
   "junction without signals": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false } },
   "roundabout": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, roundabout: true } },

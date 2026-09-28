@@ -150,10 +150,26 @@ namespace TLL.Systems
             int[] savedToCurrent = SavedToCurrent(matched, storedMovements.Count, out string changed);
             List<JunctionPhase> existing = ExistingPlan(node, savedToCurrent, changed, model, out string misfit);
             List<JunctionPhase> phases = junction.Origin == JunctionOrigin.Manual ? existing : null;
+            // The player's plan no longer fits the roads: it is carried over
+            // to them rather than thrown away, and the panel says what
+            // changed. Only a plan that cannot be carried over is replaced.
+            if (phases == null && junction.Origin == JunctionOrigin.Manual && misfit != null)
+            {
+                phases = AdaptedPlan(node, layout, out PlanNotice notice, out string summary);
+                if (phases != null)
+                {
+                    Mod.Log.Info($"Junction {node}: the saved plan was carried over to the changed roads, because {misfit}: {summary}.");
+                    if (notice.Kind != 0)
+                        SetNotice(node, notice);
+                }
+            }
             if (phases == null)
             {
                 if (junction.Origin == JunctionOrigin.Manual && misfit != null)
+                {
                     Mod.Log.Warn($"Junction {node}: the saved plan was replaced by a generated one, because {misfit}.");
+                    SetNotice(node, new PlanNotice { Kind = PlanNoticeKind.Replaced });
+                }
                 phases = NewPlan(model, junction.Strategy, (junction.Options & JunctionOptions.Scramble) != 0,
                     PlanningWeights(EntityManager, node, matched, keys.Count));
                 KeepTiming(existing, phases);
@@ -169,6 +185,7 @@ namespace TLL.Systems
 
             MarkMajorRoad(lanes, model, edges, node, junction.MajorApproach);
             bool carriesOn = WriteBuffers(node, storedMovements, phases, lanes, keys);
+            WriteArms(node, edges, angles);
             WriteDetectors(node, JunctionAnalysis.DetectorChain(EntityManager, node, layout, SignalControlSystem.kDetectionRange));
             WriteMeasurement(node, lanes, keys, matched);
             WriteSignalGroups(node, phases, lanes, keys, layout.Unassigned, ref lights);
@@ -250,6 +267,8 @@ namespace TLL.Systems
             entityManager.RemoveComponent<AutopilotState>(node);
             entityManager.RemoveComponent<DetectorLane>(node);
             entityManager.RemoveComponent<JunctionHealth>(node);
+            entityManager.RemoveComponent<JunctionArm>(node);
+            entityManager.RemoveComponent<PlanNotice>(node);
             if (exclude)
                 entityManager.AddComponent<JunctionExcluded>(node);
             entityManager.AddComponent<RebuildRequest>(node);
@@ -427,6 +446,142 @@ namespace TLL.Systems
                 }
             }
             return result;
+        }
+
+        /// <summary>
+        /// The saved plan carried over to the junction's roads as they are
+        /// now (PlanTransfer), with the timing of the phases it keeps; null
+        /// where it cannot be carried over, or leaves an error the check
+        /// finds. The roads are matched by entity first, then by direction,
+        /// so a road rebuilt in place keeps its phases.
+        /// </summary>
+        /// <param name="notice">What changed, for the panel; Kind 0 when nothing did.</param>
+        /// <param name="summary">What changed, for the log.</param>
+        private List<JunctionPhase> AdaptedPlan(Entity node, JunctionLayout layout, out PlanNotice notice, out string summary)
+        {
+            notice = default;
+            summary = null;
+            if (!EntityManager.HasBuffer<JunctionMovement>(node) || !EntityManager.HasBuffer<JunctionPhase>(node))
+                return null;
+            DynamicBuffer<JunctionMovement> stored = EntityManager.GetBuffer<JunctionMovement>(node, true);
+            DynamicBuffer<JunctionPhase> storedPhases = EntityManager.GetBuffer<JunctionPhase>(node, true);
+            if (stored.Length == 0 || stored.Length > 64 || storedPhases.Length == 0)
+                return null;
+
+            // The old arms, with their directions. Saves from before the arms
+            // were kept know only the roads of their movements; a road still
+            // there gives its direction now, one that is gone has none.
+            var oldEdges = new List<Entity>();
+            var oldAngles = new List<float>();
+            if (EntityManager.HasBuffer<JunctionArm>(node) && EntityManager.GetBuffer<JunctionArm>(node, true).Length > 0)
+            {
+                DynamicBuffer<JunctionArm> arms = EntityManager.GetBuffer<JunctionArm>(node, true);
+                for (int i = 0; i < arms.Length; i++)
+                {
+                    oldEdges.Add(arms[i].Edge);
+                    oldAngles.Add(arms[i].Angle);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < stored.Length; i++)
+                {
+                    foreach (Entity edge in new[] { stored[i].Source, stored[i].Target })
+                    {
+                        if (edge == Entity.Null || oldEdges.Contains(edge))
+                            continue;
+                        int now = layout.Edges.IndexOf(edge);
+                        oldEdges.Add(edge);
+                        oldAngles.Add(now >= 0 ? layout.Angles[now] : float.NaN);
+                    }
+                }
+            }
+
+            var movements = new List<Movement>();
+            for (int i = 0; i < stored.Length; i++)
+            {
+                // A movement whose road the arms do not list maps to no arm,
+                // and PlanTransfer drops it.
+                int source = oldEdges.IndexOf(stored[i].Source);
+                int target = stored[i].Target == Entity.Null ? -1 : oldEdges.IndexOf(stored[i].Target);
+                movements.Add(new Movement(source, target, stored[i].Kind));
+            }
+            var known = new int[oldEdges.Count];
+            for (int i = 0; i < known.Length; i++)
+                known[i] = layout.Edges.IndexOf(oldEdges[i]);
+            int[] armMap = PlanTransfer.MatchArms(oldAngles.ToArray(), layout.Angles, known);
+
+            var greens = new List<ulong>();
+            for (int p = 0; p < storedPhases.Length; p++)
+                greens.Add(storedPhases[p].Movements);
+            TransferResult result = PlanTransfer.Transfer(movements, greens, armMap, layout.Model);
+            if (result.Unplaced != 0UL || result.Phases.Count > PhasePlanner.MaxPhases
+                || PlanCheck.HasErrors(PlanCheck.Run(layout.Model, result.Phases)))
+                return null;
+
+            List<JunctionPhase> fresh = ToPhases(layout.Model, PhasePlanFrom(layout.Model, result.Phases));
+            var phases = new List<JunctionPhase>();
+            for (int p = 0; p < result.Phases.Count; p++)
+            {
+                JunctionPhase phase = fresh[p];
+                int origin = result.Origin[p];
+                if (origin >= 0)
+                {
+                    // The player's timing stays; whether the phase has a
+                    // crosswalk follows from what it gives green to now.
+                    PhaseData old = storedPhases[origin].Data;
+                    phase.Data.MinGreen = old.MinGreen;
+                    phase.Data.MaxGreen = old.MaxGreen;
+                    phase.Data.Green = old.Green;
+                    phase.Data.Flags = (phase.Data.Flags & PhaseFlags.Pedestrian) | (old.Flags & PhaseFlags.Scramble);
+                }
+                phases.Add(phase);
+            }
+
+            int added = PlanEditing.Count(result.Added);
+            int moved = PlanEditing.Count(result.Moved & ~result.Added);
+            int dropped = result.Dropped.Count;
+            summary = $"{added} movements added, {moved} moved, {dropped} gone, {phases.Count} phases";
+            if (!result.Unchanged)
+            {
+                notice = new PlanNotice
+                {
+                    Kind = PlanNoticeKind.Adapted,
+                    Added = (byte)Math.Min(added, 255),
+                    Moved = (byte)Math.Min(moved, 255),
+                    Dropped = (byte)Math.Min(dropped, 255),
+                };
+            }
+            return phases;
+        }
+
+        /// <summary>Phase masks as a plan, each with who gives way in it by the junction's geometry.</summary>
+        private static PhasePlan PhasePlanFrom(JunctionModel model, List<ulong> greens)
+        {
+            var plan = new PhasePlan();
+            foreach (ulong green in greens)
+                plan.Phases.Add(new Phase { Green = green, Permitted = PhasePlanner.PermittedIn(model, green) });
+            return plan;
+        }
+
+        /// <summary>Puts a notice on the junction for the panel, replacing an older one.</summary>
+        private void SetNotice(Entity node, PlanNotice notice)
+        {
+            if (EntityManager.HasComponent<PlanNotice>(node))
+                EntityManager.SetComponentData(node, notice);
+            else
+                EntityManager.AddComponentData(node, notice);
+        }
+
+        /// <summary>Keeps the junction's roads and their directions, for carrying the plan over when they change (AdaptedPlan).</summary>
+        private void WriteArms(Entity node, List<Entity> edges, float[] angles)
+        {
+            DynamicBuffer<JunctionArm> arms = EntityManager.HasBuffer<JunctionArm>(node)
+                ? EntityManager.GetBuffer<JunctionArm>(node)
+                : EntityManager.AddBuffer<JunctionArm>(node);
+            arms.Clear();
+            for (int i = 0; i < edges.Count; i++)
+                arms.Add(new JunctionArm { Edge = edges[i], Angle = angles[i] });
         }
 
         /// <summary>Carries timing over to new phases that give green to exactly the same movements as an old one.</summary>
