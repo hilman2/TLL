@@ -29,13 +29,14 @@ namespace TLL.Systems
     public partial class SignalControlSystem : TllSystemBase
     {
         /// <summary>
-        /// Reach of the approach zone before the stop line, in metres, as a
-        /// long-range radar at a real junction. It follows the road across
-        /// plain nodes (see <see cref="DetectorLane"/>) but never beyond the
-        /// previous junction, so what it sees is what a detector at the start
-        /// of the link would count.
+        /// Reach of the approach zone before the stop line, in metres. It
+        /// follows the road across plain nodes (see <see cref="DetectorLane"/>)
+        /// back to the previous junction, so what it sees is what a detector
+        /// at the start of the link counts, as adaptive systems such as SCOOT
+        /// place them; the limit only keeps very long roads in bounds. At
+        /// 250 m, the end of a queue on a long road was not counted.
         /// </summary>
-        internal const float kDetectionRange = 250f;
+        internal const float kDetectionRange = 1000f;
 
         /// <summary>
         /// Most vehicles read per approach lane with its detector lanes; more
@@ -306,10 +307,10 @@ namespace TLL.Systems
             ///
             /// - Entry: a vehicle is counted once when it enters a junction
             ///   lane, which also tells its direction.
-            /// - Approach zone, up to kDetectionRange before the stop line on
-            ///   the approach road only (radar): standing vehicles are the
-            ///   queue, moving ones are arrivals with a time to the line.
-            ///   Nothing beyond the upstream junction, and no routes.
+            /// - Approach zone, back to the upstream junction on the approach
+            ///   road only (see kDetectionRange): slow vehicles are the queue,
+            ///   fast ones arrivals with a time to the line. Nothing beyond
+            ///   the upstream junction, and no routes.
             ///
             /// An approach lane serving several movements is split among them
             /// by their measured shares.
