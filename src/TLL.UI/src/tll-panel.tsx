@@ -33,6 +33,7 @@ import {
 } from "bindings";
 import { JunctionDiagram } from "junction-diagram";
 import { useTranslate } from "localization";
+import { planner, planner$ } from "planner-bindings";
 import logo from "images/tll.svg";
 import styles from "tll-panel.module.scss";
 
@@ -86,7 +87,10 @@ const Hint = ({ text, children }: { text: string | null; children: ReactElement 
  * buttons, not in the middle of the screen.
  */
 export const TllPanel = () => {
-  const open = useValue(panelOpen$);
+  const panelOpen = useValue(panelOpen$);
+  const plannerOpen = useValue(planner$).open;
+  // The planner takes the panel's place while it is open.
+  const open = panelOpen && !plannerOpen;
   const tab = useValue(tab$);
   const summary = useValue(summary$);
   const selected = useValue(selected$);
@@ -424,7 +428,17 @@ const NoticeCard = ({ notice, t }: { notice: Notice; t: Translate }) => {
     <div className={styles.noticeCard}>
       <div className={styles.noticeText}>{text}</div>
       <div className={styles.row}>
-        <Button variant="flat" className={styles.wide} onSelect={actions.dismissNotice}>
+        <Button
+          variant="flat"
+          className={styles.wide}
+          onSelect={() => {
+            actions.dismissNotice();
+            planner.open();
+          }}
+        >
+          {t("Panel.NoticeCheck", "Check in the planner")}
+        </Button>
+        <Button variant="flat" className={styles.small} onSelect={actions.dismissNotice}>
           {t("Panel.NoticeSeen", "Got it")}
         </Button>
       </div>
@@ -447,6 +461,13 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
         {junction.mode !== ControlMode.Flashing && <Chip text={`${t("Panel.Cycle", "cycle")} ${seconds(junction.cycleSeconds)}`} tone="grey" />}
       </div>
       {junction.mode !== ControlMode.Flashing && <CycleBar junction={junction} t={t} />}
+      <div className={styles.row}>
+        <Hint text={t("Panel.OpenPlannerHint", "")}>
+          <Button variant="flat" className={classNames(styles.wide, styles.plannerButton)} onSelect={planner.open}>
+            {t("Panel.OpenPlanner", "Edit lanes, phases and times")}
+          </Button>
+        </Hint>
+      </div>
       {junction.manual && (
         <div className={styles.row}>
           <Hint text={t("Panel.MakeAutomaticHint", "")}>

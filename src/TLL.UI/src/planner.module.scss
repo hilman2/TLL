@@ -1,0 +1,938 @@
+// The planner's panel. Sizes in rem follow the game's UI scale. As in
+// tll-panel.module.scss, every container states its flex direction, and
+// rows never wrap: the game's layout engine overlaps wrapped flex rows.
+
+$green: #3dbf6b;
+$amber: #f5b83d;
+$red: #e5484d;
+$blue: #4fb3ff;
+$violet: #c9a8ff;
+$card: rgba(255, 255, 255, 0.045);
+$cardStrong: rgba(255, 255, 255, 0.08);
+$line: rgba(255, 255, 255, 0.12);
+
+.hidden {
+  display: none;
+}
+
+.panel {
+  width: 600rem;
+  margin: 64rem 0 0 8rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.logo {
+  width: 22rem;
+  height: 22rem;
+  margin-right: 8rem;
+}
+
+.title {
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.subtitle {
+  margin-left: 10rem;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scroll {
+  max-height: 520rem;
+}
+
+// ---- Building blocks ----
+
+.row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 4rem 12rem;
+}
+
+.grow {
+  flex: 1;
+  font-size: 14rem;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.label {
+  flex: 1;
+  padding: 8rem 12rem 3rem 12rem;
+  font-size: 12rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5rem;
+  opacity: 0.7;
+}
+
+.muted {
+  padding: 2rem 12rem;
+  font-size: 13rem;
+  opacity: 0.75;
+}
+
+.faint {
+  font-size: 12rem;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  margin: 6rem 8rem;
+  padding: 6rem 0;
+  background-color: $card;
+  border-radius: 4rem;
+}
+
+.tooltip {
+  max-width: 360rem;
+  font-size: 13rem;
+  white-space: pre-line;
+}
+
+// Buttons: the game's Button with variant "flat" carries these classes.
+
+.tool {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 0 3rem;
+  padding: 4rem 10rem;
+  font-size: 13rem;
+  white-space: nowrap;
+  border-radius: 3rem;
+  background-color: $card;
+}
+
+.toolOn {
+  background-color: rgba(79, 179, 255, 0.28);
+}
+
+.toolDisabled {
+  opacity: 0.35;
+}
+
+.primary {
+  flex-shrink: 0;
+  margin-left: 6rem;
+  padding: 6rem 18rem;
+  font-size: 14rem;
+  font-weight: bold;
+  white-space: nowrap;
+  border-radius: 3rem;
+  background-color: $green;
+  color: #0e1a12;
+}
+
+.primaryDisabled {
+  background-color: rgba(61, 191, 107, 0.25);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.secondary {
+  flex-shrink: 0;
+  margin-left: 6rem;
+  padding: 6rem 14rem;
+  font-size: 14rem;
+  white-space: nowrap;
+  border-radius: 3rem;
+  background-color: $cardStrong;
+}
+
+.link {
+  flex-shrink: 0;
+  margin: 0 3rem;
+  padding: 2rem 8rem;
+  font-size: 12rem;
+  white-space: nowrap;
+  border-radius: 10rem;
+  background-color: rgba(79, 179, 255, 0.2);
+  color: #c4e4ff;
+}
+
+// ---- Segments ----
+
+.segments {
+  display: flex;
+  flex-direction: row;
+  padding: 2rem 12rem;
+}
+
+.segment {
+  flex: 1;
+  margin: 0 2rem;
+  padding: 5rem 6rem;
+  font-size: 13rem;
+  white-space: nowrap;
+  justify-content: center;
+  border-radius: 3rem;
+  background-color: $card;
+  opacity: 0.8;
+}
+
+.segmentOn {
+  opacity: 1;
+  font-weight: bold;
+  background-color: rgba(79, 179, 255, 0.28);
+}
+
+// ---- Steps ----
+
+.steps {
+  display: flex;
+  flex-direction: row;
+  padding: 6rem 10rem 2rem 10rem;
+  border-bottom: 1rem solid $line;
+}
+
+.step {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin: 0 2rem;
+  padding: 6rem 6rem 7rem 6rem;
+  font-size: 14rem;
+  white-space: nowrap;
+  opacity: 0.6;
+  border-bottom: 3rem solid transparent;
+}
+
+.stepOn {
+  opacity: 1;
+  font-weight: bold;
+  border-bottom-color: $blue;
+}
+
+.stepNumber {
+  width: 20rem;
+  height: 20rem;
+  margin-right: 6rem;
+  border-radius: 10rem;
+  font-size: 12rem;
+  line-height: 20rem;
+  text-align: center;
+  background-color: $cardStrong;
+}
+
+.stepNumberOn {
+  background-color: $blue;
+  color: #0b1b28;
+}
+
+// ---- Phase cards ----
+
+.cards {
+  display: flex;
+  flex-direction: row;
+  padding: 2rem 9rem;
+}
+
+.phaseCard {
+  width: 88rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 3rem;
+  padding: 4rem 2rem 5rem 2rem;
+  border-radius: 4rem;
+  background-color: $card;
+  border: 2rem solid transparent;
+}
+
+.phaseCardOn {
+  border-color: $blue;
+  background-color: rgba(79, 179, 255, 0.12);
+}
+
+.phaseCardRunning {
+  background-color: rgba(61, 191, 107, 0.14);
+}
+
+.phaseCardTop {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  padding: 0 5rem;
+}
+
+.phaseNumber {
+  flex: 1;
+  font-size: 13rem;
+  font-weight: bold;
+}
+
+.lamp {
+  width: 9rem;
+  height: 9rem;
+  border-radius: 5rem;
+  background-color: $red;
+}
+
+.lampGreen {
+  background-color: $green;
+}
+
+.lampYellow {
+  background-color: $amber;
+}
+
+.cardDiagram {
+  width: 60rem;
+  height: 60rem;
+  margin: 2rem 0;
+}
+
+.cardTime {
+  font-size: 12rem;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.addCard {
+  width: 88rem;
+  height: 96rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 3rem;
+  border-radius: 4rem;
+  border: 2rem dashed $line;
+  font-size: 28rem;
+  opacity: 0.7;
+}
+
+.phaseTools {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 4rem 12rem;
+}
+
+.phaseTitle {
+  font-weight: bold;
+  font-size: 15rem;
+  margin-right: 8rem;
+  white-space: nowrap;
+}
+
+// ---- The large diagram ----
+
+.diagramBox {
+  position: relative;
+  width: 330rem;
+  height: 330rem;
+  margin: 4rem auto 0 auto;
+  align-self: center;
+}
+
+.diagramSvg {
+  width: 100%;
+  height: 100%;
+}
+
+.road {
+  stroke: #3d434d;
+  stroke-width: 22;
+  stroke-linecap: round;
+}
+
+.roadMain {
+  stroke: #4a5260;
+}
+
+.junctionFill {
+  fill: #3d434d;
+}
+
+.roadName {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 1rem 6rem;
+  font-size: 11rem;
+  white-space: nowrap;
+  border-radius: 8rem;
+  background-color: rgba(20, 24, 30, 0.75);
+  opacity: 0.85;
+}
+
+.roadNameMain {
+  color: #ffe7a3;
+  opacity: 1;
+}
+
+.arrowLine {
+  fill: none;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+// Trams: the same arrow, drawn as a pair of rails.
+.rails {
+  stroke-dasharray: 1.2 1.2;
+  stroke-width: 3.4;
+}
+
+.arrowHead {
+  stroke: none;
+}
+
+.zebra {
+  stroke-width: 5;
+  stroke-dasharray: 1.6 1.6;
+}
+
+// Movement states. Shape tells them apart as well as colour: strong for
+// green, a triangle for giving way, faint for red.
+.on {
+  stroke: $green;
+  fill: $green;
+}
+
+.onTrack {
+  stroke: #7aa7ff;
+  fill: #7aa7ff;
+}
+
+.free {
+  stroke: rgba(255, 255, 255, 0.28);
+  fill: rgba(255, 255, 255, 0.28);
+}
+
+.off {
+  stroke: rgba(255, 255, 255, 0.1);
+  fill: rgba(255, 255, 255, 0.1);
+}
+
+.yieldSign {
+  fill: $amber;
+  stroke: #1b1f26;
+  stroke-width: 0.8;
+}
+
+.partner {
+  stroke: rgba(255, 255, 255, 0.6);
+  fill: rgba(255, 255, 255, 0.6);
+}
+
+.marked {
+  stroke: $violet;
+  fill: $violet;
+}
+
+.hovered {
+  stroke: #ffffff;
+  fill: #ffffff;
+  stroke-width: 3.6;
+}
+
+@keyframes flash {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.refused {
+  stroke: $red;
+  fill: $red;
+  animation: flash 0.6s ease-in-out 3;
+}
+
+.blocking {
+  stroke: $red;
+  fill: $red;
+  stroke-width: 3.4;
+  animation: flash 0.6s ease-in-out 3;
+}
+
+.hint {
+  padding: 4rem 12rem 2rem 12rem;
+  font-size: 13rem;
+  text-align: center;
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.legend {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  padding: 2rem 12rem 6rem 12rem;
+}
+
+.legendItem {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 0 7rem;
+  font-size: 12rem;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.legendSwatch {
+  width: 18rem;
+  height: 4rem;
+  margin-right: 5rem;
+  border-radius: 2rem;
+}
+
+.swatchOn {
+  background-color: $green;
+}
+
+.swatchYield {
+  background-color: $amber;
+}
+
+.swatchOff {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+// ---- Notes: refusal, messages, chips ----
+
+.refusal {
+  display: flex;
+  flex-direction: column;
+  margin: 4rem 12rem;
+  padding: 6rem 0;
+  border-radius: 4rem;
+  border-left: 3rem solid $red;
+  background-color: rgba(229, 72, 77, 0.16);
+}
+
+.message {
+  margin: 4rem 12rem;
+  padding: 6rem 10rem;
+  font-size: 13rem;
+  border-radius: 4rem;
+  border-left: 3rem solid $blue;
+  background-color: rgba(79, 179, 255, 0.14);
+}
+
+.chips {
+  display: flex;
+  flex-direction: row;
+  padding: 2rem 10rem 4rem 10rem;
+}
+
+.chip {
+  flex-shrink: 0;
+  margin: 0 3rem;
+  padding: 3rem 9rem;
+  font-size: 12rem;
+  white-space: nowrap;
+  border-radius: 10rem;
+  background-color: rgba(229, 72, 77, 0.28);
+  color: #f7c2c4;
+}
+
+// ---- Times ----
+
+.timeRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 2rem 8rem;
+  padding: 4rem 6rem;
+  border-radius: 3rem;
+}
+
+.timeRowOn {
+  background-color: rgba(79, 179, 255, 0.1);
+}
+
+.timeDiagram {
+  width: 40rem;
+  height: 40rem;
+  flex-shrink: 0;
+  margin-right: 8rem;
+}
+
+.timeInfo {
+  display: flex;
+  flex-direction: column;
+  width: 120rem;
+  flex-shrink: 0;
+}
+
+.timeName {
+  font-weight: bold;
+  font-size: 13rem;
+}
+
+.stepper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin-left: 8rem;
+}
+
+.stepperLabel {
+  font-size: 11rem;
+  opacity: 0.65;
+  margin-right: 4rem;
+  white-space: nowrap;
+}
+
+.stepperButton {
+  width: 24rem;
+  height: 24rem;
+  flex-shrink: 0;
+  justify-content: center;
+  border-radius: 3rem;
+  background-color: $cardStrong;
+  font-size: 15rem;
+}
+
+.stepperValue {
+  width: 46rem;
+  text-align: center;
+  font-size: 13rem;
+  white-space: nowrap;
+}
+
+.cycle {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  height: 20rem;
+  margin: 4rem 12rem 6rem 12rem;
+}
+
+.cycleSegment {
+  position: relative;
+  height: 100%;
+  margin-right: 2rem;
+  border-radius: 2rem;
+  background-color: rgba(61, 191, 107, 0.35);
+}
+
+.cycleSegmentOn {
+  background-color: rgba(79, 179, 255, 0.55);
+}
+
+.cycleGap {
+  height: 100%;
+  margin-right: 2rem;
+  border-radius: 2rem;
+  background-color: rgba(245, 184, 61, 0.35);
+}
+
+.cycleLabel {
+  width: 100%;
+  font-size: 11rem;
+  line-height: 20rem;
+  text-align: center;
+}
+
+// The signal timing plan: one row per movement, its green over the cycle.
+.plan {
+  display: flex;
+  flex-direction: column;
+  padding: 2rem 12rem 6rem 12rem;
+}
+
+.planRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 16rem;
+}
+
+.planName {
+  width: 150rem;
+  flex-shrink: 0;
+  font-size: 11rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+
+.planTrack {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  height: 8rem;
+  background-color: rgba(229, 72, 77, 0.35);
+  border-radius: 1rem;
+}
+
+.planGreen {
+  height: 100%;
+  background-color: $green;
+}
+
+.planYield {
+  height: 100%;
+  background-color: $amber;
+}
+
+.planRed {
+  height: 100%;
+}
+
+// ---- Check bar and footer ----
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  border-top: 1rem solid $line;
+  padding: 4rem 0;
+}
+
+.check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 3rem 12rem;
+}
+
+// A round badge in the finding's colour, its mark inside.
+.checkIcon {
+  width: 18rem;
+  height: 18rem;
+  flex-shrink: 0;
+  margin-right: 8rem;
+  border-radius: 9rem;
+  font-size: 12rem;
+  font-weight: bold;
+  line-height: 18rem;
+  text-align: center;
+  color: #111418;
+}
+
+.checkError {
+  background-color: $red;
+}
+
+.checkWarning {
+  background-color: $amber;
+}
+
+.checkInfo {
+  background-color: $blue;
+}
+
+.checkOk {
+  background-color: $green;
+}
+
+// A delay figure over capacity.
+.over {
+  color: $red;
+}
+
+.checkText {
+  flex: 1;
+  font-size: 13rem;
+}
+
+.footer {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 6rem 12rem 10rem 12rem;
+  border-top: 1rem solid $line;
+}
+
+.switchButton {
+  flex-shrink: 0;
+  padding: 2rem;
+  background-color: transparent;
+}
+
+.switch {
+  flex-shrink: 0;
+  width: 40rem;
+  height: 20rem;
+  padding: 2rem;
+  border-radius: 10rem;
+  background-color: rgba(255, 255, 255, 0.15);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.switchOn {
+  background-color: rgba(61, 191, 107, 0.6);
+}
+
+.knob {
+  width: 16rem;
+  height: 16rem;
+  border-radius: 8rem;
+  background-color: #ffffff;
+  margin-left: 0;
+  transition: margin-left 0.15s;
+}
+
+.knobOn {
+  margin-left: 20rem;
+}
+
+.liveNote {
+  margin-left: 8rem;
+  font-size: 13rem;
+  color: #bdf0cf;
+  white-space: nowrap;
+}
+
+.pending {
+  margin-left: 8rem;
+  font-size: 13rem;
+  color: #f7c2c4;
+  white-space: nowrap;
+}
+
+// ---- Templates and presets ----
+
+.sheetHead {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 6rem 12rem 2rem 12rem;
+}
+
+.sheetTitle {
+  flex: 1;
+  font-size: 15rem;
+  font-weight: bold;
+}
+
+.template {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  margin: 3rem 0;
+  padding: 6rem 10rem;
+  border-radius: 4rem;
+  background-color: $card;
+}
+
+.templateOn {
+  background-color: rgba(79, 179, 255, 0.14);
+}
+
+.templateInfo {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  margin-left: 10rem;
+}
+
+.templateName {
+  font-weight: bold;
+  font-size: 14rem;
+}
+
+.templatePhases {
+  display: flex;
+  flex-direction: row;
+}
+
+.templateDiagram {
+  width: 42rem;
+  height: 42rem;
+  flex-shrink: 0;
+  margin-right: 3rem;
+}
+
+.templateDelay {
+  width: 70rem;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 13rem;
+  white-space: nowrap;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  padding: 0 10rem;
+}
+
+.preset {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 2rem 0;
+  padding: 4rem 6rem 4rem 10rem;
+  border-radius: 4rem;
+  background-color: $card;
+}
+
+.presetOff {
+  opacity: 0.45;
+}
+
+.presetName {
+  flex: 1;
+  font-size: 14rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.input {
+  flex: 1;
+  height: 28rem;
+  padding: 0 8rem;
+  font-size: 14rem;
+  color: #ffffff;
+  background-color: rgba(0, 0, 0, 0.35);
+  border: 1rem solid $line;
+  border-radius: 3rem;
+}
+
+// ---- Tour ----
+
+.tour {
+  display: flex;
+  flex-direction: column;
+  margin: 8rem 12rem;
+  padding: 8rem 0 4rem 0;
+  border-radius: 5rem;
+  border: 2rem solid $blue;
+  background-color: rgba(79, 179, 255, 0.12);
+}
+
+.tourTitle {
+  padding: 0 12rem 4rem 12rem;
+  font-weight: bold;
+  font-size: 14rem;
+}
+
+.tourText {
+  padding: 0 12rem;
+  font-size: 13rem;
+}

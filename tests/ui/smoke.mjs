@@ -117,6 +117,53 @@ const summary = {
     { index: 8, version: 1, name: "Harbour Road / A very long street name that does not fit", queue: 5.2 },
   ],
 };
+// The planner open on a crossroads: two phases, the second selected, one
+// left turn sharing a lane with straight traffic.
+const crossroads = [
+  { x: 1, z: 0, name: "Main Street" },
+  { x: 0, z: 1, name: "Oak Avenue" },
+  { x: -1, z: 0, name: "Main Street" },
+  { x: 0, z: -1, name: "Oak Avenue" },
+];
+const mv = (kind, source, target, volume = 200, partners = []) => ({ kind, source, target, volume, peak: volume * 1.3, partners });
+const plannerPhase = (movements, permitted = [], extra = {}) => ({
+  movements, permitted, minGreen: 5, maxGreen: 45, green: 20, walk: 0, canHold: true, demand: 4, wait: 11, ...extra,
+});
+const plannerInfo = {
+  open: true, tourSeen: true, index: 7, version: 1, name: "Main Street / Oak Avenue",
+  leftHandTraffic: false, cameraYaw: 20, main: 0, mainRoad: [0, 2], approaches: crossroads,
+  movements: [
+    mv(0, 0, 2, 640, [1]), mv(1, 0, 3, 180, [0]), mv(2, 0, 1, 90),
+    mv(0, 2, 0, 610), mv(1, 2, 1, 120), mv(2, 2, 3, 70),
+    mv(0, 1, 3, 240), mv(1, 1, 0, 60), mv(0, 3, 1, 220), mv(1, 3, 2, 50),
+    mv(4, 0, -1, 30), mv(5, 0, 2, 40),
+  ],
+  stage: 0, stageSeconds: 7.5, running: 0, next: 1, hold: -1,
+  addable: [2, 5],
+  phases: [plannerPhase([0, 1, 3, 4, 11], [1, 4]), plannerPhase([6, 7, 8, 9, 10], [7, 9], { walk: 14 })],
+  selected: 1, owner: 1, mode: 2, turnOnRed: false, scramble: false, crosswalkPhases: false, hasCrosswalks: true,
+  coordinated: false, yellow: 3, allRed: 1, prepare: 0.3, maxWait: 90, cycle: 48.6, cycleLongest: 98.6,
+  live: false, dirty: true, canApply: false, canUndo: true, canRedo: false,
+  findings: [
+    { kind: 0, severity: 0, phase: -1, movement: 2, other: -1, fitsIn: [0, 1], value: 0 },
+    { kind: 4, severity: 1, phase: 0, movement: 4, other: -1, fitsIn: [], value: 812 },
+    { kind: 6, severity: 2, phase: 1, movement: -1, other: -1, fitsIn: [], value: 0 },
+  ],
+  refusal: { movement: 6, blocking: [0, 3], fitsIn: [1] },
+  message: { key: "PresetLoadedTurnable", argument: "Crossroads, 3 phases" },
+  templateScramble: false,
+  templates: [
+    { kind: 0, current: false, delay: 18.4, saturation: 0.8, phases: [{ movements: [0, 1, 3, 4], permitted: [1, 4] }, { movements: [6, 7, 8, 9], permitted: [7, 9] }] },
+    { kind: 1, current: true, delay: 14.2, saturation: 0.7, phases: [{ movements: [1, 4], permitted: [] }, { movements: [0, 3], permitted: [] }, { movements: [6, 7, 8, 9], permitted: [7, 9] }] },
+    { kind: 4, current: false, delay: 31.5, saturation: 1.2, phases: [{ movements: [0, 1, 2], permitted: [] }] },
+  ],
+  presetTurns: 2, roads: 4,
+  presets: [
+    { id: "a", name: "Crossroads, 3 phases", phases: 3, arms: 4, fits: true },
+    { id: "b", name: "T with a turn phase", phases: 3, arms: 3, fits: false },
+  ],
+};
+
 const scenarios = {
   "empty city": {},
   "junction tab, picking": { "tll.toolActive": true },
@@ -211,6 +258,54 @@ const scenarios = {
     "tll.summary": { ...summary, notices: [{ index: 11, version: 1, name: "Harbour Road / Pier Street", kind: 1 }, { index: 12, version: 1, name: "Elm Road", kind: 2 }] },
     expect: [">Plans TLL changed after a road changed<", ">adapted<", ">replaced<"],
   },
+  "planner, phases": {
+    "tll.planner": plannerInfo,
+    "tll.selected": managed,
+    expect: [
+      ">Planner<", ">Main Street / Oak Avenue<", ">You: layout<", ">Phase 2<", ">Fill up<", ">Hold<",
+      ">Oak Avenue → Oak Avenue, straight on: its path crosses Main Street → Main Street, straight on; Main Street → Main Street, straight on.<",
+      ">No green yet<", ">Main Street → Oak Avenue, right<", ">Give it green<", ">Protect it<",
+      ">Loaded. It fits more than one way; turn it if the roads are wrong: Crossroads, 3 phases<", ">Discard<", ">Apply<",
+    ],
+  },
+  "planner, times": {
+    "tll.planner": { ...plannerInfo, refusal: null, message: null, findings: [] },
+    step: "times",
+    expect: [">How the signals decide<", ">Adjust times automatically<", ">Cycle: up to 99 s<", ">Min<", ">Max<", ">crosswalk needs 14 s<", ">Every way through the junction gets green, and no paths cross.<"],
+  },
+  "planner, fixed time": {
+    "tll.planner": { ...plannerInfo, mode: 0, owner: 2, findings: [], refusal: null },
+    step: "times",
+    expect: [">Cycle: 49 s<", ">Green<"],
+  },
+  "planner, lanes": {
+    "tll.planner": { ...plannerInfo, refusal: null },
+    "tll.selected": { ...managed, approaches: crossroads, turns: [{ source: 0, target: 3, kind: 1, state: 2, volume: 180 }] },
+    step: "lanes",
+    expect: [">Connect single lanes on the map<", ">forbidden · you<"],
+  },
+  "planner, templates": {
+    "tll.planner": plannerInfo,
+    sheet: "templates",
+    expect: [">Protected turns first<", ">Each road alone<", ">Ø 14 s<", ">Main road: Main Street<", ">With a phase for pedestrians alone<"],
+  },
+  "planner, presets": {
+    "tll.planner": plannerInfo,
+    sheet: "presets",
+    expect: [">Crossroads, 3 phases<", ">needs 3 roads<", ">Turn it<", ">Use<", ">Share<", ">Keep the times with it<"],
+  },
+  "planner, live with an error": {
+    "tll.planner": { ...plannerInfo, live: true },
+    expect: [">Not live until fixed<"],
+  },
+  "planner, first opening": {
+    "tll.planner": { ...plannerInfo, tourSeen: false },
+    expect: [">1/3  Three steps<", ">Next<"],
+  },
+  "planner, autopilot": {
+    "tll.planner": { ...plannerInfo, owner: 0, coordinated: true, refusal: null },
+    expect: [">The autopilot plans this junction. Click an arrow or pick a template to take it over.<"],
+  },
   "vanilla junction": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: true } },
   "junction without signals": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false } },
   "roundabout": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, roundabout: true } },
@@ -222,25 +317,36 @@ let failures = 0;
 const preview = [];
 for (const [label, data] of Object.entries(scenarios)) {
   for (const open of [false, true]) {
-    // The C# side says whether the panel is open; the one local value is the
-    // tab, chosen by the scenario's "tab" entry.
+    // The C# side says whether the panel is open.
     scenario = { ...data, "tll.panelOpen": open };
-    for (const b of localBindings) b.value = data.tab ?? b.initial;
+    // Local values are told apart by their initial value: the panel's
+    // tab starts at "junction", the planner's step at "phases", its sheet
+    // at "none".
+    for (const b of localBindings) {
+      if (b.initial === "junction") b.value = data.tab ?? b.initial;
+      else if (b.initial === "phases") b.value = data.step ?? b.initial;
+      else if (b.initial === "none") b.value = data.sheet ?? b.initial;
+      else b.value = b.initial;
+    }
+    // Everything drawn on the game's screen, the panel and the planner
+    // alike; the expected texts may come from either.
+    let screen = "";
     for (const { target, component } of appended) {
       try {
         const html = renderToString(React.createElement(component));
-        if (open && target === "Game") {
-          preview.push(`<h3>${label}</h3><div class="stage">${html}</div>`);
-          for (const text of data.expect ?? []) {
-            if (!html.includes(text)) {
-              failures++;
-              console.error(`FAIL ${label}: the open panel does not show "${text}"`);
-            }
-          }
-        }
+        if (open && target === "Game") screen += html;
       } catch (e) {
         failures++;
         console.error(`FAIL ${target}, ${label}, panel ${open ? "open" : "closed"}: ${e.message}`);
+      }
+    }
+    if (open) {
+      preview.push(`<h3>${label}</h3><div class="stage">${screen}</div>`);
+      for (const text of data.expect ?? []) {
+        if (!screen.includes(text)) {
+          failures++;
+          console.error(`FAIL ${label}: the open panel does not show "${text}"`);
+        }
       }
     }
   }

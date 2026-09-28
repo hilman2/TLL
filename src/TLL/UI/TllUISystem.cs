@@ -917,7 +917,7 @@ namespace TLL.UI
         /// in a wave leaves it and runs on its own; the wave is planned again
         /// without it.
         /// </summary>
-        private static void TakeOverByPlayer(ref ManagedJunction junction)
+        internal static void TakeOverByPlayer(ref ManagedJunction junction)
         {
             junction.Origin = JunctionOrigin.Manual;
             if (junction.Mode == ControlMode.Coordinated || junction.Group != 0)
@@ -939,15 +939,21 @@ namespace TLL.UI
             if (!TryGetSelected(out _))
                 return;
             WriteUser("make_automatic", null);
+            MakeAutomatic(m_Selected);
+        }
+
+        /// <summary>Gives a managed junction back to the automation; see <see cref="OnMakeAutomatic"/>.</summary>
+        internal void MakeAutomatic(Entity node)
+        {
             Setting settings = Mod.Settings;
             ManagedJunction junction = ManagedJunction.Create(JunctionOrigin.Auto,
                 settings != null ? settings.AutoControl() : ControlMode.Adaptive,
                 settings != null ? settings.InitialStrategy() : PlanStrategy.Permissive,
                 settings != null && settings.InitialScramble());
-            EntityManager.SetComponentData(m_Selected, junction);
-            EntityManager.GetBuffer<JunctionPhase>(m_Selected).Clear();
-            EntityManager.RemoveComponent<AutopilotState>(m_Selected);
-            EntityManager.AddComponent<RebuildRequest>(m_Selected);
+            EntityManager.SetComponentData(node, junction);
+            EntityManager.GetBuffer<JunctionPhase>(node).Clear();
+            EntityManager.RemoveComponent<AutopilotState>(node);
+            EntityManager.AddComponent<RebuildRequest>(node);
             Requests.RebuildGreenWaves = true;
             m_DetailTime = default;
             m_SummaryTime = default;
@@ -1066,6 +1072,11 @@ namespace TLL.UI
             }
             return false;
         }
+
+        /// <summary>The names the panel shows, for the planner (PlannerSystem).</summary>
+        internal string JunctionNameOf(Entity node) => JunctionName(node);
+
+        internal string RoadNameOf(Entity edge) => RoadName(edge);
 
         /// <summary>A junction is named after the roads meeting there, e.g. "Main Street / Oak Avenue".</summary>
         private string JunctionName(Entity node)

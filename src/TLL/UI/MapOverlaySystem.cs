@@ -24,7 +24,8 @@ namespace TLL.UI
     /// - problem junctions, from TLL's long-term measurement (setting);
     /// - congested roads, from the game's own traffic flow data (setting);
     /// - junctions whose plan TLL changed after their roads changed
-    ///   (PlanNotice), while the panel is open.
+    ///   (PlanNotice), while the panel is open;
+    /// - in the planner, the phase being edited on the junction's lanes.
     ///
     /// The last two change over hours, so they are collected every couple of
     /// seconds and drawn from that list in every frame.
@@ -42,6 +43,7 @@ namespace TLL.UI
         private static readonly Color kHoverFill = new Color(1f, 0.85f, 0.3f, 0.15f);
         private static readonly Color kNotice = new Color(0.79f, 0.66f, 1f, 1f);
         private static readonly Color kNoticeFill = new Color(0.79f, 0.66f, 1f, 0.12f);
+        private static readonly Color kHoverLane = new Color(1f, 1f, 1f, 0.95f);
 
         /// <summary>
         /// Rush-hour queue, in vehicles on the worst movement, from which a
@@ -71,6 +73,7 @@ namespace TLL.UI
         private OverlayRenderSystem m_Overlay;
         private TllUISystem m_UI;
         private LaneToolSystem m_LaneTool;
+        private Planner.PlannerSystem m_Planner;
         private EntityQuery m_ProblemQuery;
         private EntityQuery m_RoadQuery;
         private EntityQuery m_NoticeQuery;
@@ -85,6 +88,7 @@ namespace TLL.UI
             m_Overlay = World.GetOrCreateSystemManaged<OverlayRenderSystem>();
             m_UI = World.GetOrCreateSystemManaged<TllUISystem>();
             m_LaneTool = World.GetOrCreateSystemManaged<LaneToolSystem>();
+            m_Planner = World.GetOrCreateSystemManaged<Planner.PlannerSystem>();
             m_ProblemQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[] { ComponentType.ReadOnly<ManagedJunction>(), ComponentType.ReadOnly<JunctionHealth>(), ComponentType.ReadOnly<Node>() },
@@ -116,7 +120,10 @@ namespace TLL.UI
             if (hovered != Entity.Null && (!EntityManager.Exists(hovered) || !EntityManager.HasComponent<Node>(hovered)))
                 hovered = Entity.Null;
             bool notices = m_UI.PanelOpen && !m_NoticeQuery.IsEmptyIgnoreFilter;
-            if (!problems && !congestion && !notices && selected == Entity.Null && hovered == Entity.Null)
+            Entity planned = m_Planner.Node;
+            if (planned != Entity.Null && (!EntityManager.Exists(planned) || !EntityManager.HasComponent<Node>(planned)))
+                planned = Entity.Null;
+            if (!problems && !congestion && !notices && selected == Entity.Null && hovered == Entity.Null && planned == Entity.Null)
                 return;
 
             if (DateTime.UtcNow - m_Collected >= kRefresh)
@@ -161,8 +168,11 @@ namespace TLL.UI
                 }
             }
             // The lane tool draws the junction's lanes itself; the signal
-            // colours on top of them would only confuse.
-            if (selected != Entity.Null && !m_LaneTool.IsActive)
+            // colours on top of them would only confuse. In the planner, the
+            // phase being edited replaces what the signals show now.
+            if (planned != Entity.Null && !m_LaneTool.IsActive)
+                DrawPlanned(buffer, planned);
+            else if (selected != Entity.Null && !m_LaneTool.IsActive)
                 DrawSelected(buffer, selected);
             if (hovered != Entity.Null && hovered != selected)
             {
@@ -195,6 +205,46 @@ namespace TLL.UI
                     buffer.DrawDashedCurve(color, color, 0f, OverlayRenderSystem.StyleFlags.Projected, curve, kLaneWidth, 1.2f, 0.8f);
                 else
                     buffer.DrawCurve(color, color, 0f, OverlayRenderSystem.StyleFlags.Projected, curve, kLaneWidth, new float2(1f, 1f));
+            }
+        }
+
+        /// <summary>
+        /// The planner's selected phase on the road: the lanes of its
+        /// movements in green, those giving way in amber, and the movement
+        /// under the pointer in the planner's diagram in white on top, green
+        /// or not, so the player sees which lanes an arrow stands for.
+        /// </summary>
+        private void DrawPlanned(OverlayRenderSystem.Buffer buffer, Entity node)
+        {
+            float3 position = EntityManager.GetComponentData<Node>(node).m_Position;
+            buffer.DrawCircle(kRing, kFill, 0.8f, OverlayRenderSystem.StyleFlags.Projected, new float2(0f, 1f), position, 40f);
+            if (!EntityManager.HasBuffer<JunctionLane>(node))
+                return;
+            ulong green = m_Planner.PreviewGreen;
+            ulong permitted = m_Planner.PreviewPermitted;
+            int hovered = m_Planner.HoveredMovement;
+            DynamicBuffer<JunctionLane> lanes = EntityManager.GetBuffer<JunctionLane>(node, true);
+            for (int pass = 0; pass < 2; pass++)
+            {
+                for (int i = 0; i < lanes.Length; i++)
+                {
+                    int movement = lanes[i].Movement;
+                    bool isHovered = movement == hovered;
+                    bool inPhase = movement < 64 && (green & (1UL << movement)) != 0UL;
+                    // The hovered movement comes last, over the others.
+                    if ((pass == 0 && (!inPhase || isHovered)) || (pass == 1 && !isHovered))
+                        continue;
+                    Entity lane = lanes[i].Lane;
+                    if (!EntityManager.HasComponent<Curve>(lane))
+                        continue;
+                    Color color = isHovered ? kHoverLane : (permitted & (1UL << movement)) != 0UL ? kYield : kGo;
+                    float width = isHovered ? kLaneWidth * 1.8f : kLaneWidth;
+                    Bezier4x3 curve = EntityManager.GetComponentData<Curve>(lane).m_Bezier;
+                    if ((lanes[i].Flags & JunctionLaneFlags.Pedestrian) != 0)
+                        buffer.DrawDashedCurve(color, color, 0f, OverlayRenderSystem.StyleFlags.Projected, curve, width, 1.2f, 0.8f);
+                    else
+                        buffer.DrawCurve(color, color, 0f, OverlayRenderSystem.StyleFlags.Projected, curve, width, new float2(1f, 1f));
+                }
             }
         }
 

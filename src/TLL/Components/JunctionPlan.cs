@@ -190,6 +190,13 @@ namespace TLL.Components
         public ulong EmergencyMovements;
         public long EmergencyUntil;
 
+        /// <summary>
+        /// Movements the player holds at green from the planner, to watch a
+        /// phase on the road; 0 when none. Their phase is asked for as by an
+        /// emergency vehicle, as long as the planner keeps it set.
+        /// </summary>
+        public ulong HoldMovements;
+
         /// <summary>The running vehicle green has seen such a conflict.</summary>
         public bool ConflictThisGreen;
 

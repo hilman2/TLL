@@ -114,6 +114,7 @@
     <Reference Include="Colossal.UI.Binding" Private="false" />
     <Reference Include="Colossal.Localization" Private="false" />
     <Reference Include="UnityEngine.CoreModule" Private="false" />
+    <Reference Include="UnityEngine.IMGUIModule" Private="false" />
     <Reference Include="Unity.Burst" Private="false" />
     <Reference Include="Unity.Collections" Private="false" />
     <Reference Include="Unity.Entities" Private="false" />

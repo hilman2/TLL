@@ -102,6 +102,13 @@ $line: rgba(255, 255, 255, 0.12);
   justify-content: center;
 }
 
+// The way into the planner, the main thing to do with a junction.
+.plannerButton {
+  font-weight: bold;
+  border-radius: 3rem;
+  background-color: rgba(79, 179, 255, 0.28);
+}
+
 .picking {
   color: $amber;
 }

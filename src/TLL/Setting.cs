@@ -139,6 +139,18 @@ namespace TLL
         [SettingsUISection(kSection, kDebug)]
         public bool WriteMetrics { get; set; }
 
+        /// <summary>
+        /// The planner's switch "Live changes": every edit reaches the traffic
+        /// at once instead of waiting for Apply. Kept here, not in the
+        /// options screen, so it is the same for every junction and city.
+        /// </summary>
+        [SettingsUIHidden]
+        public bool PlannerLive { get; set; }
+
+        /// <summary>The planner's short tour has been shown; it opens by itself only the first time.</summary>
+        [SettingsUIHidden]
+        public bool PlannerTourSeen { get; set; }
+
         /// <summary>The mode automatic junctions run in when neither a green wave nor flashing applies.</summary>
         public ControlMode AutoControl()
         {

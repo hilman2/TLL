@@ -279,7 +279,7 @@ namespace TLL.Systems
 
                     DynamicBuffer<DetectorLane> detectors = hasDetectors ? detectorBuffers[i] : default;
                     bool scramble = (junction.Options & JunctionOptions.Scramble) != 0;
-                    ulong emergency = GlobalStep <= runtime.EmergencyUntil ? runtime.EmergencyMovements : 0UL;
+                    ulong emergency = (GlobalStep <= runtime.EmergencyUntil ? runtime.EmergencyMovements : 0UL) | runtime.HoldMovements;
                     Sense(phases, lanes, detectors, hasDetectors, counters, statistics, movements, runtime.State, scramble, emergency, out bool conflict);
 
                     ControllerConfig config = junction.ToConfig();

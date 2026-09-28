@@ -612,7 +612,7 @@ namespace TLL.Systems
         /// longest of its crosswalks. The yellow and all-red that follow count
         /// towards that clearance. Zero for a phase without a crosswalk.
         /// </summary>
-        private static ushort WalkGreen(EntityManager em, ulong movements, List<LaneInfo> lanes, List<MovementKey> keys, ManagedJunction junction)
+        internal static ushort WalkGreen(EntityManager em, ulong movements, List<LaneInfo> lanes, List<MovementKey> keys, ManagedJunction junction)
         {
             float longest = -1f;
             foreach (LaneInfo lane in lanes)
@@ -734,26 +734,7 @@ namespace TLL.Systems
         /// </summary>
         private void MarkMajorRoad(List<LaneInfo> lanes, JunctionModel model, List<Entity> edges, Entity node, Entity chosen)
         {
-            int major = chosen != Entity.Null ? edges.IndexOf(chosen) : -1;
-            if (major < 0)
-            {
-                int bestLanes = -1;
-                for (int a = 0; a < edges.Count; a++)
-                {
-                    int count = 0;
-                    foreach (LaneInfo lane in lanes)
-                    {
-                        if ((lane.Flags & JunctionLaneFlags.Pedestrian) == 0
-                            && (lane.Key.Source == a || lane.Key.Source == model.OppositeOf[a]))
-                            count++;
-                    }
-                    if (count > bestLanes)
-                    {
-                        bestLanes = count;
-                        major = a;
-                    }
-                }
-            }
+            int major = MajorApproach(lanes, model, edges, chosen);
             int opposite = major >= 0 ? model.OppositeOf[major] : -1;
             for (int i = 0; i < lanes.Count; i++)
             {
@@ -766,6 +747,35 @@ namespace TLL.Systems
                     lanes[i] = lane;
                 }
             }
+        }
+
+        /// <summary>
+        /// An approach of the major road: the player's choice
+        /// (<paramref name="chosen"/>), else the approach that together with
+        /// the one opposite has the most lanes. -1 for a junction without lanes.
+        /// </summary>
+        internal static int MajorApproach(List<LaneInfo> lanes, JunctionModel model, List<Entity> edges, Entity chosen)
+        {
+            int major = chosen != Entity.Null ? edges.IndexOf(chosen) : -1;
+            if (major >= 0)
+                return major;
+            int bestLanes = -1;
+            for (int a = 0; a < edges.Count; a++)
+            {
+                int count = 0;
+                foreach (LaneInfo lane in lanes)
+                {
+                    if ((lane.Flags & JunctionLaneFlags.Pedestrian) == 0
+                        && (lane.Key.Source == a || lane.Key.Source == model.OppositeOf[a]))
+                        count++;
+                }
+                if (count > bestLanes)
+                {
+                    bestLanes = count;
+                    major = a;
+                }
+            }
+            return major;
         }
 
         /// <summary>
