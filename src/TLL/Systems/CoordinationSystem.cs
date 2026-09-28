@@ -5,6 +5,7 @@ using Game.Net;
 using Game.Simulation;
 using Game.Tools;
 using TLL.Components;
+using TLL.Core.Advisor;
 using TLL.Core.Control;
 using TLL.Core.Coordination;
 using TLL.Core.Optimization;
@@ -41,7 +42,20 @@ namespace TLL.Systems
 
         private const float kDefaultSpeed = 13.9f;
 
+        /// <summary>
+        /// A running wave with the same junctions keeps its plan while the new
+        /// cycle stays within this share of its own. Every new plan shifts
+        /// the offsets, and the controllers need a cycle or two to follow;
+        /// replanning on every small change of the traffic kept the waves
+        /// from ever settling.
+        /// </summary>
+        private const float kKeepCycle = 0.1f;
+
+        /// <summary>Rounds of the autopilot (22.5 game minutes each) a junction stays out of waves after one did not help: a game day.</summary>
+        private const ushort kWaveBanRounds = 64;
+
         private EntityQuery m_Query;
+        private EntityQuery m_Rebuilding;
         private SignalControlSystem m_Control;
 
         public int Corridors { get; private set; }
@@ -55,9 +69,14 @@ namespace TLL.Systems
         private uint m_LastRound;
         private bool m_HasRun;
 
+        /// <summary>Checks a round waits for junctions being rebuilt: 16 of 256 frames.</summary>
+        private const int kMaxWaits = 16;
+        private int m_Waited;
+
         // Per round, for the log line.
         private int m_LinksTooQuiet;
         private int m_BandTooNarrow;
+        private int m_Hurting;
 
         public override int GetUpdateInterval(SystemUpdatePhase phase)
         {
@@ -87,6 +106,12 @@ namespace TLL.Systems
                     ComponentType.ReadOnly<Temp>(),
                 },
             });
+            m_Rebuilding = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<ManagedJunction>() },
+                Any = new[] { ComponentType.ReadOnly<JunctionDirty>(), ComponentType.ReadOnly<RebuildRequest>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
+            });
         }
 
         protected override void OnSafeUpdate()
@@ -98,25 +123,43 @@ namespace TLL.Systems
             bool due = !m_HasRun || frame - m_LastRound >= kRoundFrames;
             if (!due && !Requests.RebuildGreenWaves)
                 return;
+            // A junction being rebuilt is missing from the query below, and a
+            // wave through it would come apart there. Its new plan changes
+            // the wave's anyway: the round waits until it is done, though not
+            // for ever, should one never finish.
+            if (!m_Rebuilding.IsEmptyIgnoreFilter && m_Waited < kMaxWaits)
+            {
+                m_Waited++;
+                return;
+            }
+            m_Waited = 0;
             Requests.RebuildGreenWaves = false;
             m_LastRound = frame;
             m_HasRun = true;
 
             var nodes = new List<Entity>();
+            var banned = new List<Entity>();
             using (NativeArray<Entity> all = m_Query.ToEntityArray(Allocator.Temp))
             {
                 foreach (Entity node in all)
                 {
                     ManagedJunction j = EntityManager.GetComponentData<ManagedJunction>(node);
-                    if (j.Origin == JunctionOrigin.Auto && j.Mode != ControlMode.Flashing)
+                    if (j.Origin != JunctionOrigin.Auto || j.Mode == ControlMode.Flashing)
+                        continue;
+                    if (EntityManager.HasComponent<AutopilotState>(node) && EntityManager.GetComponentData<AutopilotState>(node).WaveBan > 0)
+                        banned.Add(node);
+                    else
                         nodes.Add(node);
                 }
             }
+            foreach (Entity node in banned)
+                Dissolve(node, settings);
 
             var inCorridor = new HashSet<Entity>();
             int corridors = 0;
             m_LinksTooQuiet = 0;
             m_BandTooNarrow = 0;
+            m_Hurting = 0;
             if (settings.AutoGreenWaves && nodes.Count >= 2)
             {
                 SignalNetwork network = BuildNetwork(nodes, out List<List<Entity>> edgesOf);
@@ -140,7 +183,8 @@ namespace TLL.Systems
             }
             Corridors = corridors;
             CoordinatedJunctions = inCorridor.Count;
-            Mod.Log.Info($"Green waves: {corridors} corridor(s) over {inCorridor.Count} junction(s); {m_LinksTooQuiet} link(s) with too little traffic, {m_BandTooNarrow} corridor(s) with too narrow a band.");
+            Mod.Log.Info($"Green waves: {corridors} corridor(s) over {inCorridor.Count} junction(s); {m_LinksTooQuiet} link(s) with too little traffic, {m_BandTooNarrow} corridor(s) with too narrow a band, "
+                + $"{m_Hurting} ended because they did not help, {banned.Count} junction(s) kept out for now.");
         }
 
         private SignalNetwork BuildNetwork(List<Entity> nodes, out List<List<Entity>> edgesOf)
@@ -294,16 +338,40 @@ namespace TLL.Systems
                 members.Add(member);
             }
 
+            if (running && Hurts(path, nodes, runningGroup))
+                return false;
+
             CoordinationPlan plan = Coordinator.Plan(path, members, OptimizerLimits.Default);
             if (!Coupling.BandWorthIt(plan.BandwidthA, plan.BandwidthB, plan.Cycle, hasA, hasB, running))
             {
                 m_BandTooNarrow++;
                 return false;
             }
+            if (running && Unchanged(path, nodes, runningGroup, plan.Cycle))
+            {
+                // Same wave, same timing: only the number, which counts anew
+                // in every round, follows.
+                foreach (int j in path.Junctions)
+                {
+                    ManagedJunction kept = EntityManager.GetComponentData<ManagedJunction>(nodes[j]);
+                    kept.Group = group;
+                    EntityManager.SetComponentData(nodes[j], kept);
+                }
+                return true;
+            }
             for (int k = 0; k < path.Junctions.Count; k++)
             {
                 Entity node = nodes[path.Junctions[k]];
                 ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
+                // A junction new to this wave starts its measurement in it
+                // afresh, so a wave that failed once gets a fair new trial.
+                if (!running && EntityManager.HasComponent<AutopilotState>(node))
+                {
+                    AutopilotState state = EntityManager.GetComponentData<AutopilotState>(node);
+                    for (int layout = 0; layout < LayoutMemory.Layouts; layout++)
+                        state.Memory.Set(layout, true, default);
+                    EntityManager.SetComponentData(node, state);
+                }
                 junction.Mode = ControlMode.Coordinated;
                 junction.Offset = plan.Offsets[k];
                 junction.Group = group;
@@ -363,6 +431,112 @@ namespace TLL.Systems
                 member.Ratios[p] = phases[p].FlowRatio;
             }
             return member;
+        }
+
+        /// <summary>
+        /// Whether a running wave has measurably made its junctions wait
+        /// longer than they did alone (JunctionAdvisor.WaveHurts). If so, its
+        /// junctions stay out of waves for a game day.
+        /// </summary>
+        private bool Hurts(CorridorPath path, List<Entity> nodes, int group)
+        {
+            int n = path.Junctions.Count;
+            var alone = new Calibration[n];
+            var inWave = new Calibration[n];
+            var weights = new float[n];
+            for (int k = 0; k < n; k++)
+            {
+                Entity node = nodes[path.Junctions[k]];
+                if (!EntityManager.HasComponent<AutopilotState>(node))
+                    continue;
+                LayoutMemory memory = EntityManager.GetComponentData<AutopilotState>(node).Memory;
+                int layout = System.Array.IndexOf(JunctionAdvisor.Strategies, EntityManager.GetComponentData<ManagedJunction>(node).Strategy);
+                if (layout < 0)
+                    continue;
+                alone[k] = memory.Get(layout, false);
+                inWave[k] = memory.Get(layout, true);
+                weights[k] = Vehicles(node);
+            }
+            if (!JunctionAdvisor.WaveHurts(alone, inWave, weights))
+                return false;
+            for (int k = 0; k < n; k++)
+            {
+                Entity node = nodes[path.Junctions[k]];
+                if (!EntityManager.HasComponent<AutopilotState>(node))
+                    continue;
+                AutopilotState state = EntityManager.GetComponentData<AutopilotState>(node);
+                state.WaveBan = kWaveBanRounds;
+                EntityManager.SetComponentData(node, state);
+            }
+            m_Hurting++;
+            if (Mod.Settings != null && Mod.Settings.VerboseLogging)
+            {
+                var text = new System.Text.StringBuilder($"Green wave {group} ends: its junctions waited longer in it than alone.");
+                for (int k = 0; k < n; k++)
+                {
+                    if (inWave[k].Measured)
+                        text.Append($" {nodes[path.Junctions[k]]}: {inWave[k].Factor:0.00} in the wave, {alone[k].Factor:0.00} alone;");
+                }
+                Mod.Log.Info(text.ToString());
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Whether a running wave still has exactly these junctions, all on
+        /// the timing it gave them, and the new plan's cycle is close to it:
+        /// then its plan stays. A member rebuilt since, with other phases,
+        /// breaks the timing and so gets a new plan.
+        /// </summary>
+        private bool Unchanged(CorridorPath path, List<Entity> nodes, int group, int newCycle)
+        {
+            int members = 0;
+            foreach (Entity node in nodes)
+            {
+                ManagedJunction j = EntityManager.GetComponentData<ManagedJunction>(node);
+                if (j.Mode == ControlMode.Coordinated && j.Group == group)
+                    members++;
+            }
+            if (members != path.Junctions.Count)
+                return false;
+            int cycle = -1;
+            foreach (int j in path.Junctions)
+            {
+                int own = CycleOf(nodes[j]);
+                if (cycle < 0)
+                    cycle = own;
+                else if (math.abs(own - cycle) > 1)
+                    return false;
+            }
+            return cycle > 0 && math.abs(newCycle - cycle) <= cycle * kKeepCycle;
+        }
+
+        /// <summary>The cycle a junction's timed plan runs, in steps: its greens and the changes between them.</summary>
+        private int CycleOf(Entity node)
+        {
+            ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
+            int intergreen = junction.Yellow + junction.AllRed + junction.Prepare;
+            DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(node, true);
+            int cycle = 0;
+            for (int p = 0; p < phases.Length; p++)
+                cycle += phases[p].Data.Green + intergreen;
+            return cycle;
+        }
+
+        /// <summary>Recent vehicles per hour through the junction, the weight of its verdict on a wave.</summary>
+        private float Vehicles(Entity node)
+        {
+            if (!EntityManager.HasBuffer<MovementStatistics>(node))
+                return 0f;
+            DynamicBuffer<JunctionMovement> movements = EntityManager.GetBuffer<JunctionMovement>(node, true);
+            DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node, true);
+            float sum = 0f;
+            for (int m = 0; m < movements.Length && m < statistics.Length; m++)
+            {
+                if (movements[m].Kind != MovementKind.Pedestrian)
+                    sum += statistics[m].Recent;
+            }
+            return sum;
         }
 
         private static bool HasThrough(CorridorMember member)

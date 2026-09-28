@@ -70,6 +70,10 @@ export interface Estimate {
   delay: number;
   /** Degree of saturation of the busiest phase; above 1 the queue grows. */
   saturation: number;
+  /** The junction has run this layout and corrected the estimate by what it measured. */
+  measured: boolean;
+  /** When it ran, queues built up that did not clear. */
+  jammed: boolean;
 }
 
 export interface AutopilotInfo {
@@ -80,6 +84,11 @@ export interface AutopilotInfo {
   tooQuiet: boolean;
   /** Layout the autopilot wants to change to at the next review, -1 for none. */
   pending: number;
+  /** Vehicles' mean wait over the last measurement period, and what the model expected, seconds; 0 until measured. */
+  measuredWait: number;
+  modelledWait: number;
+  /** Game minutes the junction stays out of green waves after one did not help; 0 if none. */
+  waveBanMinutes: number;
   /** From the last layout review; empty until there is enough traffic. */
   estimates: Estimate[];
 }

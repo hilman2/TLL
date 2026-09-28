@@ -140,16 +140,20 @@ const scenarios = {
       scrambleActive: true,
       autopilot: {
         majorVolume: 840, minorVolume: 210, signalAdvice: 2, pending: 1,
+        measuredWait: 12.4, modelledWait: 9.1, waveBanMinutes: 700,
         estimates: [
-          { strategy: 0, delay: 18.4, saturation: 0.92 },
-          { strategy: 1, delay: 14.2, saturation: 0.71 },
-          { strategy: 2, delay: 31.0, saturation: 1.18 },
-          { strategy: 3, delay: 42.5, saturation: 1.05 },
+          { strategy: 0, delay: 18.4, saturation: 0.92, measured: true, jammed: false },
+          { strategy: 1, delay: 14.2, saturation: 0.71, measured: false, jammed: false },
+          { strategy: 2, delay: 31.0, saturation: 0.95, measured: true, jammed: true },
+          { strategy: 3, delay: 42.5, saturation: 1.05, measured: false, jammed: false },
         ],
       },
     },
     // Texts the open panel must show; the stand-in translation gives the fallbacks.
-    expect: [">Next review in 45 min<", "active (3/8) · Next review in 45 min"],
+    expect: [
+      ">Next review in 45 min<", "active (3/8) · Next review in 45 min",
+      "Measured wait Ø 12 s · model Ø 9 s", "Kept out of green waves for 12 h", " •<",
+    ],
   },
   "vanilla junction": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: true } },
   "junction without signals": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false } },

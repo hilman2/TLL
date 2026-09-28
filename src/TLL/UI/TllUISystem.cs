@@ -435,6 +435,13 @@ namespace TLL.UI
             writer.Write(a.TooQuiet);
             writer.PropertyName("pending");
             writer.Write(a.PendingRounds > 0 ? (int)a.Pending : -1);
+            writer.PropertyName("measuredWait");
+            writer.Write(a.MeasuredWait);
+            writer.PropertyName("modelledWait");
+            writer.Write(a.ModelledWait);
+            writer.PropertyName("waveBanMinutes");
+            writer.Write(a.WaveBan * AutopilotSystem.kRoundFrames * 1440f / Game.Simulation.TimeSystem.kTicksPerDay);
+            bool wave = d.Junction.Mode == ControlMode.Coordinated;
             writer.PropertyName("estimates");
             int count = a.HasEstimate ? JunctionAdvisor.Strategies.Length : 0;
             writer.ArrayBegin((uint)count);
@@ -447,6 +454,11 @@ namespace TLL.UI
                 writer.Write(a.LayoutDelay[i]);
                 writer.PropertyName("saturation");
                 writer.Write(a.LayoutSaturation[i]);
+                Calibration c = a.Memory.Get(i, wave);
+                writer.PropertyName("measured");
+                writer.Write(c.Measured);
+                writer.PropertyName("jammed");
+                writer.Write(c.Measured && c.Backlog >= LayoutMemory.BacklogShare);
                 writer.TypeEnd();
             }
             writer.ArrayEnd();

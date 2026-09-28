@@ -1,5 +1,6 @@
 using Colossal.Serialization.Entities;
 using Unity.Entities;
+using Unity.Mathematics;
 
 namespace TLL.Components
 {
@@ -13,7 +14,7 @@ namespace TLL.Components
     [InternalBufferCapacity(0)]
     public struct MovementStatistics : IBufferElementData, ISerializable
     {
-        private const byte kVersion = 3;
+        private const byte kVersion = 4;
 
         /// <summary>Vehicles (or pedestrians for a crosswalk) per hour, averaged over the last hour or two of game time.</summary>
         public float Recent;
@@ -43,6 +44,29 @@ namespace TLL.Components
         /// </summary>
         public float LastQueue;
 
+        /// <summary>
+        /// Highest <see cref="Recent"/> per time-of-day window
+        /// (AutopilotSystem.TimeWindow), windows 0 to 3 and 4 to 7, fading
+        /// over the days like <see cref="Peak"/> over the hours: what this
+        /// time of day brings, for the layout that runs then. 0 for a window
+        /// not yet seen.
+        /// </summary>
+        public float4 WindowsEarly;
+        public float4 WindowsLate;
+
+        public float Window(int window)
+        {
+            return window < 4 ? WindowsEarly[window] : WindowsLate[window - 4];
+        }
+
+        public void SetWindow(int window, float value)
+        {
+            if (window < 4)
+                WindowsEarly[window] = value;
+            else
+                WindowsLate[window - 4] = value;
+        }
+
         public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
         {
             writer.Write(kVersion);
@@ -52,6 +76,8 @@ namespace TLL.Components
             writer.Write(Queue);
             writer.Write(PeakQueue);
             writer.Write(RecentQueue);
+            writer.Write(WindowsEarly);
+            writer.Write(WindowsLate);
         }
 
         public void Deserialize<TReader>(TReader reader) where TReader : IReader
@@ -65,6 +91,11 @@ namespace TLL.Components
                 reader.Read(out PeakQueue);
             if (version >= 3)
                 reader.Read(out RecentQueue);
+            if (version >= 4)
+            {
+                reader.Read(out WindowsEarly);
+                reader.Read(out WindowsLate);
+            }
         }
     }
 

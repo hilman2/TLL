@@ -183,6 +183,21 @@ namespace TLL.Components
 
         /// <summary>The running vehicle green has seen such a conflict.</summary>
         public bool ConflictThisGreen;
+
+        /// <summary>
+        /// The autopilot's measurement since the last review, for its layout
+        /// memory (LayoutMemory): vehicle-seconds spent waiting and vehicles
+        /// through, the rounds it covers, whether a round ended with a
+        /// backlog, whether the junction ran in a green wave, and whether it
+        /// joined or left one, or flashed, within the period. A rebuild
+        /// starts it over, so it always belongs to one layout.
+        /// </summary>
+        public float PeriodWait;
+        public float PeriodVehicles;
+        public byte PeriodRounds;
+        public bool PeriodBacklog;
+        public bool PeriodWave;
+        public bool PeriodMixed;
     }
 
     /// <summary>Tag: the junction's plan or lanes must be rebuilt before it runs again.</summary>

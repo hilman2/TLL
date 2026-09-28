@@ -53,6 +53,22 @@ namespace TLL.UI
                 text.Append($"  autopilot: main road {a.MajorVolume:0}/h, busiest side road {a.MinorVolume:0}/h, side road load {load:0.00}"
                     + $" (flashing starts below {FlashAdvisor.StartBelow:0}/h in total and load {FlashAdvisor.StartSaturation:0.00}, ends above {FlashAdvisor.EndAbove:0}/h or {FlashAdvisor.EndSaturation:0.00}),"
                     + $" {a.Flash.RoundsSinceChange} rounds since the last change, last flashing ended in a backlog {a.Flash.EndedByBacklog}\n");
+                // The layout memory: per layout, measured wait over the
+                // model's, periods measured, and how often a queue stayed.
+                text.Append($"  measured wait {a.MeasuredWait:0.0} s against the model's {a.ModelledWait:0.0} s, out of green waves for {a.WaveBan} rounds\n");
+                for (int i = 0; i < LayoutMemory.Layouts; i++)
+                {
+                    Calibration alone = a.Memory.Get(i, false);
+                    Calibration wave = a.Memory.Get(i, true);
+                    text.Append($"  layout {JunctionAdvisor.Strategies[i]}: alone x{alone.Factor:0.00} over {alone.Samples} periods, backlog {alone.Backlog:0.00};"
+                        + $" in a wave x{wave.Factor:0.00} over {wave.Samples} periods, backlog {wave.Backlog:0.00}; estimate {a.LayoutDelay[i]:0.0} s\n");
+                }
+            }
+            if (em.HasComponent<JunctionRuntime>(node))
+            {
+                JunctionRuntime p = em.GetComponentData<JunctionRuntime>(node);
+                text.Append($"  measurement period: {p.PeriodRounds} rounds, {p.PeriodVehicles:0} vehicles, {p.PeriodWait:0} s waiting"
+                    + $" ({(p.PeriodVehicles > 0f ? p.PeriodWait / p.PeriodVehicles : 0f):0.0} s each), backlog {p.PeriodBacklog}, wave {p.PeriodWave}, mixed {p.PeriodMixed}\n");
             }
             if (em.HasBuffer<MovementStatistics>(node))
             {

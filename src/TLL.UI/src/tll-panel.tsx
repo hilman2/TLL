@@ -386,14 +386,14 @@ const AutopilotCard = ({ autopilot, junction, t }: { autopilot: AutopilotInfo; j
           const pending = autopilot.pending === e.strategy && !current;
           return (
             <div key={e.strategy} className={styles.chartRow}>
-              <div className={classNames(styles.chartLabel, current && styles.chartLabelCurrent)}>{strategyShort(e.strategy, t)}</div>
+              <div className={classNames(styles.chartLabel, current && styles.chartLabelCurrent)}>{`${strategyShort(e.strategy, t)}${e.measured ? " •" : ""}`}</div>
               <div className={styles.chartTrack}>
                 <div
                   className={classNames(styles.chartBar, current && styles.chartBarCurrent, pending && styles.chartBarPending, e.saturation > 1 && styles.chartBarOver)}
                   style={{ width: `${Math.max(3, (100 * Math.min(e.delay, worst)) / worst)}%` }}
                 />
               </div>
-              <div className={classNames(styles.chartValue, e.saturation > 1 && styles.over)}>{`Ø ${seconds(e.delay)}`}</div>
+              <div className={classNames(styles.chartValue, (e.saturation > 1 || e.jammed) && styles.over)}>{`Ø ${seconds(e.delay)}`}</div>
             </div>
           );
         })
@@ -401,7 +401,15 @@ const AutopilotCard = ({ autopilot, junction, t }: { autopilot: AutopilotInfo; j
       {autopilot.pending >= 0 && autopilot.pending !== junction.strategy && (
         <div className={styles.note}>{`${t("Panel.PendingLayout", "Next review changes to")}: ${t("Strategy." + PlanStrategy[autopilot.pending], PlanStrategy[autopilot.pending])}`}</div>
       )}
+      {autopilot.measuredWait > 0 && (
+        <div className={styles.faint}>
+          {`${t("Panel.MeasuredWait", "Measured wait")} Ø ${seconds(autopilot.measuredWait)} · ${t("Panel.ModelledWait", "model")} Ø ${seconds(autopilot.modelledWait)}`}
+        </div>
+      )}
       <div className={styles.faint}>{nextReview(junction, t)}</div>
+      {autopilot.waveBanMinutes > 0 && (
+        <div className={styles.note}>{`${t("Panel.WaveBan", "Kept out of green waves for")} ${Math.ceil(autopilot.waveBanMinutes / 60)} h`}</div>
+      )}
       {autopilot.signalAdvice === SignalAdvice.RemoveSignals && (
         <div className={styles.note}>{t("Panel.RemoveSignals", "Priority rules would mean less waiting here than signals.")}</div>
       )}

@@ -52,6 +52,13 @@ namespace TLL.Systems
         /// <summary>Per round the peak falls back by this factor: to half in 46 rounds, about 17 game hours.</summary>
         private const float kPeakDecay = 0.985f;
 
+        /// <summary>
+        /// Per round within its window, a time-of-day window's peak falls
+        /// back by this factor: by about 15 % a day over its 8 rounds, so the
+        /// last few days count.
+        /// </summary>
+        private const float kWindowDecay = 0.98f;
+
         /// <summary>A layout review needs at least this much traffic, in vehicles per hour, to mean anything.</summary>
         private const float kMinimumVolume = 30f;
 
@@ -125,8 +132,14 @@ namespace TLL.Systems
                     // measured. After a build, a load, or with the clock
                     // behind (another city), that start is not known and the
                     // round is not measured.
+                    ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
+                    float worstQueue = 0f;
                     if (runtime.CountsSince > 0 && now > runtime.CountsSince)
-                        Measure(node, counters, now - runtime.CountsSince);
+                    {
+                        Measure(node, counters, now - runtime.CountsSince, round);
+                        worstQueue = WorstQueuePerLane(node);
+                        AddToPeriod(ref runtime, counters, junction.Mode, worstQueue);
+                    }
                     for (int i = 0; i < counters.Length; i++)
                     {
                         ref MovementCounter c = ref counters.ElementAt(i);
@@ -142,20 +155,27 @@ namespace TLL.Systems
                         runtime.Conflicts.Review();
                     EntityManager.SetComponentData(node, runtime);
                     UpdateHealth(node);
-                    if (settings == null || !settings.AutoManageAll)
-                        continue;
-                    ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
-                    if (junction.Origin != JunctionOrigin.Auto)
-                        continue;
-                    try
+                    if (settings != null && settings.AutoManageAll && junction.Origin == JunctionOrigin.Auto)
                     {
-                        Decide(node, junction, settings, layoutRound);
+                        try
+                        {
+                            Decide(node, junction, settings, layoutRound, round, runtime, worstQueue);
+                        }
+                        catch (Exception e)
+                        {
+                            // One junction the autopilot cannot judge keeps its
+                            // current settings; the others go on.
+                            Mod.Log.Error(e, $"Junction {node}: the autopilot could not decide, it keeps its settings.");
+                        }
                     }
-                    catch (Exception e)
+                    // The review has used the period; the next one starts.
+                    // Decide may have changed the entity's components, so the
+                    // runtime is written back by entity, not by reference.
+                    if (layoutRound && EntityManager.HasComponent<JunctionRuntime>(node))
                     {
-                        // One junction the autopilot cannot judge keeps its
-                        // current settings; the others go on.
-                        Mod.Log.Error(e, $"Junction {node}: the autopilot could not decide, it keeps its settings.");
+                        JunctionRuntime next = EntityManager.GetComponentData<JunctionRuntime>(node);
+                        ClearPeriod(ref next);
+                        EntityManager.SetComponentData(node, next);
                     }
                 }
             }
@@ -169,8 +189,9 @@ namespace TLL.Systems
         }
 
         /// <summary>Turns the round's counts into rates and updates the running figures.</summary>
-        private void Measure(Entity node, DynamicBuffer<MovementCounter> counters, long elapsedSteps)
+        private void Measure(Entity node, DynamicBuffer<MovementCounter> counters, long elapsedSteps, uint round)
         {
+            int window = TimeWindow(round);
             DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node);
             if (statistics.Length != counters.Length || elapsedSteps <= 0)
                 return;
@@ -203,6 +224,7 @@ namespace TLL.Systems
                 s.RecentQueue = fresh ? queue : s.RecentQueue + kRecentWeight * (queue - s.RecentQueue);
                 s.PeakQueue = math.max(s.PeakQueue * kPeakDecay, s.RecentQueue);
                 s.LastQueue = queue;
+                s.SetWindow(window, math.max(s.Window(window) * kWindowDecay, s.Recent));
             }
         }
 
@@ -225,7 +247,10 @@ namespace TLL.Systems
                 EntityManager.AddComponentData(node, health);
         }
 
-        private void Decide(Entity node, ManagedJunction junction, Setting settings, bool layoutRound)
+        /// <param name="round">The autopilot round, for the time-of-day windows.</param>
+        /// <param name="period">The runtime with the measurement period this round ends.</param>
+        /// <param name="worstQueue">Mean vehicles waiting per lane over the round, on the worst approach.</param>
+        private void Decide(Entity node, ManagedJunction junction, Setting settings, bool layoutRound, uint round, JunctionRuntime period, float worstQueue)
         {
             AutopilotState state = EntityManager.HasComponent<AutopilotState>(node)
                 ? EntityManager.GetComponentData<AutopilotState>(node)
@@ -237,7 +262,6 @@ namespace TLL.Systems
 
             var recent = new float[edges.Count];
             var peak = new float[edges.Count];
-            var queue = new float[edges.Count];
             for (int m = 0; m < movements.Length && m < statistics.Length; m++)
             {
                 if (movements[m].Kind == MovementKind.Pedestrian)
@@ -247,7 +271,6 @@ namespace TLL.Systems
                     continue;
                 recent[source] += statistics[m].Recent;
                 peak[source] += statistics[m].Peak;
-                queue[source] += statistics[m].LastQueue;
             }
             Road(recent, opposite, out int majorApproach, out float major, out float minor, out float minorTotal);
             state.MajorVolume = major;
@@ -261,7 +284,6 @@ namespace TLL.Systems
 
             // Flashing yellow at low traffic.
             bool flashing = junction.Mode == ControlMode.Flashing;
-            float worstQueue = WorstQueuePerLane(node, movements, edges, queue);
             bool wantFlash = state.Flash.Round(flashing, settings.AutoFlash && majorApproach >= 0, major, minor, minorTotal, worstQueue);
             if (wantFlash != flashing)
             {
@@ -297,6 +319,9 @@ namespace TLL.Systems
                 changed = true;
             }
 
+            if (state.WaveBan > 0)
+                state.WaveBan--;
+
             // Junctions taken over before scrambles on demand existed get one.
             // It costs nothing until pedestrians and turning vehicles clash.
             if ((junction.Options & JunctionOptions.ScrambleOnDemand) == 0)
@@ -314,7 +339,7 @@ namespace TLL.Systems
                 m_ReviewTime.Start();
                 try
                 {
-                    ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, layoutRound, ref changed, ref rebuild);
+                    ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, layoutRound, round, period, ref changed, ref rebuild);
                 }
                 catch (Exception e)
                 {
@@ -353,8 +378,12 @@ namespace TLL.Systems
         /// turning on red where it pays.
         /// </summary>
         private void ReviewLayout(Entity node, ref ManagedJunction junction, ref AutopilotState state, Setting settings,
-            DynamicBuffer<MovementStatistics> statistics, float[] peakByApproach, int[] opposite, bool decide, ref bool changed, ref bool rebuild)
+            DynamicBuffer<MovementStatistics> statistics, float[] peakByApproach, int[] opposite, bool decide, uint round, JunctionRuntime period,
+            ref bool changed, ref bool rebuild)
         {
+            // The layout the measurement period ran with, before a setting
+            // may change it below.
+            PlanStrategy ran = junction.Strategy;
             if (decide && settings.AutoLayout != AutoLayout.Automatic)
             {
                 PlanStrategy fixedChoice = settings.InitialStrategy();
@@ -368,11 +397,22 @@ namespace TLL.Systems
             JunctionLayout layout = JunctionAnalysis.Analyse(EntityManager, node, m_CityConfiguration.leftHandTraffic);
             if (layout == null || layout.Keys.Count != statistics.Length)
                 return;
+            // The traffic the layout must cope with until the next review:
+            // what this time of day, and the next window if the review
+            // period reaches into it, brought on the last days. Until the
+            // windows have seen a day, the day's peak, so that a layout
+            // chosen early copes with the rush hour.
+            int window = TimeWindow(round);
+            int nextWindow = TimeWindow(round + kLayoutEvery);
             var volumes = new float[statistics.Length];
+            var recent = new float[statistics.Length];
             float total = 0f;
             for (int m = 0; m < volumes.Length; m++)
             {
-                volumes[m] = statistics[m].Peak;
+                MovementStatistics s = statistics[m];
+                float windowed = math.max(s.Window(window), s.Window(nextWindow));
+                volumes[m] = windowed > 0f ? math.max(windowed, s.Recent) : s.Peak;
+                recent[m] = s.Recent;
                 if (!layout.Model.Movements[m].IsPedestrian)
                     total += volumes[m];
             }
@@ -380,28 +420,39 @@ namespace TLL.Systems
             if (state.TooQuiet)
                 return;
 
+            int running = Array.IndexOf(JunctionAdvisor.Strategies, ran);
+            bool wave = junction.Mode == ControlMode.Coordinated;
+            if (decide)
+            {
+                Remember(ref state, layout.Model, junction, ran, running, wave, recent, period);
+                state.Memory.Fade(running);
+            }
+
             // With turning on red allowed, the layouts are compared as the
-            // junction would run them, with it wherever it pays.
+            // junction would run them, with it wherever it pays. Then the
+            // model's estimates are corrected by what the junction measured
+            // when it ran them.
             DelayParameters parameters = DelayParameters.Default;
             parameters.TurnOnRed = settings.TurnOnRed;
             PlanEstimate[] estimates = JunctionAdvisor.EvaluateAll(layout.Model, volumes, parameters);
+            PlanEstimate[] corrected = JunctionAdvisor.Correct(estimates, state.Memory, running, wave);
             state.HasEstimate = true;
             m_Estimated++;
-            state.LayoutDelay = new float4(estimates[0].AverageDelay, estimates[1].AverageDelay, estimates[2].AverageDelay, estimates[3].AverageDelay);
-            state.LayoutSaturation = new float4(estimates[0].WorstSaturation, estimates[1].WorstSaturation, estimates[2].WorstSaturation, estimates[3].WorstSaturation);
+            state.LayoutDelay = new float4(corrected[0].AverageDelay, corrected[1].AverageDelay, corrected[2].AverageDelay, corrected[3].AverageDelay);
+            state.LayoutSaturation = new float4(corrected[0].WorstSaturation, corrected[1].WorstSaturation, corrected[2].WorstSaturation, corrected[3].WorstSaturation);
 
-            PlanStrategy choice = JunctionAdvisor.Choose(junction.Strategy, estimates);
-            PlanEstimate best = estimates[Array.IndexOf(JunctionAdvisor.Strategies, choice)];
+            PlanStrategy choice = JunctionAdvisor.Choose(junction.Strategy, corrected);
+            PlanEstimate best = corrected[Array.IndexOf(JunctionAdvisor.Strategies, choice)];
             Road(peakByApproach, opposite, out _, out float major, out float minor, out _);
             state.SignalAdvice = SignalAdvisor.Decide(true, major, minor, best.AverageDelay);
 
             if (!decide)
                 return;
             // Turning on red for the layout the junction runs from now on.
-            PlanStrategy running = settings.AutoLayout == AutoLayout.Automatic ? choice : junction.Strategy;
+            PlanStrategy upcoming = settings.AutoLayout == AutoLayout.Automatic ? choice : junction.Strategy;
             bool turnOnRed = settings.TurnOnRed && JunctionAdvisor.WantsTurnOnRed(
-                DelayModel.Estimate(layout.Model, PhasePlanner.Build(layout.Model, running), volumes, DelayParameters.Default),
-                estimates[Array.IndexOf(JunctionAdvisor.Strategies, running)]);
+                DelayModel.Estimate(layout.Model, PhasePlanner.Build(layout.Model, upcoming), volumes, DelayParameters.Default),
+                estimates[Array.IndexOf(JunctionAdvisor.Strategies, upcoming)]);
             if (turnOnRed != ((junction.Options & JunctionOptions.TurnOnRed) != 0))
             {
                 junction.Options ^= JunctionOptions.TurnOnRed;
@@ -424,40 +475,138 @@ namespace TLL.Systems
                 state.Pending = choice;
                 state.PendingRounds = 1;
             }
-            if (state.PendingRounds < kConfirmRounds)
+            // A layout that measurably jams is left at the first review that
+            // finds one expected to cope; otherwise two reviews must agree.
+            bool jammed = running >= 0 && state.Memory.Get(running, wave).Backlog >= LayoutMemory.BacklogShare;
+            if (state.PendingRounds < (jammed ? 1 : kConfirmRounds))
                 return;
             if (settings.VerboseLogging)
-                Mod.Log.Info($"Autopilot: junction {node} changes from {junction.Strategy} to {choice}, expected mean delay {best.AverageDelay:0.0} s.");
+            {
+                bool tried = state.Memory.Get(Array.IndexOf(JunctionAdvisor.Strategies, choice), wave).Measured;
+                Mod.Log.Info($"Autopilot: junction {node} changes from {junction.Strategy} to {choice}, expected mean delay {best.AverageDelay:0.0} s"
+                    + $" ({(tried ? "measured before" : "not tried yet")}){(jammed ? ", the current layout jams" : "")}.");
+            }
             m_LayoutChanges++;
             junction.Strategy = choice;
             state.PendingRounds = 0;
             rebuild = true;
         }
 
+        /// <summary>Measurement periods need this many rounds and vehicles to say anything about a layout.</summary>
+        private const int kMinPeriodRounds = 2;
+        private const float kMinPeriodVehicles = 20f;
+
+        /// <summary>
+        /// Records the measurement period this review ends in the layout
+        /// memory: the vehicles' measured mean wait against what the model
+        /// expects of the layout for the period's traffic. A period that
+        /// mixed running alone and in a wave, or flashed, is left out.
+        /// </summary>
+        private static void Remember(ref AutopilotState state, JunctionModel model, ManagedJunction junction, PlanStrategy ran, int running, bool wave,
+            float[] recent, JunctionRuntime period)
+        {
+            if (running < 0 || period.PeriodMixed || period.PeriodWave != wave
+                || period.PeriodRounds < kMinPeriodRounds || period.PeriodVehicles < kMinPeriodVehicles)
+                return;
+            DelayParameters p = DelayParameters.Default;
+            p.TurnOnRed = (junction.Options & JunctionOptions.TurnOnRed) != 0;
+            PlanEstimate e = DelayModel.Estimate(model, PhasePlanner.Build(model, ran), recent, p);
+            if (e.Vehicles <= 0f)
+                return;
+            float measured = period.PeriodWait / period.PeriodVehicles;
+            state.Memory.Record(running, wave, measured, e.VehicleDelay / e.Vehicles, period.PeriodBacklog);
+            state.MeasuredWait = measured;
+            state.ModelledWait = e.VehicleDelay / e.Vehicles;
+        }
+
+        /// <summary>The day is split into this many windows, each with its own traffic figures.</summary>
+        public const int kWindows = 8;
+
+        /// <summary>The time-of-day window of an autopilot round, 3 game hours each.</summary>
+        public static int TimeWindow(uint round)
+        {
+            uint roundsPerDay = (uint)(Game.Simulation.TimeSystem.kTicksPerDay / kRoundFrames);
+            return (int)(round % roundsPerDay * kWindows / roundsPerDay);
+        }
+
         /// <summary>
         /// Mean vehicles waiting per lane over the last round, on the
-        /// approach where it is highest. <paramref name="queueByApproach"/>
-        /// sums the whole approach; its lanes are counted from the junction's
-        /// lanes, each approach lane once.
+        /// approach where it is highest: the approach's queue over its lanes,
+        /// each approach lane counted once.
         /// </summary>
-        private float WorstQueuePerLane(Entity node, DynamicBuffer<JunctionMovement> movements, List<Entity> edges, float[] queueByApproach)
+        private float WorstQueuePerLane(Entity node)
         {
+            DynamicBuffer<JunctionMovement> movements = EntityManager.GetBuffer<JunctionMovement>(node, true);
+            DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node, true);
             DynamicBuffer<JunctionLane> lanes = EntityManager.GetBuffer<JunctionLane>(node, true);
-            var laneCount = new int[edges.Count];
+            var queue = new Dictionary<Entity, float>();
+            for (int m = 0; m < movements.Length && m < statistics.Length; m++)
+            {
+                if (movements[m].Kind == MovementKind.Pedestrian)
+                    continue;
+                queue.TryGetValue(movements[m].Source, out float sum);
+                queue[movements[m].Source] = sum + statistics[m].LastQueue;
+            }
+            var laneCount = new Dictionary<Entity, int>();
             var seen = new HashSet<Entity>();
             for (int l = 0; l < lanes.Length; l++)
             {
                 JunctionLane lane = lanes[l];
                 if (lane.Approach == Entity.Null || lane.Movement >= movements.Length || !seen.Add(lane.Approach))
                     continue;
-                int source = edges.IndexOf(movements[lane.Movement].Source);
-                if (source >= 0)
-                    laneCount[source]++;
+                Entity source = movements[lane.Movement].Source;
+                laneCount.TryGetValue(source, out int count);
+                laneCount[source] = count + 1;
             }
             float worst = 0f;
-            for (int a = 0; a < edges.Count; a++)
-                worst = math.max(worst, queueByApproach[a] / math.max(1, laneCount[a]));
+            foreach (KeyValuePair<Entity, float> approach in queue)
+            {
+                laneCount.TryGetValue(approach.Key, out int count);
+                worst = math.max(worst, approach.Value / math.max(1, count));
+            }
             return worst;
+        }
+
+        /// <summary>
+        /// Mean vehicles waiting per lane over a round, on one approach, from
+        /// which the round counts as ending with a backlog for the layout
+        /// memory. A signal makes queues at red; this is about twice the
+        /// junction queue the problem list starts at, a queue that does not
+        /// clear in a cycle.
+        /// </summary>
+        private const float kBacklogQueue = 6f;
+
+        /// <summary>Adds the round just measured to the runtime's measurement period.</summary>
+        private static void AddToPeriod(ref JunctionRuntime runtime, DynamicBuffer<MovementCounter> counters, ControlMode mode, float worstQueue)
+        {
+            bool wave = mode == ControlMode.Coordinated;
+            if (runtime.PeriodRounds == 0)
+                runtime.PeriodWave = wave;
+            else if (runtime.PeriodWave != wave)
+                runtime.PeriodMixed = true;
+            if (mode == ControlMode.Flashing)
+                runtime.PeriodMixed = true;
+            for (int i = 0; i < counters.Length; i++)
+            {
+                // Crosswalks have a length; their counters are people.
+                if (counters[i].Length > 0f)
+                    continue;
+                runtime.PeriodWait += counters[i].QueueSteps * SimTime.SecondsPerStep;
+                runtime.PeriodVehicles += counters[i].Vehicles;
+            }
+            if (runtime.PeriodRounds < byte.MaxValue)
+                runtime.PeriodRounds++;
+            runtime.PeriodBacklog |= worstQueue >= kBacklogQueue;
+        }
+
+        private static void ClearPeriod(ref JunctionRuntime runtime)
+        {
+            runtime.PeriodWait = 0f;
+            runtime.PeriodVehicles = 0f;
+            runtime.PeriodRounds = 0;
+            runtime.PeriodBacklog = false;
+            runtime.PeriodWave = false;
+            runtime.PeriodMixed = false;
         }
 
         /// <summary>
