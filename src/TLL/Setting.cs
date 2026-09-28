@@ -111,6 +111,14 @@ namespace TLL
         [SettingsUIButton]
         [SettingsUIConfirmation]
         [SettingsUISection(kSection, kMaintenance)]
+        public bool ResetLanes
+        {
+            set { Requests.ResetLanes = true; }
+        }
+
+        [SettingsUIButton]
+        [SettingsUIConfirmation]
+        [SettingsUISection(kSection, kMaintenance)]
         public bool RebuildVanilla
         {
             set { Requests.RebuildVanilla = true; }
@@ -187,5 +195,6 @@ namespace TLL
         public static volatile bool RebuildVanilla;
         public static volatile bool RebuildGreenWaves;
         public static volatile bool ResetAllToAutomatic;
+        public static volatile bool ResetLanes;
     }
 }

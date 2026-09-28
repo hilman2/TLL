@@ -51,6 +51,9 @@
   "Settings.ReleaseAll.Description": "Beendet die Steuerung durch TLL an allen Kreuzungen, auch an selbst eingestellten. Das Spiel baut seine eigenen Signalgruppen neu auf.",
   "Settings.ReleaseAll.Warning": "Alle Kreuzungen an das Spiel zurückgeben? Deine eigenen Phasenpläne gehen verloren.",
 
+  "Settings.ResetLanes.Label": "Alle Spurregeln zurücksetzen",
+  "Settings.ResetLanes.Description": "Entfernt alle Abbiegeverbote, Vorfahrtsschilder und Spurverbindungen von TLL, deine und die des Autopiloten, und schaltet beide Autopiloten für Spuren aus. Das Spiel baut die Spuren dieser Kreuzungen neu auf. Vor dem Entfernen von TLL einmal ausführen und speichern.",
+  "Settings.ResetLanes.Warning": "Alle Spurregeln von TLL entfernen? Deine eigenen Verbindungen und Schilder gehen verloren.",
   "Settings.RebuildVanilla.Label": "Signaldaten anderer Mods reparieren",
   "Settings.RebuildVanilla.Description": "Lässt das Spiel die Signalgruppen aller Kreuzungen neu aufbauen, die TLL nicht steuert. Einmal ausführen, nachdem ein anderer Ampel-Mod entfernt wurde, dessen Einstellungen im Spielstand zurückbleiben können.",
   "Settings.RebuildVanilla.Warning": "Die Signalgruppen aller Kreuzungen neu aufbauen, die TLL nicht steuert?",

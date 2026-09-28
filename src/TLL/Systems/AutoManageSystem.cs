@@ -24,6 +24,7 @@ namespace TLL.Systems
         private EntityQuery m_ManagedQuery;
         private EntityQuery m_AllSignalsQuery;
         private EntityQuery m_SignalsRemovedQuery;
+        private EntityQuery m_LaneRulesQuery;
         private SignalControlSystem m_Control;
 
         public override int GetUpdateInterval(SystemUpdatePhase phase)
@@ -71,6 +72,40 @@ namespace TLL.Systems
                     ComponentType.ReadOnly<Temp>(),
                 },
             });
+            m_LaneRulesQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                Any = new[]
+                {
+                    ComponentType.ReadOnly<TurnRule>(),
+                    ComponentType.ReadOnly<PriorityRule>(),
+                    ComponentType.ReadOnly<LaneConnectionRule>(),
+                },
+                None = skip,
+            });
+        }
+
+        /// <summary>
+        /// Takes every lane rule of TLL out of the city, the player's and the
+        /// autopilot's, and has the game build the lanes of those junctions
+        /// and their roads anew, as it would without TLL.
+        /// </summary>
+        private void ResetLanes()
+        {
+            int count = 0;
+            using (NativeArray<Entity> nodes = m_LaneRulesQuery.ToEntityArray(Allocator.Temp))
+            {
+                foreach (Entity node in nodes)
+                {
+                    foreach (Entity edge in NetGeometry.ConnectedEdges(EntityManager, node))
+                        EntityManager.AddComponent<RebuildRequest>(edge);
+                    count++;
+                }
+                EntityManager.RemoveComponent<TurnRule>(nodes);
+                EntityManager.RemoveComponent<PriorityRule>(nodes);
+                EntityManager.RemoveComponent<LaneConnectionRule>(nodes);
+                EntityManager.AddComponent<RebuildRequest>(nodes);
+            }
+            Mod.Log.Info($"Lane rules removed from {count} junction(s); the game builds their lanes anew.");
         }
 
         protected override void OnGameLoadingComplete(Colossal.Serialization.Entities.Purpose purpose, GameMode mode)
@@ -82,6 +117,7 @@ namespace TLL.Systems
             Requests.RebuildVanilla = false;
             Requests.ResetAllToAutomatic = false;
             Requests.RebuildGreenWaves = false;
+            Requests.ResetLanes = false;
             // Every city loaded is a session of its own in the metrics log.
             Metrics.MetricsLog.NewSession();
         }
@@ -122,6 +158,15 @@ namespace TLL.Systems
                 settings.AutoManageAll = true;
                 settings.ApplyAndSave();
                 ResetAllToAutomatic(settings);
+            }
+            if (Requests.ResetLanes)
+            {
+                Requests.ResetLanes = false;
+                // Otherwise the autopilot would put its rules back.
+                settings.AutoTurnBans = false;
+                settings.AutoPrioritySigns = false;
+                settings.ApplyAndSave();
+                ResetLanes();
             }
 
             if (settings.AutoManageAll)

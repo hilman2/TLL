@@ -178,6 +178,15 @@ namespace TLL.Systems
         /// </summary>
         private void AddConnections(Entity node, List<Entity> built)
         {
+            List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
+            // A road replaced or removed takes its lanes with it; so go
+            // the rules for them.
+            DynamicBuffer<LaneConnectionRule> stored = EntityManager.GetBuffer<LaneConnectionRule>(node);
+            for (int i = stored.Length - 1; i >= 0; i--)
+            {
+                if (!edges.Contains(stored[i].FromEdge) || !edges.Contains(stored[i].ToEdge))
+                    stored.RemoveAt(i);
+            }
             DynamicBuffer<LaneConnectionRule> rules = EntityManager.GetBuffer<LaneConnectionRule>(node, true);
             var wanted = new List<LaneConnectionRule>();
             for (int i = 0; i < rules.Length; i++)
@@ -187,7 +196,6 @@ namespace TLL.Systems
             }
             if (wanted.Count == 0)
                 return;
-            List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
             List<LaneEnd> ends = LaneEnds.Collect(EntityManager, node, edges);
             bool signals = EntityManager.HasComponent<TrafficLights>(node);
             bool turns = EntityManager.HasBuffer<TurnRule>(node);

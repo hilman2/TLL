@@ -51,6 +51,9 @@
   "Settings.ReleaseAll.Description": "Removes TLL's control from every junction, including the ones you configured. The game rebuilds its own signal groups.",
   "Settings.ReleaseAll.Warning": "Return all junctions to the game's control? Your own phase plans are lost.",
 
+  "Settings.ResetLanes.Label": "Reset all lane rules",
+  "Settings.ResetLanes.Description": "Removes all of TLL's turn bans, priority signs and lane connections, yours and the autopilot's, and switches both lane autopilots off. The game builds the lanes of those junctions anew. Run it once and save before removing TLL.",
+  "Settings.ResetLanes.Warning": "Remove all of TLL's lane rules? Your own connections and signs are lost.",
   "Settings.RebuildVanilla.Label": "Repair signal data from other mods",
   "Settings.RebuildVanilla.Description": "Makes the game rebuild the signal groups of every junction TLL does not manage. Use it once after removing another traffic light mod, whose settings can stay behind in the save.",
   "Settings.RebuildVanilla.Warning": "Rebuild the signal groups of all junctions not managed by TLL?",
