@@ -167,7 +167,12 @@ const scenarios = {
         { source: 2, target: 2, kind: 3, state: 4, volume: -1 },
       ],
     },
-    expect: [">Turns<", ">forbidden · autopilot<", ">Main Street → Oak Avenue<", ">Left · 312/h<", ">allowed · you<"],
+    expect: [">Turns<", ">forbidden · autopilot<", ">Main Street → Oak Avenue<", ">Left · 312/h<", ">allowed · you<", ">Connect lanes<"],
+  },
+  "lane tool open": {
+    "tll.laneToolActive": true,
+    "tll.selected": { ...managed, turns: [{ source: 0, target: 1, kind: 1, state: 0, volume: 40 }] },
+    expect: [">Click a lane leading in, then one leading out…<"],
   },
   "junction without signals, with turns": {
     "tll.selected": {

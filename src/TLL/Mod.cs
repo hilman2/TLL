@@ -46,6 +46,7 @@ namespace TLL
             updateSystem.UpdateAt<PriorityAutopilotSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<UI.TllUISystem>(SystemUpdatePhase.UIUpdate);
             updateSystem.UpdateAt<UI.JunctionToolSystem>(SystemUpdatePhase.ToolUpdate);
+            updateSystem.UpdateAt<UI.LaneToolSystem>(SystemUpdatePhase.ToolUpdate);
             updateSystem.UpdateAt<UI.MapOverlaySystem>(SystemUpdatePhase.ToolUpdate);
         }
 

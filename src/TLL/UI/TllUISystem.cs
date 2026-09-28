@@ -45,6 +45,7 @@ namespace TLL.UI
         private CameraUpdateSystem m_CameraSystem;
         private SignalControlSystem m_Control;
         private JunctionToolSystem m_Tool;
+        private LaneToolSystem m_LaneTool;
         private CoordinationSystem m_Coordination;
         private Game.City.CityConfigurationSystem m_CityConfiguration;
 
@@ -188,6 +189,7 @@ namespace TLL.UI
             m_CameraSystem = World.GetOrCreateSystemManaged<CameraUpdateSystem>();
             m_Control = World.GetOrCreateSystemManaged<SignalControlSystem>();
             m_Tool = World.GetOrCreateSystemManaged<JunctionToolSystem>();
+            m_LaneTool = World.GetOrCreateSystemManaged<LaneToolSystem>();
             m_Coordination = World.GetOrCreateSystemManaged<CoordinationSystem>();
             m_CityConfiguration = World.GetOrCreateSystemManaged<Game.City.CityConfigurationSystem>();
             m_Simulation = World.GetOrCreateSystemManaged<Game.Simulation.SimulationSystem>();
@@ -231,6 +233,8 @@ namespace TLL.UI
             AddBinding(new TriggerBinding(kGroup, "toggleShowProblems", () => ChangeSetting(s => s.ShowProblems = !s.ShowProblems)));
             AddBinding(new TriggerBinding(kGroup, "toggleShowCongestion", () => ChangeSetting(s => s.ShowCongestion = !s.ShowCongestion)));
             AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "toolActive", () => m_Tool.IsActive));
+            AddBinding(new TriggerBinding(kGroup, "toggleLaneTool", () => m_LaneTool.Toggle(m_Selected)));
+            AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "laneToolActive", () => m_LaneTool.IsActive));
         }
 
         protected override void OnUpdate()

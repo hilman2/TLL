@@ -23,6 +23,7 @@ import {
   Tab,
   tab$,
   toolActive$,
+  laneToolActive$,
   Turn,
   TurnState,
 } from "bindings";
@@ -311,18 +312,28 @@ const turnTone = (state: TurnState): "green" | "red" | "grey" =>
  * the roads, and its rule. A click on the rule goes round: the autopilot's
  * choice, forbidden by the player, allowed by the player.
  */
-const TurnsCard = ({ junction, t }: { junction: JunctionInfo; t: Translate }) =>
+const TurnsCard = ({ junction, t }: { junction: JunctionInfo; t: Translate }) => {
+  const laneTool = useValue(laneToolActive$);
   // A C# side older than the panel sends no turns.
-  !junction.turns || junction.turns.length === 0 ? null : (
+  if (!junction.turns || junction.turns.length === 0) return null;
+  return (
     <div className={styles.card}>
       <Hint text={t("Panel.TurnsHint", "")}>
         <div className={styles.label}>{t("Panel.Turns", "Turns")}</div>
       </Hint>
+      <div className={styles.row}>
+        <Hint text={t("Panel.LaneToolHint", "")}>
+          <Button variant="flat" className={classNames(styles.wide, laneTool && styles.picking)} selected={laneTool} onSelect={actions.toggleLaneTool}>
+            {laneTool ? t("Panel.LaneToolActive", "Click a lane leading in, then one leading out…") : t("Panel.LaneTool", "Connect lanes")}
+          </Button>
+        </Hint>
+      </div>
       {junction.turns.map((turn) => (
         <TurnRow key={`${turn.source}-${turn.target}`} turn={turn} junction={junction} t={t} />
       ))}
     </div>
   );
+};
 
 const TurnRow = ({ turn, junction, t }: { turn: Turn; junction: JunctionInfo; t: Translate }) => {
   const road = (i: number) => junction.approaches[i]?.name || `${i + 1}`;

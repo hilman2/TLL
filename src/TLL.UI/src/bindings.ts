@@ -227,6 +227,8 @@ const emptySummary: Summary = { available: true, conflict: "", automation: false
 export const summary$ = bindValue<Summary>(group, "summary", emptySummary);
 export const selected$ = bindValue<JunctionInfo | null>(group, "selected", null);
 export const toolActive$ = bindValue<boolean>(group, "toolActive", false);
+/** The tool for connecting the selected junction's lanes is open. */
+export const laneToolActive$ = bindValue<boolean>(group, "laneToolActive", false);
 
 /**
  * Whether the panel is open. The C# side owns it, so its key binding can
@@ -253,6 +255,7 @@ export const actions = {
   release: () => trigger(group, "release"),
   manage: () => trigger(group, "manage"),
   toggleTool: () => trigger(group, "toggleTool"),
+  toggleLaneTool: () => trigger(group, "toggleLaneTool"),
   rebuildGreenWaves: () => trigger(group, "rebuildGreenWaves"),
   diagnose: () => trigger(group, "diagnose"),
   toggleScramble: () => trigger(group, "toggleScramble"),

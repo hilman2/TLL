@@ -139,18 +139,7 @@ namespace TLL.UI
             if (!em.HasBuffer<ConnectedEdge>(node) || !em.HasBuffer<SubLane>(node))
                 return;
             var edges = Systems.NetGeometry.ConnectedEdges(em, node);
-            if (em.HasBuffer<TurnRule>(node))
-            {
-                DynamicBuffer<TurnRule> rules = em.GetBuffer<TurnRule>(node, true);
-                for (int i = 0; i < rules.Length; i++)
-                    text.Append($"  turn rule {edges.IndexOf(rules[i].From)}->{edges.IndexOf(rules[i].To)}: {rules[i].Flags}, {rules[i].Volume:0}/h before\n");
-            }
-            if (em.HasBuffer<PriorityRule>(node))
-            {
-                DynamicBuffer<PriorityRule> rules = em.GetBuffer<PriorityRule>(node, true);
-                for (int i = 0; i < rules.Length; i++)
-                    text.Append($"  sign rule approach {edges.IndexOf(rules[i].Edge)}: {rules[i].Sign}, {rules[i].Flags}\n");
-            }
+            DescribeRuleBuffers(em, node, edges, text);
             const CarLaneFlags shown = CarLaneFlags.Yield | CarLaneFlags.Stop | CarLaneFlags.RightOfWay | CarLaneFlags.Forbidden
                 | CarLaneFlags.Unsafe | CarLaneFlags.UTurnLeft | CarLaneFlags.UTurnRight | CarLaneFlags.TurnLeft | CarLaneFlags.TurnRight;
             DynamicBuffer<SubLane> lanes = em.GetBuffer<SubLane>(node, true);
@@ -174,6 +163,29 @@ namespace TLL.UI
             }
         }
 
+        /// <summary>TLL's rules for the junction's lanes, with roads as indices into <paramref name="edges"/>.</summary>
+        private static void DescribeRuleBuffers(EntityManager em, Entity node, System.Collections.Generic.List<Entity> edges, StringBuilder text)
+        {
+            if (em.HasBuffer<TurnRule>(node))
+            {
+                DynamicBuffer<TurnRule> rules = em.GetBuffer<TurnRule>(node, true);
+                for (int i = 0; i < rules.Length; i++)
+                    text.Append($"  turn rule {edges.IndexOf(rules[i].From)}->{edges.IndexOf(rules[i].To)}: {rules[i].Flags}, {rules[i].Volume:0}/h before\n");
+            }
+            if (em.HasBuffer<PriorityRule>(node))
+            {
+                DynamicBuffer<PriorityRule> rules = em.GetBuffer<PriorityRule>(node, true);
+                for (int i = 0; i < rules.Length; i++)
+                    text.Append($"  sign rule approach {edges.IndexOf(rules[i].Edge)}: {rules[i].Sign}, {rules[i].Flags}\n");
+            }
+            if (em.HasBuffer<LaneConnectionRule>(node))
+            {
+                DynamicBuffer<LaneConnectionRule> rules = em.GetBuffer<LaneConnectionRule>(node, true);
+                for (int i = 0; i < rules.Length; i++)
+                    text.Append($"  lane rule {edges.IndexOf(rules[i].FromEdge)}.{rules[i].FromLane} -> {edges.IndexOf(rules[i].ToEdge)}.{rules[i].ToLane}: {rules[i].Change}\n");
+            }
+        }
+
         /// <summary>
         /// The junction as the phase planner sees it: per movement, which
         /// movements share an approach lane with it and which it may never
@@ -185,12 +197,7 @@ namespace TLL.UI
             Systems.JunctionLayout layout = Systems.JunctionAnalysis.Analyse(em, node, leftHandTraffic);
             if (layout == null)
                 return;
-            if (em.HasBuffer<TurnRule>(node))
-            {
-                DynamicBuffer<TurnRule> rules = em.GetBuffer<TurnRule>(node, true);
-                for (int i = 0; i < rules.Length; i++)
-                    text.Append($"  turn rule {layout.Edges.IndexOf(rules[i].From)}->{layout.Edges.IndexOf(rules[i].To)}: {rules[i].Flags}, {rules[i].Volume:0}/h before\n");
-            }
+            DescribeRuleBuffers(em, node, layout.Edges, text);
             Core.Planning.JunctionModel model = layout.Model;
             int n = model.Movements.Count;
             string Name(int m) => $"{model.Movements[m].Source}->{model.Movements[m].Target} {model.Movements[m].Kind}";
