@@ -333,15 +333,26 @@ namespace TLL.Core.Planning
             {
                 if ((green & (1UL << candidate)) != 0)
                     continue;
+                // A movement comes only together with the movements of its
+                // approach lane, and only if they are free as well. Straight
+                // traffic added on its own, as a free movement, got green
+                // while the left turn sharing its lane stood at red at the
+                // front of the lane and held everyone up.
+                ulong group = (PlanEditing.Partners(junction, candidate) | (1UL << candidate)) & ~green;
                 bool free = true;
-                for (int member = 0; member < n && free; member++)
+                for (int joining = 0; joining < n && free; joining++)
                 {
-                    if ((green & (1UL << member)) != 0)
-                        free = junction.Conflicts.Get(candidate, member) == Relation.Compatible
-                            && physical.Get(candidate, member) != Relation.Hard;
+                    if ((group & (1UL << joining)) == 0)
+                        continue;
+                    for (int member = 0; member < n && free; member++)
+                    {
+                        if ((green & (1UL << member)) != 0)
+                            free = junction.Conflicts.Get(joining, member) == Relation.Compatible
+                                && physical.Get(joining, member) != Relation.Hard;
+                    }
                 }
                 if (free)
-                    green |= 1UL << candidate;
+                    green |= group;
             }
             return green;
         }
