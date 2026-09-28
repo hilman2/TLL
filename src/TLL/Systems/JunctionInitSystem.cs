@@ -564,25 +564,26 @@ namespace TLL.Systems
         /// movements, and phases giving green to the same movements in the
         /// same order. Then a rebuild changes nothing the controller works on.
         /// </summary>
-        private bool SamePlan(Entity node, List<JunctionMovement> movements, List<JunctionPhase> phases)
+        /// <returns>For each old phase its index in <paramref name="phases"/>, or null for another plan.</returns>
+        private int[] SamePlan(Entity node, List<JunctionMovement> movements, List<JunctionPhase> phases)
         {
             if (!EntityManager.HasBuffer<JunctionMovement>(node) || !EntityManager.HasBuffer<JunctionPhase>(node) || !EntityManager.HasComponent<JunctionRuntime>(node))
-                return false;
+                return null;
             DynamicBuffer<JunctionMovement> oldMovements = EntityManager.GetBuffer<JunctionMovement>(node, true);
             DynamicBuffer<JunctionPhase> oldPhases = EntityManager.GetBuffer<JunctionPhase>(node, true);
-            if (oldMovements.Length != movements.Count || oldPhases.Length != phases.Count)
-                return false;
-            for (int m = 0; m < movements.Count; m++)
-            {
-                if (oldMovements[m].Source != movements[m].Source || oldMovements[m].Target != movements[m].Target || oldMovements[m].Kind != movements[m].Kind)
-                    return false;
-            }
-            for (int p = 0; p < phases.Count; p++)
-            {
-                if (oldPhases[p].Movements != phases[p].Movements)
-                    return false;
-            }
-            return true;
+            var before = new (Entity, Entity, MovementKind)[oldMovements.Length];
+            for (int m = 0; m < before.Length; m++)
+                before[m] = (oldMovements[m].Source, oldMovements[m].Target, oldMovements[m].Kind);
+            var after = new (Entity, Entity, MovementKind)[movements.Count];
+            for (int m = 0; m < after.Length; m++)
+                after[m] = (movements[m].Source, movements[m].Target, movements[m].Kind);
+            var phasesBefore = new ulong[oldPhases.Length];
+            for (int p = 0; p < phasesBefore.Length; p++)
+                phasesBefore[p] = oldPhases[p].Movements;
+            var phasesAfter = new ulong[phases.Count];
+            for (int p = 0; p < phasesAfter.Length; p++)
+                phasesAfter[p] = phases[p].Movements;
+            return PlanMatch.PhaseMap(before, after, phasesBefore, phasesAfter);
         }
 
         /// <returns>Whether the plan stayed the same and the controller carries on.</returns>
@@ -592,19 +593,20 @@ namespace TLL.Systems
             // as it was, a building connecting to the road nearby among them.
             // Starting the controller over each time cut the running green,
             // began with all red, and forgot how long every phase had waited.
-            bool samePlan = SamePlan(node, movements, phases);
+            int[] phaseMap = SamePlan(node, movements, phases);
+            bool samePlan = phaseMap != null;
             if (samePlan)
             {
                 DynamicBuffer<JunctionPhase> oldPhases = EntityManager.GetBuffer<JunctionPhase>(node, true);
-                for (int p = 0; p < phases.Count; p++)
+                for (int p = 0; p < oldPhases.Length; p++)
                 {
-                    JunctionPhase phase = phases[p];
+                    JunctionPhase phase = phases[phaseMap[p]];
                     PhaseData old = oldPhases[p].Data;
                     phase.Data.WaitSteps = old.WaitSteps;
                     phase.Data.LastGreen = old.LastGreen;
                     phase.Data.LastEnd = old.LastEnd;
                     phase.Data.Stats = old.Stats;
-                    phases[p] = phase;
+                    phases[phaseMap[p]] = phase;
                 }
             }
 
@@ -645,13 +647,17 @@ namespace TLL.Systems
             // crossing, not the plan: the scramble stays until its review,
             // whatever else changes.
             var runtime = new JunctionRuntime();
+            bool carried = false;
             if (EntityManager.HasComponent<JunctionRuntime>(node))
             {
                 JunctionRuntime old = EntityManager.GetComponentData<JunctionRuntime>(node);
-                if (samePlan)
+                if (samePlan && old.State.Phase < phaseMap.Length && old.State.Next < phaseMap.Length)
                 {
+                    carried = true;
                     runtime = old;
                     runtime.CountsSince = 0;
+                    runtime.State.Phase = (byte)phaseMap[old.State.Phase];
+                    runtime.State.Next = (byte)phaseMap[old.State.Next];
                 }
                 else
                 {
@@ -663,7 +669,7 @@ namespace TLL.Systems
             {
                 EntityManager.AddComponentData(node, runtime);
             }
-            return samePlan;
+            return carried;
         }
 
         private void WriteDetectors(Entity node, List<DetectorLane> detectors)

@@ -345,6 +345,17 @@ namespace TLL.Systems
             if (!Coupling.BandWorthIt(plan.BandwidthA, plan.BandwidthB, plan.Cycle, hasA, hasB, running))
             {
                 m_BandTooNarrow++;
+                if (Mod.Settings != null && Mod.Settings.VerboseLogging)
+                {
+                    var text = new System.Text.StringBuilder($"Green wave not started: {path.Junctions.Count} junctions, cycle {Core.SimTime.ToSeconds(plan.Cycle):0} s,"
+                        + $" band {Core.SimTime.ToSeconds(plan.BandwidthA):0} s / {Core.SimTime.ToSeconds(plan.BandwidthB):0} s, {(running ? "running" : "new")};");
+                    for (int k = 0; k < path.Junctions.Count; k++)
+                    {
+                        CorridorMember m = members[k];
+                        text.Append($" {nodes[path.Junctions[k]]}: {m.Phases.Length} phases, desired cycle {Core.SimTime.ToSeconds(m.DesiredCycle):0} s;");
+                    }
+                    Mod.Log.Info(text.ToString());
+                }
                 return false;
             }
             if (running && Unchanged(path, nodes, runningGroup, plan.Cycle))
