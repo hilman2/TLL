@@ -431,6 +431,9 @@ namespace TLL.Systems
             int nextWindow = TimeWindow(round + kLayoutEvery);
             var volumes = new float[statistics.Length];
             var recent = new float[statistics.Length];
+            // The phases are laid out by the day's peak, as the set-up lays
+            // them out (JunctionInitSystem): what is estimated is what runs.
+            var weights = new float[statistics.Length];
             float total = 0f;
             for (int m = 0; m < volumes.Length; m++)
             {
@@ -438,6 +441,7 @@ namespace TLL.Systems
                 float windowed = math.max(s.Window(window), s.Window(nextWindow));
                 volumes[m] = windowed > 0f ? math.max(windowed, s.Recent) : s.Peak;
                 recent[m] = s.Recent;
+                weights[m] = s.Peak;
                 if (!layout.Model.Movements[m].IsPedestrian)
                     total += volumes[m];
             }
@@ -450,7 +454,7 @@ namespace TLL.Systems
             bool recorded = false;
             if (decide)
             {
-                recorded = Remember(ref state, layout.Model, junction, ran, running, wave, recent, period);
+                recorded = Remember(ref state, layout.Model, junction, ran, running, wave, recent, weights, period);
                 state.Memory.Fade(running);
             }
 
@@ -460,7 +464,7 @@ namespace TLL.Systems
             // when it ran them.
             DelayParameters parameters = DelayParameters.Default;
             parameters.TurnOnRed = settings.TurnOnRed;
-            PlanEstimate[] estimates = JunctionAdvisor.EvaluateAll(layout.Model, volumes, parameters);
+            PlanEstimate[] estimates = JunctionAdvisor.EvaluateAll(layout.Model, volumes, parameters, weights);
             PlanEstimate[] corrected = JunctionAdvisor.Correct(estimates, state.Memory, running, wave);
             state.HasEstimate = true;
             m_Estimated++;
@@ -477,7 +481,7 @@ namespace TLL.Systems
             // Turning on red for the layout the junction runs from now on.
             PlanStrategy upcoming = settings.AutoLayout == AutoLayout.Automatic ? choice : junction.Strategy;
             bool turnOnRed = settings.TurnOnRed && JunctionAdvisor.WantsTurnOnRed(
-                DelayModel.Estimate(layout.Model, PhasePlanner.Build(layout.Model, upcoming), volumes, DelayParameters.Default),
+                DelayModel.Estimate(layout.Model, PhasePlanner.Build(layout.Model, upcoming, weights), volumes, DelayParameters.Default),
                 estimates[Array.IndexOf(JunctionAdvisor.Strategies, upcoming)]);
             if (turnOnRed != ((junction.Options & JunctionOptions.TurnOnRed) != 0))
             {
@@ -580,14 +584,14 @@ namespace TLL.Systems
         /// </summary>
         /// <returns>Whether the period was recorded.</returns>
         private static bool Remember(ref AutopilotState state, JunctionModel model, ManagedJunction junction, PlanStrategy ran, int running, bool wave,
-            float[] recent, JunctionRuntime period)
+            float[] recent, float[] weights, JunctionRuntime period)
         {
             if (running < 0 || period.PeriodMixed || period.PeriodWave != wave
                 || period.PeriodRounds < kMinPeriodRounds || period.PeriodVehicles < kMinPeriodVehicles)
                 return false;
             DelayParameters p = DelayParameters.Default;
             p.TurnOnRed = (junction.Options & JunctionOptions.TurnOnRed) != 0;
-            PlanEstimate e = DelayModel.Estimate(model, PhasePlanner.Build(model, ran), recent, p);
+            PlanEstimate e = DelayModel.Estimate(model, PhasePlanner.Build(model, ran, weights), recent, p);
             if (e.Vehicles <= 0f || e.VehicleDelay / e.Vehicles < LayoutMemory.MinModelled)
                 return false;
             float measured = period.PeriodWait / period.PeriodVehicles;

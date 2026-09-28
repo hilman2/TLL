@@ -153,7 +153,8 @@ namespace TLL.Systems
             {
                 if (junction.Origin == JunctionOrigin.Manual && misfit != null)
                     Mod.Log.Warn($"Junction {node}: the saved plan was replaced by a generated one, because {misfit}.");
-                phases = NewPlan(model, junction.Strategy, (junction.Options & JunctionOptions.ScrambleOnDemand) != 0);
+                phases = NewPlan(model, junction.Strategy, (junction.Options & JunctionOptions.ScrambleOnDemand) != 0,
+                    PlanningWeights(EntityManager, node, savedToCurrent, keys.Count));
                 KeepTiming(existing, phases);
             }
 
@@ -455,14 +456,41 @@ namespace TLL.Systems
         }
 
         /// <summary>
+        /// The day's peak per movement, in the order of the
+        /// <paramref name="count"/> movements the set-up found, from the
+        /// statistics still in their saved order: the traffic the phases are
+        /// laid out by (PhasePlanner.Build). The peak moves slowly, so the
+        /// layout of the phases does not change with every rebuild. Null
+        /// where there are no statistics to go by.
+        /// </summary>
+        internal static float[] PlanningWeights(EntityManager em, Entity node, int[] savedToCurrent, int count)
+        {
+            if (!em.HasBuffer<MovementStatistics>(node))
+                return null;
+            DynamicBuffer<MovementStatistics> statistics = em.GetBuffer<MovementStatistics>(node, true);
+            var weights = new float[count];
+            bool any = false;
+            for (int i = 0; i < statistics.Length; i++)
+            {
+                int to = savedToCurrent == null ? (statistics.Length == count ? i : -1) : (i < savedToCurrent.Length ? savedToCurrent[i] : -1);
+                if (to < 0 || to >= count)
+                    continue;
+                weights[to] = statistics[i].Peak;
+                any |= weights[to] > 0f;
+            }
+            return any ? weights : null;
+        }
+
+        /// <summary>
         /// The plan the junction would get with <paramref name="strategy"/>,
         /// with its walk greens, as a set-up makes a new plan, but not applied:
         /// for the green waves, to try layouts on paper
         /// (CoordinationSystem).
         /// </summary>
-        internal static List<JunctionPhase> PlanFor(EntityManager em, JunctionLayout layout, ManagedJunction junction, PlanStrategy strategy)
+        /// <param name="weights">Per movement, the traffic the phases are laid out by; see PlanningWeights.</param>
+        internal static List<JunctionPhase> PlanFor(EntityManager em, JunctionLayout layout, ManagedJunction junction, PlanStrategy strategy, float[] weights)
         {
-            List<JunctionPhase> phases = NewPlan(layout.Model, strategy, (junction.Options & JunctionOptions.ScrambleOnDemand) != 0);
+            List<JunctionPhase> phases = NewPlan(layout.Model, strategy, (junction.Options & JunctionOptions.ScrambleOnDemand) != 0, weights);
             for (int p = 0; p < phases.Count; p++)
             {
                 JunctionPhase phase = phases[p];
@@ -477,9 +505,9 @@ namespace TLL.Systems
         /// pedestrians are diverted into it. The pedestrian scramble layout has
         /// such a phase already, as its only pedestrian phase.
         /// </param>
-        private static List<JunctionPhase> NewPlan(JunctionModel model, PlanStrategy strategy, bool scrambleOnDemand)
+        private static List<JunctionPhase> NewPlan(JunctionModel model, PlanStrategy strategy, bool scrambleOnDemand, float[] weights)
         {
-            List<JunctionPhase> result = NewPlan(model, strategy);
+            List<JunctionPhase> result = NewPlan(model, strategy, weights);
             if (!scrambleOnDemand || strategy == PlanStrategy.ExclusivePedestrian || result.Count >= PhasePlanner.MaxPhases)
                 return result;
             ulong crosswalks = 0;
@@ -516,9 +544,9 @@ namespace TLL.Systems
             return result;
         }
 
-        private static List<JunctionPhase> NewPlan(JunctionModel model, PlanStrategy strategy)
+        private static List<JunctionPhase> NewPlan(JunctionModel model, PlanStrategy strategy, float[] weights)
         {
-            PhasePlan plan = PhasePlanner.Build(model, strategy);
+            PhasePlan plan = PhasePlanner.Build(model, strategy, weights);
             var result = new List<JunctionPhase>();
             foreach (Phase phase in plan.Phases)
             {

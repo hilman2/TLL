@@ -24,12 +24,13 @@ namespace TLL.Core.Advisor
         public const float SwitchSeconds = 1.5f;
 
         /// <summary>Estimates every layout. Index i belongs to <see cref="Strategies"/>[i].</summary>
-        public static PlanEstimate[] EvaluateAll(JunctionModel junction, float[] volumes, DelayParameters p)
+        /// <param name="weights">Per movement, the traffic the phases are laid out by (PhasePlanner.Build); null for none.</param>
+        public static PlanEstimate[] EvaluateAll(JunctionModel junction, float[] volumes, DelayParameters p, float[] weights = null)
         {
             var result = new PlanEstimate[Strategies.Length];
             for (int i = 0; i < Strategies.Length; i++)
             {
-                PhasePlan plan = PhasePlanner.Build(junction, Strategies[i]);
+                PhasePlan plan = PhasePlanner.Build(junction, Strategies[i], weights);
                 result[i] = DelayModel.Estimate(junction, plan, volumes, p);
             }
             return result;

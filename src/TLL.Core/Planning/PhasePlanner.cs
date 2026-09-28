@@ -34,7 +34,13 @@ namespace TLL.Core.Planning
         /// <summary>Search budget of the exact colouring before it settles for the best found.</summary>
         private const int ColouringBudget = 200000;
 
-        public static PhasePlan Build(JunctionModel junction, PlanStrategy strategy)
+        /// <param name="weights">
+        /// Per movement, the traffic it carries. With it, the busiest
+        /// movements are grouped first, as long as that takes no more phases
+        /// than the fewest possible. Without it, the phases follow the
+        /// conflicts alone.
+        /// </param>
+        public static PhasePlan Build(JunctionModel junction, PlanStrategy strategy, float[] weights = null)
         {
             if (junction.Movements.Count > 64)
                 throw new ArgumentException("A junction can have at most 64 movements.", nameof(junction));
@@ -43,6 +49,12 @@ namespace TLL.Core.Planning
             int n = junction.Movements.Count;
 
             int[] colour = MinimumColouring(conflicts, n);
+            if (weights != null && weights.Length == n)
+            {
+                int[] byTraffic = TrafficColouring(junction, conflicts, n, weights);
+                if (CountColours(byTraffic) <= CountColours(colour))
+                    colour = byTraffic;
+            }
             int colourCount = 0;
             for (int i = 0; i < n; i++)
                 colourCount = Math.Max(colourCount, colour[i] + 1);
@@ -441,6 +453,53 @@ namespace TLL.Core.Planning
                     return false;
             }
             return true;
+        }
+
+        /// <summary>
+        /// A colouring built from the traffic: vehicle movements by their
+        /// volume, busiest first, then the crosswalks, then movements without
+        /// traffic, each into the first phase it fits.
+        /// </summary>
+        /// <remarks>
+        /// Among the colourings with the fewest phases, the search takes
+        /// whichever it meets first. At a T whose main road bends, that kept
+        /// the two directions of the main road apart, because a U-turn that
+        /// nobody took sat in the phase of each; the busiest movements now
+        /// claim their phases before the idle ones are fitted in.
+        /// </remarks>
+        private static int[] TrafficColouring(JunctionModel junction, ConflictMatrix conflicts, int n, float[] weights)
+        {
+            var order = new List<int>(n);
+            for (int i = 0; i < n; i++)
+                order.Add(i);
+            order.Sort((a, b) =>
+            {
+                int rankA = Rank(junction, weights, a);
+                int rankB = Rank(junction, weights, b);
+                if (rankA != rankB)
+                    return rankA.CompareTo(rankB);
+                int byVolume = weights[b].CompareTo(weights[a]);
+                return byVolume != 0 ? byVolume : a.CompareTo(b);
+            });
+            var colour = new int[n];
+            for (int i = 0; i < n; i++)
+                colour[i] = -1;
+            foreach (int v in order)
+            {
+                int c = 0;
+                while (!ColourFree(conflicts, n, colour, v, c))
+                    c++;
+                colour[v] = c;
+            }
+            return colour;
+        }
+
+        /// <summary>Order of placement: 0 vehicles with traffic, 1 crosswalks, 2 vehicles without.</summary>
+        private static int Rank(JunctionModel junction, float[] weights, int movement)
+        {
+            if (junction.Movements[movement].IsPedestrian)
+                return 1;
+            return weights[movement] > 0f ? 0 : 2;
         }
 
         private static int[] Greedy(ConflictMatrix conflicts, int n)

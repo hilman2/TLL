@@ -300,6 +300,79 @@ namespace TLL.Core.Tests.Planning
             Assert.Equal(0UL, PhasePlanner.TurnOnRed(m, walk.Green));
         }
 
+        private static int Between(JunctionModel m, int source, int target)
+        {
+            for (int i = 0; i < m.Movements.Count; i++)
+            {
+                if (m.Movements[i].Source == source && m.Movements[i].Target == target && !m.Movements[i].IsPedestrian)
+                    return i;
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// Junction 469506 as the game analysed it: a T whose main road bends,
+        /// from the stem (2) into approach 1 and back, with a tram. The other
+        /// approach carries little, the U-turns nothing. Movements and hard
+        /// conflicts as its set-up logged them.
+        /// </summary>
+        private static (JunctionModel model, float[] volumes, int down, int up) BentMainRoad()
+        {
+            var m = new JunctionModel { ApproachCount = 3, OppositeOf = new[] { 1, 0, -1 } };
+            m.Movements.Add(new Movement(0, -1, MovementKind.Pedestrian));
+            m.Movements.Add(new Movement(0, 0, MovementKind.UTurn));
+            m.Movements.Add(new Movement(0, 1, MovementKind.Straight));
+            m.Movements.Add(new Movement(0, 2, MovementKind.Right));
+            m.Movements.Add(new Movement(1, -1, MovementKind.Pedestrian));
+            m.Movements.Add(new Movement(1, 0, MovementKind.Straight));
+            m.Movements.Add(new Movement(1, 1, MovementKind.UTurn));
+            m.Movements.Add(new Movement(1, 2, MovementKind.Left));
+            m.Movements.Add(new Movement(1, 2, MovementKind.Track));
+            m.Movements.Add(new Movement(2, -1, MovementKind.Pedestrian));
+            m.Movements.Add(new Movement(2, 0, MovementKind.Left));
+            m.Movements.Add(new Movement(2, 1, MovementKind.Right));
+            m.Movements.Add(new Movement(2, 2, MovementKind.UTurn));
+            int n = m.Movements.Count;
+            m.SharedLane = new ulong[n];
+            m.Conflicts = new ConflictMatrix(n);
+            int[,] hard =
+            {
+                { 0, 2 }, { 0, 5 }, { 1, 10 }, { 2, 4 }, { 2, 10 }, { 2, 11 }, { 3, 8 }, { 3, 12 }, { 4, 5 },
+                { 4, 8 }, { 5, 10 }, { 6, 11 }, { 7, 10 }, { 7, 12 }, { 8, 9 }, { 8, 10 }, { 8, 12 },
+            };
+            for (int i = 0; i < hard.GetLength(0); i++)
+                m.Conflicts.Set(hard[i, 0], hard[i, 1], Relation.Hard);
+            var volumes = new float[n];
+            volumes[11] = 1464f;
+            volumes[7] = 829f;
+            volumes[8] = 224f;
+            volumes[5] = 243f;
+            volumes[2] = 194f;
+            volumes[10] = 95f;
+            volumes[3] = 27f;
+            volumes[4] = 157f;
+            return (m, volumes, 11, 7);
+        }
+
+        [Fact]
+        public void TheBusiestFlowsShareAPhase()
+        {
+            var (m, volumes, down, up) = BentMainRoad();
+            Assert.NotEqual(Relation.Hard, m.Conflicts.Get(down, up));
+
+            PhasePlan plan = PhasePlanner.Build(m, PlanStrategy.Permissive, volumes);
+
+            Assert.Contains(plan.Phases, p => p.Has(down) && p.Has(up));
+        }
+
+        [Fact]
+        public void TrafficDoesNotCostAPhase()
+        {
+            var (m, volumes, _, _) = BentMainRoad();
+            int fewest = PhasePlanner.Build(m, PlanStrategy.Permissive).Phases.Count;
+            Assert.True(PhasePlanner.Build(m, PlanStrategy.Permissive, volumes).Phases.Count <= fewest);
+        }
+
         private static int IndexOfPhaseWith(PhasePlan plan, int movement)
         {
             for (int i = 0; i < plan.Phases.Count; i++)

@@ -585,16 +585,14 @@ namespace TLL.Systems
             DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node, true);
             if (layout == null || layout.Keys.Count != statistics.Length)
                 return;
-            var volumes = new float[statistics.Length];
-            for (int m = 0; m < volumes.Length; m++)
-                volumes[m] = statistics[m].Recent;
+            Traffic(statistics, out float[] volumes, out float[] weights);
             float delay = state.LayoutDelay[running];
             for (int i = 0; i < JunctionAdvisor.Strategies.Length; i++)
             {
                 if (i == running || state.LayoutSaturation[i] > JunctionAdvisor.Capacity
                     || state.LayoutDelay[i] > delay * kWaveLayoutCost + kWaveLayoutSeconds)
                     continue;
-                own.Add(OnPaper(layout, junction, JunctionAdvisor.Strategies[i], current, volumes));
+                own.Add(OnPaper(layout, junction, JunctionAdvisor.Strategies[i], current, volumes, weights));
                 layouts.Add(JunctionAdvisor.Strategies[i]);
             }
         }
@@ -604,14 +602,14 @@ namespace TLL.Systems
         /// the plan a set-up would give it, split by the flow ratios the
         /// delay model expects of that layout for the recent traffic.
         /// </summary>
-        private CorridorMember OnPaper(JunctionLayout layout, ManagedJunction junction, PlanStrategy strategy, CorridorMember current, float[] volumes)
+        private CorridorMember OnPaper(JunctionLayout layout, ManagedJunction junction, PlanStrategy strategy, CorridorMember current, float[] volumes, float[] weights)
         {
-            List<JunctionPhase> phases = JunctionInitSystem.PlanFor(EntityManager, layout, junction, strategy);
+            List<JunctionPhase> phases = JunctionInitSystem.PlanFor(EntityManager, layout, junction, strategy, weights);
             var member = new CorridorMember
             {
                 Phases = new PhaseData[phases.Count],
                 PhaseMovements = new ulong[phases.Count],
-                Ratios = Expected(layout, strategy, volumes, phases.Count, out int cycle),
+                Ratios = Expected(layout, strategy, volumes, weights, phases.Count, out int cycle),
                 Intergreen = current.Intergreen,
                 MovementA = current.MovementA,
                 MovementB = current.MovementB,
@@ -631,9 +629,9 @@ namespace TLL.Systems
         /// its cycle in steps. A scramble on demand at the end of the plan is
         /// not in the model's plan and asks for no share.
         /// </summary>
-        private static float[] Expected(JunctionLayout layout, PlanStrategy strategy, float[] volumes, int phaseCount, out int cycle)
+        private static float[] Expected(JunctionLayout layout, PlanStrategy strategy, float[] volumes, float[] weights, int phaseCount, out int cycle)
         {
-            PlanEstimate estimate = DelayModel.Estimate(layout.Model, PhasePlanner.Build(layout.Model, strategy), volumes, DelayParameters.Default);
+            PlanEstimate estimate = DelayModel.Estimate(layout.Model, PhasePlanner.Build(layout.Model, strategy, weights), volumes, DelayParameters.Default);
             cycle = Core.SimTime.ToSteps(estimate.Cycle);
             var ratios = new float[phaseCount];
             for (int p = 0; p < phaseCount; p++)
@@ -658,12 +656,25 @@ namespace TLL.Systems
             DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node, true);
             if (layout == null || layout.Keys.Count != statistics.Length)
                 return;
-            var volumes = new float[statistics.Length];
-            for (int m = 0; m < volumes.Length; m++)
-                volumes[m] = statistics[m].Recent;
-            member.Ratios = Expected(layout, junction.Strategy, volumes, member.Phases.Length, out int cycle);
+            Traffic(statistics, out float[] volumes, out float[] weights);
+            member.Ratios = Expected(layout, junction.Strategy, volumes, weights, member.Phases.Length, out int cycle);
             if (member.DesiredCycle <= 0)
                 member.DesiredCycle = cycle;
+        }
+
+        /// <summary>
+        /// Per movement, the recent traffic the delay model works with, and
+        /// the day's peak the phases are laid out by, as the set-up does.
+        /// </summary>
+        private static void Traffic(DynamicBuffer<MovementStatistics> statistics, out float[] volumes, out float[] weights)
+        {
+            volumes = new float[statistics.Length];
+            weights = new float[statistics.Length];
+            for (int m = 0; m < statistics.Length; m++)
+            {
+                volumes[m] = statistics[m].Recent;
+                weights[m] = statistics[m].Peak;
+            }
         }
 
         /// <summary>
