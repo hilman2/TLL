@@ -146,7 +146,8 @@ namespace TLL.Systems
             // automatic plan is always generated afresh, so automatic junctions
             // follow the current planner; the timing learnt so far is kept
             // where a phase stays the same.
-            int[] savedToCurrent = SavedToCurrent(node, storedMovements, out string changed);
+            int[] matched = MatchSaved(node, storedMovements);
+            int[] savedToCurrent = SavedToCurrent(matched, storedMovements.Count, out string changed);
             List<JunctionPhase> existing = ExistingPlan(node, savedToCurrent, changed, model, out string misfit);
             List<JunctionPhase> phases = junction.Origin == JunctionOrigin.Manual ? existing : null;
             if (phases == null)
@@ -154,7 +155,7 @@ namespace TLL.Systems
                 if (junction.Origin == JunctionOrigin.Manual && misfit != null)
                     Mod.Log.Warn($"Junction {node}: the saved plan was replaced by a generated one, because {misfit}.");
                 phases = NewPlan(model, junction.Strategy, (junction.Options & JunctionOptions.ScrambleOnDemand) != 0,
-                    PlanningWeights(EntityManager, node, savedToCurrent, keys.Count));
+                    PlanningWeights(EntityManager, node, matched, keys.Count));
                 KeepTiming(existing, phases);
             }
 
@@ -169,7 +170,7 @@ namespace TLL.Systems
             MarkMajorRoad(lanes, model, edges, node, junction.MajorApproach);
             bool carriesOn = WriteBuffers(node, storedMovements, phases, lanes, keys);
             WriteDetectors(node, JunctionAnalysis.DetectorChain(EntityManager, node, layout, SignalControlSystem.kDetectionRange));
-            WriteMeasurement(node, lanes, keys, savedToCurrent);
+            WriteMeasurement(node, lanes, keys, matched);
             WriteSignalGroups(node, phases, lanes, keys, layout.Unassigned, ref lights);
 
             // Who asked for the set-up: the game, which rebuilds nodes for
@@ -264,19 +265,39 @@ namespace TLL.Systems
         /// Their order follows the node's list of connected roads, and the
         /// game may hand that list out in another order after loading.
         /// </remarks>
-        private int[] SavedToCurrent(Entity node, List<JunctionMovement> movements, out string reason)
+        private int[] SavedToCurrent(int[] matched, int count, out string reason)
         {
             reason = null;
+            if (matched == null)
+                return null;
+            if (matched.Length != count)
+            {
+                reason = $"the junction now has {count} movements instead of {matched.Length}";
+                return null;
+            }
+            for (int i = 0; i < matched.Length; i++)
+            {
+                if (matched[i] < 0)
+                {
+                    reason = $"its movement {i} no longer exists";
+                    return null;
+                }
+            }
+            return matched;
+        }
+
+        /// <summary>
+        /// For each saved movement, its index in the list just found, or -1
+        /// where it is gone: a turn forbidden since, a road rebuilt. Null if
+        /// the junction had no movements saved.
+        /// </summary>
+        private int[] MatchSaved(Entity node, List<JunctionMovement> movements)
+        {
             if (!EntityManager.HasBuffer<JunctionMovement>(node))
                 return null;
             DynamicBuffer<JunctionMovement> stored = EntityManager.GetBuffer<JunctionMovement>(node, true);
             if (stored.Length == 0)
                 return null;
-            if (stored.Length != movements.Count)
-            {
-                reason = $"the junction now has {movements.Count} movements instead of {stored.Length}";
-                return null;
-            }
             var map = new int[stored.Length];
             for (int i = 0; i < stored.Length; i++)
             {
@@ -288,11 +309,6 @@ namespace TLL.Systems
                         map[i] = j;
                         break;
                     }
-                }
-                if (map[i] < 0)
-                {
-                    reason = $"its {stored[i].Kind} movement {i} no longer exists";
-                    return null;
                 }
             }
             return map;
@@ -311,12 +327,12 @@ namespace TLL.Systems
         }
 
         /// <summary>
-        /// Sets up the per-movement counters and statistics. Statistics from
-        /// earlier days stay as long as the movements are the same ones
-        /// (<paramref name="savedToCurrent"/> not null); after a change to the
-        /// road layout they start over.
+        /// Sets up the per-movement counters and statistics. Every movement
+        /// that was there before keeps its statistics from earlier days
+        /// (<paramref name="matched"/>, see MatchSaved), also when others
+        /// were forbidden or added; a new movement starts over.
         /// </summary>
-        private void WriteMeasurement(Entity node, List<LaneInfo> lanes, List<MovementKey> keys, int[] savedToCurrent)
+        private void WriteMeasurement(Entity node, List<LaneInfo> lanes, List<MovementKey> keys, int[] matched)
         {
             DynamicBuffer<MovementCounter> counters = EntityManager.HasBuffer<MovementCounter>(node)
                 ? EntityManager.GetBuffer<MovementCounter>(node)
@@ -342,10 +358,13 @@ namespace TLL.Systems
             statistics.Clear();
             for (int i = 0; i < keys.Count; i++)
                 statistics.Add(new MovementStatistics());
-            if (savedToCurrent == null || saved.Length != savedToCurrent.Length)
+            if (matched == null || saved.Length != matched.Length)
                 return;
             for (int i = 0; i < saved.Length; i++)
-                statistics[savedToCurrent[i]] = saved[i];
+            {
+                if (matched[i] >= 0)
+                    statistics[matched[i]] = saved[i];
+            }
         }
 
         /// <summary>
@@ -463,6 +482,7 @@ namespace TLL.Systems
         /// layout of the phases does not change with every rebuild. Null
         /// where there are no statistics to go by.
         /// </summary>
+        /// <param name="savedToCurrent">Per saved movement its index now, or -1 where it is gone (MatchSaved).</param>
         internal static float[] PlanningWeights(EntityManager em, Entity node, int[] savedToCurrent, int count)
         {
             if (!em.HasBuffer<MovementStatistics>(node))
