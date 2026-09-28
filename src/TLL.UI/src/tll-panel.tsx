@@ -480,9 +480,20 @@ const JunctionTypeRow = ({ junction, t }: { junction: JunctionInfo; t: Translate
           ))}
         </div>
       )}
-      {junction.typePending !== undefined && junction.typePending >= 0 && (
-        <div className={styles.note}>{t("Panel.ClickJunction", "Click the junction on the map. The game shows the price and builds it.")}</div>
+      {junction.crosswalkCost !== undefined && junction.crosswalkCost >= 0 && now !== JunctionType.Roundabout && (
+        <div className={styles.row}>
+          <Hint text={t("Panel.CrosswalksHint", "")}>
+            <Button variant="flat" className={styles.wide} onSelect={actions.editCrosswalks}>
+              {`${t("Panel.Crosswalks", "Add or remove crosswalks")}${price(junction.crosswalkCost)}`}
+            </Button>
+          </Hint>
+        </div>
       )}
+      {junction.typePending === 4 ? (
+        <div className={styles.note}>{t("Panel.ClickCrosswalk", "Click where a road meets the junction to add its crosswalk there, or take it away.")}</div>
+      ) : junction.typePending !== undefined && junction.typePending >= 0 ? (
+        <div className={styles.note}>{t("Panel.ClickJunction", "Click the junction on the map. The game shows the price and builds it.")}</div>
+      ) : null}
     </>
   );
 };

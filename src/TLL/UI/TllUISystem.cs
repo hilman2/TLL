@@ -48,6 +48,9 @@ namespace TLL.UI
         /// <summary>The prefab of the game's tool the panel opened to change a junction's type, and the type it builds.</summary>
         private Entity m_TypeTool;
         private JunctionType m_TypeWanted;
+
+        /// <summary>What <see cref="m_TypeWanted"/> is while the crosswalk tool is open; the panel knows it as 4.</summary>
+        private const JunctionType kCrosswalks = (JunctionType)4;
         private NameSystem m_NameSystem;
         private CameraUpdateSystem m_CameraSystem;
         private SignalControlSystem m_Control;
@@ -265,6 +268,7 @@ namespace TLL.UI
             AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "laneToolActive", () => m_LaneTool.IsActive));
             AddBinding(new TriggerBinding(kGroup, "dismissNotice", OnDismissNotice));
             AddBinding(new TriggerBinding<int, int>(kGroup, "setJunctionType", OnSetJunctionType));
+            AddBinding(new TriggerBinding(kGroup, "editCrosswalks", OnEditCrosswalks));
         }
 
         /// <summary>
@@ -287,6 +291,23 @@ namespace TLL.UI
             m_TypeWanted = (JunctionType)type;
             WriteUser("junction_type", ((JunctionType)type).ToString());
             Select(node, true);
+        }
+
+        /// <summary>
+        /// Opens the game's crosswalk upgrade, with the camera on the selected
+        /// junction: a click where a road meets it adds a crosswalk there or
+        /// takes it away, at the price of the road menu.
+        /// </summary>
+        private void OnEditCrosswalks()
+        {
+            m_Types.Find();
+            if (!m_Types.Activate(m_Types.Crosswalk))
+                return;
+            m_TypeTool = m_Types.Crosswalk;
+            m_TypeWanted = kCrosswalks;
+            WriteUser("crosswalks", null);
+            if (m_Selected != Entity.Null && EntityManager.Exists(m_Selected))
+                Select(m_Selected, true);
         }
 
         /// <summary>The player has seen what TLL did to the selected junction's plan.</summary>
@@ -623,6 +644,8 @@ namespace TLL.UI
             writer.Write(m_Types.Lights != Entity.Null);
             writer.Write(m_Types.Stop != Entity.Null);
             writer.ArrayEnd();
+            writer.PropertyName("crosswalkCost");
+            writer.Write(m_Types.Crosswalk != Entity.Null ? (int)m_Types.Cost(m_Types.Crosswalk) : -1);
             writer.PropertyName("roundabouts");
             writer.ArrayBegin((uint)m_Types.Roundabouts.Count);
             foreach (JunctionTypes.Roundabout r in m_Types.Roundabouts)

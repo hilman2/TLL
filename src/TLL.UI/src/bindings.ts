@@ -260,8 +260,10 @@ export interface JunctionInfo extends EntityRef {
   typeAvailable?: boolean[];
   /** The game's roundabouts, smallest first. */
   roundabouts?: RoundaboutOption[];
-  /** The type the game's tool is open to build, waiting for a click on the junction; -1 for none. */
+  /** The type the game's tool is open to build, waiting for a click on the junction; 4 for the crosswalk tool, -1 for none. */
   typePending?: number;
+  /** The road menu's price of the crosswalk upgrade; -1 where the game has none. */
+  crosswalkCost?: number;
 }
 
 /** Numbers as in TLL.UI.JunctionType. */
@@ -328,4 +330,6 @@ export const actions = {
   dismissNotice: () => trigger(group, "dismissNotice"),
   /** Opens the game's tool that turns the selected junction into <type>; for a roundabout, <roundabout> picks the size. */
   setJunctionType: (type: JunctionType, roundabout: number) => trigger(group, "setJunctionType", type, roundabout),
+  /** Opens the game's crosswalk upgrade for the selected junction's roads. */
+  editCrosswalks: () => trigger(group, "editCrosswalks"),
 };

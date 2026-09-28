@@ -332,9 +332,9 @@ const scenarios = {
     "tll.selected": {
       index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, approaches: managed.approaches,
       junctionType: 0, canChangeType: true, typeCosts: [1250, 400], typeAvailable: [true, true],
-      roundabouts: [{ size: 24.5, cost: 3000 }, { size: 40, cost: 6000 }], typePending: 2,
+      roundabouts: [{ size: 24.5, cost: 3000 }, { size: 40, cost: 6000 }], typePending: 2, crosswalkCost: 50,
     },
-    expect: [">Junction<", ">Right of way<", ">All-way stop ¢400<", ">Traffic lights ¢1250<", ">Roundabout<", ">Click the junction on the map. The game shows the price and builds it.<"],
+    expect: [">Junction<", ">Right of way<", ">All-way stop ¢400<", ">Traffic lights ¢1250<", ">Roundabout<", ">Click the junction on the map. The game shows the price and builds it.<", ">Add or remove crosswalks ¢50<"],
   },
   "signals taken away, plan kept": {
     "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, dormant: true, junctionType: 0, canChangeType: true },

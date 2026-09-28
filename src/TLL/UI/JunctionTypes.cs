@@ -51,6 +51,9 @@ namespace TLL.UI
 
         public Entity Lights { get; private set; }
         public Entity Stop { get; private set; }
+
+        /// <summary>The road upgrade that adds or takes away the crosswalk where a road meets a junction.</summary>
+        public Entity Crosswalk { get; private set; }
         public readonly List<Roundabout> Roundabouts = new List<Roundabout>();
 
         public JunctionTypes(EntityManager entityManager, PrefabSystem prefabs, ToolSystem tools)
@@ -76,6 +79,10 @@ namespace TLL.UI
                 foreach (Entity e in entities)
                 {
                     PlaceableNetData data = m_EntityManager.GetComponentData<PlaceableNetData>(e);
+                    CompositionFlags.Side crosswalk = CompositionFlags.Side.AddCrosswalk | CompositionFlags.Side.RemoveCrosswalk;
+                    if (Crosswalk == Entity.Null && (data.m_PlacementFlags & Game.Net.PlacementFlags.IsUpgrade) != 0
+                        && ((data.m_SetUpgradeFlags.m_Left | data.m_SetUpgradeFlags.m_Right) & crosswalk) != 0)
+                        Crosswalk = e;
                     if ((data.m_PlacementFlags & Game.Net.PlacementFlags.NodeUpgrade) == 0)
                         continue;
                     if (Lights == Entity.Null && (data.m_SetUpgradeFlags.m_General & CompositionFlags.General.TrafficLights) != 0)
@@ -98,7 +105,8 @@ namespace TLL.UI
             }
             Roundabouts.Sort((a, b) => a.Size.CompareTo(b.Size));
             Mod.Log.Info($"Junction types: lights {(Lights != Entity.Null ? m_Prefabs.GetPrefabName(Lights) : "none")}, "
-                + $"stop signs {(Stop != Entity.Null ? m_Prefabs.GetPrefabName(Stop) : "none")}, {Roundabouts.Count} roundabouts.");
+                + $"stop signs {(Stop != Entity.Null ? m_Prefabs.GetPrefabName(Stop) : "none")}, "
+                + $"crosswalks {(Crosswalk != Entity.Null ? m_Prefabs.GetPrefabName(Crosswalk) : "none")}, {Roundabouts.Count} roundabouts.");
         }
 
         /// <summary>The price the road menu shows for an upgrade; 0 where there is none.</summary>
