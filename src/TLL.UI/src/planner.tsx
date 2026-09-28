@@ -1,11 +1,29 @@
-import { bindLocalValue, useValue } from "cs2/api";
-import { Button, Panel, Scrollable, Tooltip } from "cs2/ui";
+import { useValue } from "cs2/api";
+import { Button, Panel, Scrollable } from "cs2/ui";
 import classNames from "classnames";
-import { ReactElement, ReactNode, useState } from "react";
-import { actions, ControlMode, JunctionInfo, laneToolActive$, MovementKind, selected$, Stage, Turn, TurnState } from "bindings";
+import { ReactNode, useState } from "react";
+import { ControlMode, Stage } from "bindings";
 import { JunctionDiagram } from "junction-diagram";
 import { useTranslate } from "localization";
 import { PlannerDiagram } from "planner-diagram";
+import { LanesStep } from "planner-lanes";
+import {
+  Hint,
+  LinkButton,
+  movementName,
+  roadName,
+  rows,
+  seconds,
+  Segments,
+  Sheet,
+  sheet$,
+  Step,
+  step$,
+  Stepper,
+  Switch,
+  Tool,
+  Translate,
+} from "planner-parts";
 import {
   Finding,
   FindingKind,
@@ -33,46 +51,6 @@ import styles from "planner.module.scss";
 // node as its own flex item, so texts are built as one string, and rows
 // never wrap.
 
-type Translate = ReturnType<typeof useTranslate>;
-type Step = "lanes" | "phases" | "times";
-type Sheet = "templates" | "presets" | "none";
-
-/** The open step and sheet, kept while the planner is closed, so it opens where the player left it. */
-const step$ = bindLocalValue<Step>("phases");
-const sheet$ = bindLocalValue<Sheet>("none");
-
-/** Wraps an element in the game's tooltip, or leaves it alone without text. */
-const Hint = ({ text, children }: { text: string | null; children: ReactElement }) =>
-  text ? <Tooltip tooltip={<div className={styles.tooltip}>{text}</div>}>{children as any}</Tooltip> : children;
-
-const seconds = (s: number) => `${Math.round(s)} s`;
-
-function rows<T>(items: T[], size: number): T[][] {
-  const result: T[][] = [];
-  for (let i = 0; i < items.length; i += size) result.push(items.slice(i, i + size));
-  return result;
-}
-
-const roadName = (info: PlannerInfo, approach: number) => info.approaches[approach]?.name || `${approach + 1}`;
-
-const kindText: Record<MovementKind, string> = {
-  [MovementKind.Straight]: "straight on",
-  [MovementKind.Left]: "left",
-  [MovementKind.Right]: "right",
-  [MovementKind.UTurn]: "U-turn",
-  [MovementKind.Pedestrian]: "crosswalk",
-  [MovementKind.Track]: "tram",
-};
-
-/** A movement as a short text: "Main Street → Oak Avenue, left", "Crosswalk over Main Street". */
-function movementName(info: PlannerInfo, m: number, t: Translate): string {
-  const mv = info.movements[m];
-  if (!mv) return "";
-  if (mv.kind === MovementKind.Pedestrian) return `${t("Planner.CrosswalkOver", "Crosswalk over")} ${roadName(info, mv.source)}`;
-  const kind = t("Planner.Kind." + MovementKind[mv.kind], kindText[mv.kind]);
-  return `${roadName(info, mv.source)} → ${roadName(info, mv.target)}, ${kind}`;
-}
-
 /** The time a phase card shows: its green in fixed time, else the range the demand chooses from. */
 function phaseTime(info: PlannerInfo, p: PlannerPhase): string {
   return info.mode === ControlMode.FixedTime ? seconds(p.green) : `${Math.round(p.minGreen)}–${seconds(p.maxGreen)}`;
@@ -86,83 +64,6 @@ function lamp(info: PlannerInfo, i: number): string | null {
   if ((info.running === i && info.stage === Stage.Yellow) || (info.next === i && info.stage === Stage.Prepare)) return styles.lampYellow;
   return "";
 }
-
-// ---- Small building blocks ----
-
-const Tool = ({ label, hint, on, disabled, onSelect }: { label: string; hint?: string; on?: boolean; disabled?: boolean; onSelect: () => void }) => (
-  <Hint text={hint ?? null}>
-    <Button variant="flat" className={classNames(styles.tool, on && styles.toolOn, disabled && styles.toolDisabled)} disabled={disabled} onSelect={onSelect}>
-      {label}
-    </Button>
-  </Hint>
-);
-
-const LinkButton = ({ label, hint, onSelect }: { label: string; hint?: string; onSelect: () => void }) => (
-  <Hint text={hint ?? null}>
-    <Button variant="flat" className={styles.link} onSelect={onSelect}>
-      {label}
-    </Button>
-  </Hint>
-);
-
-const Switch = ({ label, hint, on, onSelect }: { label: string; hint: string; on: boolean; onSelect: () => void }) => (
-  <div className={styles.row}>
-    <Hint text={hint || null}>
-      <div className={styles.grow}>{label}</div>
-    </Hint>
-    <Button variant="flat" className={styles.switchButton} onSelect={onSelect}>
-      <div className={classNames(styles.switch, on && styles.switchOn)}>
-        <div className={classNames(styles.knob, on && styles.knobOn)} />
-      </div>
-    </Button>
-  </div>
-);
-
-function Segments<T extends number>({ items, value, label, hint, onSelect }: {
-  items: T[];
-  value: T;
-  label: (item: T) => string;
-  hint: (item: T) => string;
-  onSelect: (item: T) => void;
-}) {
-  return (
-    <>
-      {rows(items, 3).map((row, i) => (
-        <div key={i} className={styles.segments}>
-          {row.map((item) => (
-            <Hint key={item} text={hint(item) || null}>
-              <Button variant="flat" className={classNames(styles.segment, value === item && styles.segmentOn)} selected={value === item} onSelect={() => onSelect(item)}>
-                {label(item)}
-              </Button>
-            </Hint>
-          ))}
-        </div>
-      ))}
-    </>
-  );
-}
-
-/**
- * A number set by buttons: the game offers no slider. The step grows with
- * the value, so short times are set to the second and long ones quickly.
- */
-const Stepper = ({ label, value, min, onChange, hint }: { label: string; value: number; min: number; onChange: (v: number) => void; hint?: string }) => {
-  const step = value < 10 ? 1 : value < 30 ? 2 : 5;
-  return (
-    <Hint text={hint ?? null}>
-      <div className={styles.stepper}>
-        <div className={styles.stepperLabel}>{label}</div>
-        <Button variant="flat" className={styles.stepperButton} onSelect={() => onChange(Math.max(min, value - step))}>
-          −
-        </Button>
-        <div className={styles.stepperValue}>{`${Math.round(value * 10) / 10} s`}</div>
-        <Button variant="flat" className={styles.stepperButton} onSelect={() => onChange(value + step)}>
-          +
-        </Button>
-      </div>
-    </Hint>
-  );
-};
 
 // ---- The panel ----
 
@@ -420,6 +321,12 @@ const RefusalBox = ({ info, refusal, t }: { info: PlannerInfo; refusal: Refusal;
         ))}
         {info.phases.length < 16 && <LinkButton label={t("Planner.NewPhase", "a new phase")} onSelect={() => planner.newPhaseWith(refusal.movement)} />}
       </div>
+      {info.movements[refusal.movement]?.partners.length > 0 && (
+        <div className={styles.row}>
+          <div className={styles.faint}>{t("Planner.SharesLane", "It shares a lane with other directions and goes only with them.")}</div>
+          <LinkButton label={t("Planner.OwnLane", "Give it its own lane")} onSelect={() => step$.update("lanes")} />
+        </div>
+      )}
     </div>
   );
 };
@@ -571,55 +478,6 @@ const Expert = ({ info, t }: { info: PlannerInfo; t: Translate }) => (
   </div>
 );
 
-// ---- Step 1: lanes ----
-
-const turnText: Record<TurnState, string> = {
-  [TurnState.Allowed]: "allowed",
-  [TurnState.ForbiddenByAutopilot]: "forbidden · autopilot",
-  [TurnState.ForbiddenByPlayer]: "forbidden · you",
-  [TurnState.AllowedByPlayer]: "allowed · you",
-  [TurnState.ForbiddenByGame]: "forbidden · road",
-};
-
-const LanesStep = ({ info, t }: { info: PlannerInfo; t: Translate }) => {
-  const junction: JunctionInfo | null = useValue(selected$);
-  const laneTool = useValue(laneToolActive$);
-  const turns: Turn[] = junction?.turns ?? [];
-  return (
-    <>
-      <div className={styles.muted}>{t("Planner.TurnsNote", "Allowing or forbidding a turn changes the junction's lanes at once. A plan you have not applied is reloaded then.")}</div>
-      <div className={styles.row}>
-        <Tool
-          label={laneTool ? t("Panel.LaneToolActive", "Click a lane leading in, then one leading out…") : t("Planner.ExactLanes", "Connect single lanes on the map")}
-          hint={t("Panel.LaneToolHint", "")}
-          on={laneTool}
-          onSelect={actions.toggleLaneTool}
-        />
-      </div>
-      <div className={styles.label}>{t("Panel.Turns", "Turns")}</div>
-      {turns.map((turn) => (
-        <div key={`${turn.source}-${turn.target}`} className={styles.timeRow}>
-          <JunctionDiagram
-            approaches={info.approaches}
-            movements={[{ kind: turn.kind, source: turn.source, target: turn.target, volume: turn.volume }]}
-            green={[0]}
-            permitted={[]}
-            leftHandTraffic={info.leftHandTraffic}
-            cameraYaw={info.cameraYaw}
-            className={styles.timeDiagram}
-          />
-          <div className={styles.grow}>{`${roadName(info, turn.source)} → ${roadName(info, turn.target)}`}</div>
-          <Hint text={t("TurnStateHint." + TurnState[turn.state], "")}>
-            <Button variant="flat" className={styles.link} disabled={turn.state === TurnState.ForbiddenByGame} onSelect={() => actions.cycleTurn(turn.source, turn.target)}>
-              {t("TurnState." + TurnState[turn.state], turnText[turn.state])}
-            </Button>
-          </Hint>
-        </div>
-      ))}
-    </>
-  );
-};
-
 // ---- Templates ----
 
 const templateText: Record<TemplateKind, [string, string]> = {
@@ -693,6 +551,7 @@ const TemplateRow = ({ info, template, t, onDone }: { info: PlannerInfo; templat
 const PresetsSheet = ({ info, t, onDone }: { info: PlannerInfo; t: Translate; onDone: () => void }) => {
   const [name, setName] = useState("");
   const [timing, setTiming] = useState(true);
+  const [lanes, setLanes] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
   return (
     <>
@@ -703,11 +562,12 @@ const PresetsSheet = ({ info, t, onDone }: { info: PlannerInfo; t: Translate; on
       <div className={styles.muted}>{t("Planner.PresetsNote", "Your saved plans, in every city. One fits every junction of the same shape, turned if needed.")}</div>
       <div className={styles.row}>
         <input className={styles.input} value={name} placeholder={t("Planner.PresetName", "Name of the preset")} onChange={(e) => setName(e.target.value)} />
-        <Button variant="flat" className={styles.primary} onSelect={() => { planner.savePreset(name, timing); setName(""); }}>
+        <Button variant="flat" className={styles.primary} onSelect={() => { planner.savePreset(name, timing, lanes); setName(""); }}>
           {t("Planner.Save", "Save")}
         </Button>
       </div>
       <Switch label={t("Planner.WithTimes", "Keep the times with it")} hint={t("Planner.WithTimesHint", "")} on={timing} onSelect={() => setTiming(!timing)} />
+      <Switch label={t("Planner.WithLanes", "Keep the lanes with it")} hint={t("Planner.WithLanesHint", "")} on={lanes} onSelect={() => setLanes(!lanes)} />
       <div className={styles.row}>
         <Tool label={t("Planner.PasteText", "Paste a shared preset")} hint={t("Planner.PasteHint", "")} onSelect={planner.paste} />
         {info.presetTurns > 1 && <Tool label={t("Planner.Turn", "Turn it")} hint={t("Planner.TurnHint", "")} onSelect={planner.turnPreset} />}
@@ -838,7 +698,12 @@ const FindingRow = ({ info, finding: f, t }: { info: PlannerInfo; finding: Findi
       break;
     case FindingKind.SplitLane:
       text = `${name(f.movement)} ${t("Planner.Check.And", "and")} ${name(f.other)}: ${t("Planner.Check.SplitLane", "one lane, different greens. The first car blocks the others.")}`;
-      fix = <LinkButton label={t("Planner.Fix.Join", "Give them the same greens")} onSelect={() => planner.joinLane(f.movement)} />;
+      fix = (
+        <>
+          <LinkButton label={t("Planner.Fix.Join", "Give them the same greens")} onSelect={() => planner.joinLane(f.movement)} />
+          <LinkButton label={t("Planner.Fix.Lanes", "Change the lanes")} onSelect={() => step$.update("lanes")} />
+        </>
+      );
       break;
     case FindingKind.TooManyPhases:
       text = t("Planner.Check.TooMany", "More than 16 phases. The game has no more signal groups; delete or merge phases.");

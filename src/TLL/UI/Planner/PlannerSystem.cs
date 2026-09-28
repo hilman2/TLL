@@ -78,6 +78,7 @@ namespace TLL.UI.Planner
 
         private bool m_TemplateScramble;
         private List<TemplateRow> m_Templates;
+        private string m_TemplatesLanes;
         /// <summary>The preset list as last written, and the store's version it was made from.</summary>
         private List<PresetRow> m_PresetRows;
         private int m_PresetVersion = -1;
@@ -126,10 +127,36 @@ namespace TLL.UI.Planner
         /// <summary>The draft's selected phase, for the map (MapOverlaySystem): its movements and those giving way.</summary>
         public ulong PreviewGreen => m_Open && m_Draft != null && m_Selected < m_Draft.Phases.Count ? m_Draft.Phases[m_Selected] : 0UL;
 
-        public ulong PreviewPermitted => m_Open && m_Layout != null ? PhasePlanner.PermittedIn(m_Layout.Model, PreviewGreen) : 0UL;
+        public ulong PreviewPermitted => m_Open && m_Layout != null ? PhasePlanner.PermittedIn(Model, PreviewGreen) : 0UL;
 
         /// <summary>The movement under the pointer in the planner, or -1.</summary>
         public int HoveredMovement => m_Open ? m_Hovered : -1;
+
+        /// <summary>The lanes the draft's solid lines cover, for the map; empty while the planner is closed.</summary>
+        public List<Entity> SolidLanes
+        {
+            get
+            {
+                if (!m_Open || m_Draft == null || m_Layout == null)
+                    return m_NoLanes;
+                string key = string.Join(",", m_Draft.Solid);
+                if (key != m_SolidKey)
+                {
+                    m_SolidKey = key;
+                    m_SolidLanes = new List<Entity>();
+                    for (int a = 0; a < m_Draft.Solid.Length && a < m_Layout.Edges.Count; a++)
+                    {
+                        if (m_Draft.Solid[a] > 0)
+                            m_SolidLanes.AddRange(SolidLines.Lanes(EntityManager, SolidLines.Chain(EntityManager, m_Node, m_Layout.Edges[a], m_Draft.Solid[a])));
+                    }
+                }
+                return m_SolidLanes;
+            }
+        }
+
+        private static readonly List<Entity> m_NoLanes = new List<Entity>();
+        private List<Entity> m_SolidLanes = new List<Entity>();
+        private string m_SolidKey;
 
         private bool Dirty => m_Draft != null && !m_Draft.SameAs(m_Applied);
 
@@ -235,6 +262,7 @@ namespace TLL.UI.Planner
             m_Layout = JunctionAnalysis.Analyse(EntityManager, m_Node, m_CityConfiguration.leftHandTraffic);
             if (m_Layout == null)
                 return false;
+            LoadLanes();
             ReadTraffic();
             m_Draft = FromJunction();
             m_Applied = m_Draft.Clone();
@@ -321,6 +349,17 @@ namespace TLL.UI.Planner
                 MaxWait = junction.MaxWait,
                 MajorApproach = junction.MajorApproach,
             };
+            draft.Solid = new int[m_Layout.Edges.Count];
+            if (EntityManager.HasBuffer<SolidLineRule>(m_Node))
+            {
+                DynamicBuffer<SolidLineRule> rules = EntityManager.GetBuffer<SolidLineRule>(m_Node, true);
+                for (int i = 0; i < rules.Length; i++)
+                {
+                    int approach = m_Layout.Edges.IndexOf(rules[i].Edge);
+                    if (approach >= 0)
+                        draft.Solid[approach] = rules[i].Pieces;
+                }
+            }
             int[] toLayout = StoredToLayout();
             DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(m_Node, true);
             for (int p = 0; p < phases.Length; p++)
@@ -376,6 +415,8 @@ namespace TLL.UI.Planner
             ReadTraffic();
             if (!Dirty)
             {
+                // The lanes as they run now are what a lane edit starts from.
+                LoadLanes();
                 PlannerDraft now = FromJunction();
                 if (!now.SameAs(m_Applied))
                 {
@@ -410,6 +451,22 @@ namespace TLL.UI.Planner
                 return false;
             }
             WriteUser("planner_apply", $"{m_Draft.Phases.Count} phases, owner {m_Draft.Owner}");
+            ApplySolidLines();
+            bool lanes = ApplyLanes();
+            // Solid lines and lanes alone leave the signals as they are; new
+            // lanes need the junction rebuilt, solid lines not even that.
+            PlannerDraft signals = m_Draft.Clone();
+            signals.Solid = (int[])m_Applied.Solid.Clone();
+            signals.Lanes.Clear();
+            PlannerDraft appliedSignals = m_Applied.Clone();
+            appliedSignals.Lanes.Clear();
+            if (signals.SameAs(appliedSignals))
+            {
+                if (lanes)
+                    EntityManager.AddComponent<RebuildRequest>(m_Node);
+                m_Applied = m_Draft.Clone();
+                return true;
+            }
             if (m_Draft.Owner == PlannerOwner.Autopilot)
             {
                 m_UI.MakeAutomatic(m_Node);
@@ -459,7 +516,7 @@ namespace TLL.UI.Planner
                 phases.Add(new JunctionPhase
                 {
                     Movements = green,
-                    Permitted = PhasePlanner.PermittedIn(m_Layout.Model, green),
+                    Permitted = PhasePlanner.PermittedIn(Model, green),
                     Data = new PhaseData { MinGreen = timing.MinGreen, MaxGreen = timing.MaxGreen, Green = timing.Green, Flags = flags },
                 });
             }
@@ -467,6 +524,30 @@ namespace TLL.UI.Planner
             EntityManager.AddComponent<RebuildRequest>(m_Node);
             m_Applied = m_Draft.Clone();
             return true;
+        }
+
+        /// <summary>
+        /// Writes the draft's solid lines as the junction's rules and puts
+        /// the bans on its roads (SolidLines.Sync). They do not change the
+        /// junction's movements, so they need no rebuild of it.
+        /// </summary>
+        private void ApplySolidLines()
+        {
+            bool any = false;
+            foreach (int pieces in m_Draft.Solid)
+                any |= pieces > 0;
+            if (!any && !EntityManager.HasBuffer<SolidLineRule>(m_Node))
+                return;
+            DynamicBuffer<SolidLineRule> rules = EntityManager.HasBuffer<SolidLineRule>(m_Node)
+                ? EntityManager.GetBuffer<SolidLineRule>(m_Node)
+                : EntityManager.AddBuffer<SolidLineRule>(m_Node);
+            rules.Clear();
+            for (int a = 0; a < m_Draft.Solid.Length && a < m_Layout.Edges.Count; a++)
+            {
+                if (m_Draft.Solid[a] > 0)
+                    rules.Add(new SolidLineRule { Edge = m_Layout.Edges[a], Pieces = (byte)Math.Min(m_Draft.Solid[a], SolidLines.MaxPieces) });
+            }
+            SolidLines.Sync(EntityManager, m_Node);
         }
 
         private static JunctionOptions Set(JunctionOptions options, JunctionOptions flag, bool on)
@@ -481,8 +562,8 @@ namespace TLL.UI.Planner
             for (int p = 0; p < phases.Count && p < 32; p++)
             {
                 bool vehicles = false;
-                for (int m = 0; m < m_Layout.Model.Movements.Count; m++)
-                    vehicles |= (phases[p] & (1UL << m)) != 0UL && !m_Layout.Model.Movements[m].IsPedestrian;
+                for (int m = 0; m < Model.Movements.Count; m++)
+                    vehicles |= (phases[p] & (1UL << m)) != 0UL && !Model.Movements[m].IsPedestrian;
                 if (!vehicles && phases[p] != 0UL)
                     result |= 1U << p;
             }
@@ -491,9 +572,9 @@ namespace TLL.UI.Planner
 
         private bool HasCrosswalk(ulong phase)
         {
-            for (int m = 0; m < m_Layout.Model.Movements.Count; m++)
+            for (int m = 0; m < Model.Movements.Count; m++)
             {
-                if ((phase & (1UL << m)) != 0UL && m_Layout.Model.Movements[m].IsPedestrian)
+                if ((phase & (1UL << m)) != 0UL && Model.Movements[m].IsPedestrian)
                     return true;
             }
             return false;
@@ -509,7 +590,7 @@ namespace TLL.UI.Planner
                 for (int m = 0; m < volumes.Length; m++)
                     volumes[m] = Math.Max(0f, m_Peak[m]);
             }
-            return PlanCheck.Run(m_Layout.Model, m_Draft.Phases, volumes, CycleSeconds(true));
+            return PlanCheck.Run(Model, m_Draft.Phases, volumes, CycleSeconds(true));
         }
 
         /// <summary>

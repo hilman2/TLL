@@ -255,7 +255,7 @@ namespace TLL.Systems
         }
 
         /// <summary>A node where one road simply continues: exactly two roads and no signals.</summary>
-        private static bool IsPlainNode(EntityManager em, Entity node)
+        internal static bool IsPlainNode(EntityManager em, Entity node)
         {
             if (node == Entity.Null || em.HasComponent<TrafficLights>(node) || !em.HasBuffer<ConnectedEdge>(node))
                 return false;

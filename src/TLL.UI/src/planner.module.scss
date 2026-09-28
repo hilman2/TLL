@@ -210,6 +210,7 @@ $line: rgba(255, 255, 255, 0.12);
   font-size: 14rem;
   white-space: nowrap;
   opacity: 0.6;
+  background-color: transparent;
   border-bottom: 3rem solid transparent;
 }
 
@@ -319,6 +320,7 @@ $line: rgba(255, 255, 255, 0.12);
   border: 2rem dashed $line;
   font-size: 28rem;
   opacity: 0.7;
+  background-color: transparent;
 }
 
 .phaseTools {
@@ -912,6 +914,94 @@ $line: rgba(255, 255, 255, 0.12);
   background-color: rgba(0, 0, 0, 0.35);
   border: 1rem solid $line;
   border-radius: 3rem;
+}
+
+// ---- Lanes ----
+
+.cardChanged {
+  border-left: 3rem solid $blue;
+}
+
+.faintRow {
+  padding: 2rem 12rem 4rem 12rem;
+  font-size: 12rem;
+  opacity: 0.6;
+}
+
+// A road's lanes side by side, as the driver sees them.
+.laneStrip {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  padding: 4rem 12rem;
+}
+
+.laneTile {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 46rem;
+  height: 58rem;
+  margin: 0;
+  padding: 0;
+  background-color: #3d434d;
+  border-left: 2rem dashed rgba(255, 255, 255, 0.5);
+  border-top: 2rem solid transparent;
+  border-bottom: 2rem solid transparent;
+}
+
+.laneTileOn {
+  background-color: rgba(79, 179, 255, 0.35);
+  border-top-color: $blue;
+  border-bottom-color: $blue;
+}
+
+.laneTileSmall {
+  width: 24rem;
+  height: 30rem;
+  border-left-width: 1rem;
+}
+
+.laneSvg {
+  width: 30rem;
+  height: 40rem;
+}
+
+.laneSvgSmall {
+  width: 16rem;
+  height: 22rem;
+}
+
+.laneMark {
+  fill: none;
+  stroke: #f2f2f2;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.laneHead {
+  fill: #f2f2f2;
+}
+
+.direction {
+  flex-shrink: 0;
+  margin: 0 3rem;
+  padding: 3rem 9rem;
+  font-size: 12rem;
+  white-space: nowrap;
+  border-radius: 10rem;
+  background-color: $cardStrong;
+}
+
+.directionOn {
+  background-color: rgba(61, 191, 107, 0.45);
+  color: #e8fff0;
+}
+
+.stepperWide {
+  width: 64rem;
 }
 
 // ---- Tour ----

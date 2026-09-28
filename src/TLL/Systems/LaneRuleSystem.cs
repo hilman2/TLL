@@ -17,8 +17,9 @@ namespace TLL.Systems
     /// <summary>
     /// Applies the rules TLL keeps for a junction to its lanes, every time
     /// the game has built them anew: forbidden turns (<see cref="TurnRule"/>),
-    /// signs (<see cref="PriorityRule"/>) and the player's lane connections
-    /// (<see cref="LaneConnectionRule"/>).
+    /// signs (<see cref="PriorityRule"/>), the player's lane connections
+    /// (<see cref="LaneConnectionRule"/>), and on the roads before a
+    /// junction its solid lines (<see cref="LaneChangeBan"/>, SolidLines).
     ///
     /// The game builds a node's lanes in Modification4 whenever the node is
     /// Updated, and writes each lane's flags afresh, so a rule set once would
@@ -50,6 +51,7 @@ namespace TLL.Systems
 
         private EntityQuery m_LaneQuery;
         private EntityQuery m_NodeQuery;
+        private EntityQuery m_SolidQuery;
         private Game.City.CityConfigurationSystem m_CityConfiguration;
 
         protected override void OnCreate()
@@ -71,32 +73,59 @@ namespace TLL.Systems
                 All = new[] { ComponentType.ReadOnly<Node>(), ComponentType.ReadOnly<LaneConnectionRule>(), ComponentType.ReadOnly<Updated>() },
                 None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
             });
+            m_SolidQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<Node>(), ComponentType.ReadOnly<SolidLineRule>(), ComponentType.ReadOnly<Updated>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
+            });
             m_CityConfiguration = World.GetOrCreateSystemManaged<Game.City.CityConfigurationSystem>();
         }
 
         protected override void OnSafeUpdate()
         {
             // The lanes the game built this frame, by junction. The junction's
-            // buffer of lanes does not list the new ones yet.
+            // buffer of lanes does not list the new ones yet. Lanes of road
+            // pieces inside solid lines are collected by their road.
             var byNode = new Dictionary<Entity, List<Entity>>();
+            var byEdge = new Dictionary<Entity, List<Entity>>();
             if (!m_LaneQuery.IsEmptyIgnoreFilter)
             {
                 using (NativeArray<Entity> lanes = m_LaneQuery.ToEntityArray(Allocator.Temp))
                 {
                     foreach (Entity lane in lanes)
                     {
-                        Entity node = EntityManager.GetComponentData<Owner>(lane).m_Owner;
-                        if (!EntityManager.HasBuffer<TurnRule>(node) && !EntityManager.HasBuffer<PriorityRule>(node)
-                            && !EntityManager.HasBuffer<LaneConnectionRule>(node))
+                        Entity owner = EntityManager.GetComponentData<Owner>(lane).m_Owner;
+                        if (EntityManager.HasBuffer<LaneChangeBan>(owner))
+                        {
+                            if (!byEdge.TryGetValue(owner, out List<Entity> onEdge))
+                                byEdge[owner] = onEdge = new List<Entity>();
+                            onEdge.Add(lane);
                             continue;
-                        if (!byNode.TryGetValue(node, out List<Entity> list))
-                            byNode[node] = list = new List<Entity>();
+                        }
+                        if (!EntityManager.HasBuffer<TurnRule>(owner) && !EntityManager.HasBuffer<PriorityRule>(owner)
+                            && !EntityManager.HasBuffer<LaneConnectionRule>(owner))
+                            continue;
+                        if (!byNode.TryGetValue(owner, out List<Entity> list))
+                            byNode[owner] = list = new List<Entity>();
                         list.Add(lane);
                     }
                 }
             }
             foreach (KeyValuePair<Entity, List<Entity>> entry in byNode)
                 ApplyToLanes(entry.Key, entry.Value);
+            foreach (KeyValuePair<Entity, List<Entity>> entry in byEdge)
+                SolidLines.ApplyToLanes(EntityManager, entry.Key, entry.Value);
+
+            // A junction with solid lines that was rebuilt, e.g. with a road
+            // replaced: the new road pieces get the bans.
+            if (!m_SolidQuery.IsEmptyIgnoreFilter)
+            {
+                using (NativeArray<Entity> nodes = m_SolidQuery.ToEntityArray(Allocator.Temp))
+                {
+                    foreach (Entity node in nodes)
+                        SolidLines.Sync(EntityManager, node);
+                }
+            }
 
             if (m_NodeQuery.IsEmptyIgnoreFilter)
                 return;

@@ -74,23 +74,46 @@ namespace TLL.UI.Planner
         /// <summary>The road the player named as the main road, or Null to let TLL choose.</summary>
         public Entity MajorApproach;
 
+        /// <summary>Per approach, the road pieces of solid lines before the junction (SolidLineRule); 0 for none.</summary>
+        public int[] Solid = new int[0];
+
+        /// <summary>
+        /// Lane arrows the player changed, per approach: which targets each
+        /// lane serves, from the kerb outwards (ApproachLanes). An approach
+        /// not listed keeps the lanes it has.
+        /// </summary>
+        public readonly SortedDictionary<int, LaneUse[]> Lanes = new SortedDictionary<int, LaneUse[]>();
+
         public PlannerDraft Clone()
         {
             var result = new PlannerDraft
             {
                 Owner = Owner, Mode = Mode, TurnOnRed = TurnOnRed, Scramble = Scramble,
                 Yellow = Yellow, AllRed = AllRed, Prepare = Prepare, MaxWait = MaxWait, MajorApproach = MajorApproach,
+                Solid = (int[])Solid.Clone(),
             };
             result.Phases.AddRange(Phases);
             result.Timing.AddRange(Timing);
+            foreach (KeyValuePair<int, LaneUse[]> lanes in Lanes)
+                result.Lanes[lanes.Key] = (LaneUse[])lanes.Value.Clone();
             return result;
+        }
+
+        /// <summary>The draft's lanes as text, to tell two drafts' lanes apart and to cache what depends on them.</summary>
+        public string LanesKey()
+        {
+            var key = new System.Text.StringBuilder();
+            foreach (KeyValuePair<int, LaneUse[]> lanes in Lanes)
+                key.Append(lanes.Key).Append(':').Append(string.Join(" ", lanes.Value)).Append(';');
+            return key.ToString();
         }
 
         public bool SameAs(PlannerDraft other)
         {
             if (other == null || Owner != other.Owner || Mode != other.Mode || TurnOnRed != other.TurnOnRed || Scramble != other.Scramble
                 || Yellow != other.Yellow || AllRed != other.AllRed || Prepare != other.Prepare || MaxWait != other.MaxWait
-                || MajorApproach != other.MajorApproach || Phases.Count != other.Phases.Count)
+                || MajorApproach != other.MajorApproach || Phases.Count != other.Phases.Count || !System.Linq.Enumerable.SequenceEqual(Solid, other.Solid)
+                || LanesKey() != other.LanesKey())
                 return false;
             for (int p = 0; p < Phases.Count; p++)
             {

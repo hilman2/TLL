@@ -28,7 +28,7 @@ namespace TLL.UI.Planner
                 writer.TypeEnd();
                 return;
             }
-            JunctionModel model = m_Layout.Model;
+            JunctionModel model = Model;
             List<Finding> findings = Check();
             bool errors = PlanCheck.HasErrors(findings);
 
@@ -99,6 +99,8 @@ namespace TLL.UI.Planner
             writer.ArrayEnd();
 
             WritePhases(writer);
+            WriteSolid(writer);
+            WriteLanes(writer);
 
             writer.PropertyName("selected");
             writer.Write(m_Selected);
@@ -185,10 +187,10 @@ namespace TLL.UI.Planner
             if (m_Selected >= 0 && m_Selected < m_Draft.Phases.Count)
             {
                 ulong selected = m_Draft.Phases[m_Selected];
-                for (int m = 0; m < m_Layout.Model.Movements.Count && m < 64; m++)
+                for (int m = 0; m < Model.Movements.Count && m < 64; m++)
                 {
                     if ((selected & (1UL << m)) == 0UL
-                        && PlanEditing.Blocking(m_Layout.Model, selected, PlanEditing.Partners(m_Layout.Model, m) | (1UL << m)) == 0UL)
+                        && PlanEditing.Blocking(Model, selected, PlanEditing.Partners(Model, m) | (1UL << m)) == 0UL)
                         addable |= 1UL << m;
                 }
             }
@@ -207,7 +209,7 @@ namespace TLL.UI.Planner
                 writer.PropertyName("movements");
                 WriteBits(writer, green);
                 writer.PropertyName("permitted");
-                WriteBits(writer, PhasePlanner.PermittedIn(m_Layout.Model, green));
+                WriteBits(writer, PhasePlanner.PermittedIn(Model, green));
                 writer.PropertyName("minGreen");
                 writer.Write(SimTime.ToSeconds(t.MinGreen));
                 writer.PropertyName("maxGreen");
@@ -222,6 +224,42 @@ namespace TLL.UI.Planner
                 writer.Write(applied >= 0 && applied < demand.Length ? demand[applied] : -1f);
                 writer.PropertyName("wait");
                 writer.Write(applied >= 0 && applied < wait.Length ? wait[applied] : -1f);
+                writer.TypeEnd();
+            }
+            writer.ArrayEnd();
+        }
+
+        /// <summary>
+        /// The solid lines of each road leading in: the draft's pieces, and
+        /// how long 1, 2, … pieces are, as far back as the road goes before
+        /// the previous junction.
+        /// </summary>
+        private void WriteSolid(IJsonWriter writer)
+        {
+            var roads = new List<int>();
+            for (int a = 0; a < m_Layout.Edges.Count; a++)
+            {
+                foreach (Movement m in Model.Movements)
+                {
+                    if (m.Source == a && !m.IsPedestrian && !roads.Contains(a))
+                        roads.Add(a);
+                }
+            }
+            writer.PropertyName("solid");
+            writer.ArrayBegin((uint)roads.Count);
+            foreach (int a in roads)
+            {
+                float[] lengths = SolidLines.Lengths(EntityManager, SolidLines.Chain(EntityManager, m_Node, m_Layout.Edges[a], SolidLines.MaxPieces));
+                writer.TypeBegin("tll.Solid");
+                writer.PropertyName("approach");
+                writer.Write(a);
+                writer.PropertyName("pieces");
+                writer.Write(a < m_Draft.Solid.Length ? m_Draft.Solid[a] : 0);
+                writer.PropertyName("lengths");
+                writer.ArrayBegin((uint)lengths.Length);
+                foreach (float l in lengths)
+                    writer.Write(l);
+                writer.ArrayEnd();
                 writer.TypeEnd();
             }
             writer.ArrayEnd();
@@ -314,8 +352,14 @@ namespace TLL.UI.Planner
         /// </summary>
         private void WriteTemplates(IJsonWriter writer)
         {
-            if (m_Templates == null)
+            // The templates plan with the draft's lanes: a lane of its own
+            // lets a turn run apart from the straight traffic.
+            string lanes = m_Draft.LanesKey();
+            if (m_Templates == null || m_TemplatesLanes != lanes)
+            {
                 m_Templates = BuildTemplates();
+                m_TemplatesLanes = lanes;
+            }
             writer.PropertyName("templateScramble");
             writer.Write(m_TemplateScramble);
             writer.PropertyName("templates");
@@ -339,7 +383,7 @@ namespace TLL.UI.Planner
                     writer.PropertyName("movements");
                     WriteBits(writer, green);
                     writer.PropertyName("permitted");
-                    WriteBits(writer, PhasePlanner.PermittedIn(m_Layout.Model, green));
+                    WriteBits(writer, PhasePlanner.PermittedIn(Model, green));
                     writer.TypeEnd();
                 }
                 writer.ArrayEnd();
@@ -352,17 +396,17 @@ namespace TLL.UI.Planner
         {
             var rows = new List<TemplateRow>();
             float[] weights = Weights();
-            foreach (TemplatePlan plan in PlanTemplates.All(m_Layout.Model, MainApproach(), weights, m_TemplateScramble))
+            foreach (TemplatePlan plan in PlanTemplates.All(Model, MainApproach(), weights, m_TemplateScramble))
             {
                 var row = new TemplateRow { Kind = plan.Kind, Phases = plan.Phases, Delay = -1f, Saturation = -1f };
                 if (weights != null)
                 {
                     var phasePlan = new PhasePlan();
                     foreach (ulong green in plan.Phases)
-                        phasePlan.Phases.Add(new Phase { Green = green, Permitted = PhasePlanner.PermittedIn(m_Layout.Model, green) });
+                        phasePlan.Phases.Add(new Phase { Green = green, Permitted = PhasePlanner.PermittedIn(Model, green) });
                     DelayParameters parameters = DelayParameters.Default;
                     parameters.TurnOnRed = m_Draft.TurnOnRed;
-                    PlanEstimate estimate = DelayModel.Estimate(m_Layout.Model, phasePlan, weights, parameters);
+                    PlanEstimate estimate = DelayModel.Estimate(Model, phasePlan, weights, parameters);
                     row.Delay = estimate.AverageDelay;
                     row.Saturation = estimate.WorstSaturation;
                 }
@@ -393,7 +437,7 @@ namespace TLL.UI.Planner
                 m_PresetRows = new List<PresetRow>();
                 foreach (PresetStore.Entry e in entries)
                 {
-                    PlanPreset preset = e.Preset.For(m_Layout.Model.LeftHandTraffic);
+                    PlanPreset preset = e.Preset.For(Model.LeftHandTraffic);
                     m_PresetRows.Add(new PresetRow
                     {
                         Id = e.Id,

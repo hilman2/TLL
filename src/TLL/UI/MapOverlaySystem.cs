@@ -44,6 +44,7 @@ namespace TLL.UI
         private static readonly Color kNotice = new Color(0.79f, 0.66f, 1f, 1f);
         private static readonly Color kNoticeFill = new Color(0.79f, 0.66f, 1f, 0.12f);
         private static readonly Color kHoverLane = new Color(1f, 1f, 1f, 0.95f);
+        private static readonly Color kSolid = new Color(1f, 1f, 1f, 0.7f);
 
         /// <summary>
         /// Rush-hour queue, in vehicles on the worst movement, from which a
@@ -220,6 +221,13 @@ namespace TLL.UI
             buffer.DrawCircle(kRing, kFill, 0.8f, OverlayRenderSystem.StyleFlags.Projected, new float2(0f, 1f), position, 40f);
             if (!EntityManager.HasBuffer<JunctionLane>(node))
                 return;
+            // Solid lines first, below the phase: a white line along each lane
+            // on which drivers keep their lane.
+            foreach (Entity lane in m_Planner.SolidLanes)
+            {
+                if (EntityManager.Exists(lane) && EntityManager.HasComponent<Curve>(lane))
+                    buffer.DrawCurve(kSolid, kSolid, 0f, OverlayRenderSystem.StyleFlags.Projected, EntityManager.GetComponentData<Curve>(lane).m_Bezier, 0.25f, new float2(1f, 1f));
+            }
             ulong green = m_Planner.PreviewGreen;
             ulong permitted = m_Planner.PreviewPermitted;
             int hovered = m_Planner.HoveredMovement;

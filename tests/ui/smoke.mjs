@@ -44,7 +44,9 @@ function strictModule(name, impl) {
   });
 }
 
-const element = (tag) => (props) => React.createElement(tag, null, props.header, props.children);
+// The stand-ins keep the class, so the preview page shows buttons and
+// panels styled as TLL styles them; the game adds its own look on top.
+const element = (tag) => (props) => React.createElement(tag, { className: props.className, style: props.style }, props.header, props.children);
 
 globalThis.window = globalThis;
 window.React = React;
@@ -156,6 +158,18 @@ const plannerInfo = {
     { kind: 0, current: false, delay: 18.4, saturation: 0.8, phases: [{ movements: [0, 1, 3, 4], permitted: [1, 4] }, { movements: [6, 7, 8, 9], permitted: [7, 9] }] },
     { kind: 1, current: true, delay: 14.2, saturation: 0.7, phases: [{ movements: [1, 4], permitted: [] }, { movements: [0, 3], permitted: [] }, { movements: [6, 7, 8, 9], permitted: [7, 9] }] },
     { kind: 4, current: false, delay: 31.5, saturation: 1.2, phases: [{ movements: [0, 1, 2], permitted: [] }] },
+  ],
+  lanes: [
+    {
+      approach: 0, targets: [1, 2, 3], uses: [{ first: 0, last: 1 }, { first: 1, last: 2 }], changed: true, ruled: false,
+      options: [[0, 0, 2], [3, 1, 4]], suggestion: [{ first: 0, last: 1 }, { first: 2, last: 2 }], gain: 0.31,
+    },
+    { approach: 2, targets: [3, 0], uses: [{ first: 0, last: 0 }, { first: 1, last: 1 }], changed: false, ruled: true, options: [[1, 0], [3, 1]], suggestion: null, gain: 0 },
+  ],
+  solid: [
+    { approach: 0, pieces: 2, lengths: [96.4, 181.9, 260] },
+    { approach: 2, pieces: 0, lengths: [120] },
+    { approach: 1, pieces: 0, lengths: [] },
   ],
   presetTurns: 2, roads: 4,
   presets: [
@@ -282,7 +296,11 @@ const scenarios = {
     "tll.planner": { ...plannerInfo, refusal: null },
     "tll.selected": { ...managed, approaches: crossroads, turns: [{ source: 0, target: 3, kind: 1, state: 2, volume: 180 }] },
     step: "lanes",
-    expect: [">Connect single lanes on the map<", ">forbidden · you<"],
+    expect: [
+      ">Connect single lanes on the map<", ">forbidden · you<", ">Lane arrows<", ">From Main Street<", ">changed<",
+      ">The game&#x27;s lanes<", ">busiest lane −31 %<", ">Click a lane to change where it leads.<",
+      ">Solid lines before the junction<", ">182 m<", ">off<",
+    ],
   },
   "planner, templates": {
     "tll.planner": plannerInfo,
@@ -292,7 +310,7 @@ const scenarios = {
   "planner, presets": {
     "tll.planner": plannerInfo,
     sheet: "presets",
-    expect: [">Crossroads, 3 phases<", ">needs 3 roads<", ">Turn it<", ">Use<", ">Share<", ">Keep the times with it<"],
+    expect: [">Crossroads, 3 phases<", ">needs 3 roads<", ">Turn it<", ">Use<", ">Share<", ">Keep the times with it<", ">Keep the lanes with it<"],
   },
   "planner, live with an error": {
     "tll.planner": { ...plannerInfo, live: true },

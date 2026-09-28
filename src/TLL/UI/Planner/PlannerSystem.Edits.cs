@@ -45,6 +45,10 @@ namespace TLL.UI.Planner
             AddBinding(new TriggerBinding<float, float, float>(kGroup, "plannerSetIntergreen", (yellow, allRed, prepare) => Edit(() => SetIntergreen(yellow, allRed, prepare))));
             AddBinding(new TriggerBinding<float>(kGroup, "plannerSetMaxWait", seconds => Edit(() => SetMaxWait(seconds))));
             AddBinding(new TriggerBinding<int>(kGroup, "plannerSetMain", approach => Edit(() => SetMain(approach))));
+            AddBinding(new TriggerBinding<int, int>(kGroup, "plannerSetSolid", (approach, pieces) => Edit(() => SetSolid(approach, pieces), takesOver: false)));
+            AddBinding(new TriggerBinding<int, int, int>(kGroup, "plannerToggleLane", (approach, lane, target) => Edit(() => ToggleLane(approach, lane, target), takesOver: false)));
+            AddBinding(new TriggerBinding<int>(kGroup, "plannerUseLaneSuggestion", approach => Edit(() => UseLaneSuggestion(approach), takesOver: false)));
+            AddBinding(new TriggerBinding<int>(kGroup, "plannerResetLanes", approach => Edit(() => ResetLanes(approach), takesOver: false)));
             AddBinding(new TriggerBinding(kGroup, "plannerApply", () =>
             {
                 if (m_Open)
@@ -71,7 +75,7 @@ namespace TLL.UI.Planner
                 m_Templates = null;
                 Changed();
             }));
-            AddBinding(new TriggerBinding<string, bool>(kGroup, "plannerSavePreset", SavePreset));
+            AddBinding(new TriggerBinding<string, bool, bool>(kGroup, "plannerSavePreset", SavePreset));
             AddBinding(new TriggerBinding<string>(kGroup, "plannerApplyPreset", id => Edit(() => ApplyPreset(id, next: false))));
             AddBinding(new TriggerBinding(kGroup, "plannerTurnPreset", () => Edit(() => ApplyPreset(m_PresetId, next: true))));
             AddBinding(new TriggerBinding<string>(kGroup, "plannerDeletePreset", DeletePreset));
@@ -107,7 +111,7 @@ namespace TLL.UI.Planner
             }
             if (takesOver && m_Draft.Owner == PlannerOwner.Autopilot)
                 m_Draft.Owner = PlannerOwner.Layout;
-            m_Draft.FillTiming(m_Layout.Model);
+            m_Draft.FillTiming(Model);
             m_Undo.Add(before);
             if (m_Undo.Count > kUndoDepth)
                 m_Undo.RemoveAt(0);
@@ -124,14 +128,14 @@ namespace TLL.UI.Planner
         {
             if (!ValidMovement(movement) || phase < 0 || phase >= m_Draft.Phases.Count)
                 return false;
-            ToggleResult result = PlanEditing.Toggle(m_Layout.Model, m_Draft.Phases, phase, movement);
+            ToggleResult result = PlanEditing.Toggle(Model, m_Draft.Phases, phase, movement);
             if (!result.Changed)
             {
                 m_Refusal = new Refusal
                 {
                     Movement = movement,
                     Blocking = result.Blocking,
-                    FitsIn = PlanEditing.FitsIn(m_Layout.Model, m_Draft.Phases, movement),
+                    FitsIn = PlanEditing.FitsIn(Model, m_Draft.Phases, movement),
                     Time = DateTime.UtcNow,
                 };
                 return false;
@@ -158,7 +162,7 @@ namespace TLL.UI.Planner
         {
             if (!ValidMovement(movement))
                 return false;
-            uint into = PlanEditing.Place(m_Layout.Model, m_Draft.Phases, movement);
+            uint into = PlanEditing.Place(Model, m_Draft.Phases, movement);
             if (into == 0U)
             {
                 Say("PlanFull", null);
@@ -185,7 +189,7 @@ namespace TLL.UI.Planner
         {
             if (!ValidMovement(movement))
                 return false;
-            JunctionModel model = m_Layout.Model;
+            JunctionModel model = Model;
             ulong group = PlanEditing.Partners(model, movement) | (1UL << movement);
             for (int p = 0; p < m_Draft.Phases.Count; p++)
             {
@@ -213,7 +217,7 @@ namespace TLL.UI.Planner
         {
             if (!ValidMovement(movement) || phase < 0 || phase >= m_Draft.Phases.Count || (m_Draft.Phases[phase] & (1UL << movement)) == 0UL)
                 return false;
-            JunctionModel model = m_Layout.Model;
+            JunctionModel model = Model;
             ulong group = PlanEditing.Partners(model, movement) | (1UL << movement);
             for (int p = 0; p < m_Draft.Phases.Count; p++)
             {
@@ -242,9 +246,9 @@ namespace TLL.UI.Planner
         {
             if (!ValidMovement(movement) || m_Draft.Phases.Count >= PhasePlanner.MaxPhases)
                 return false;
-            ulong group = PlanEditing.Partners(m_Layout.Model, movement) | (1UL << movement);
+            ulong group = PlanEditing.Partners(Model, movement) | (1UL << movement);
             int at = Math.Min(m_Selected + 1, m_Draft.Phases.Count);
-            m_Draft.Insert(at, group, PhaseTiming.Default(m_Layout.Model, group));
+            m_Draft.Insert(at, group, PhaseTiming.Default(Model, group));
             m_Selected = at;
             return true;
         }
@@ -255,7 +259,7 @@ namespace TLL.UI.Planner
             if (m_Draft.Phases.Count >= PhasePlanner.MaxPhases)
                 return false;
             int at = Math.Min(m_Selected + 1, m_Draft.Phases.Count);
-            m_Draft.Insert(at, 0UL, PhaseTiming.Default(m_Layout.Model, 0UL));
+            m_Draft.Insert(at, 0UL, PhaseTiming.Default(Model, 0UL));
             m_Selected = at;
             return true;
         }
@@ -300,7 +304,7 @@ namespace TLL.UI.Planner
         {
             if (phase < 0 || phase >= m_Draft.Phases.Count)
                 return false;
-            m_Draft.Phases[phase] = PlanEditing.FillUp(m_Layout.Model, m_Draft.Phases[phase]);
+            m_Draft.Phases[phase] = PlanEditing.FillUp(Model, m_Draft.Phases[phase]);
             m_Selected = phase;
             return true;
         }
@@ -376,6 +380,16 @@ namespace TLL.UI.Planner
             return true;
         }
 
+        /// <summary>Solid lines on an approach, as many road pieces back as it has before the previous junction; 0 for none.</summary>
+        private bool SetSolid(int approach, int pieces)
+        {
+            if (approach < 0 || approach >= m_Draft.Solid.Length)
+                return false;
+            int most = SolidLines.Chain(EntityManager, m_Node, m_Layout.Edges[approach], SolidLines.MaxPieces).Count;
+            m_Draft.Solid[approach] = Math.Max(0, Math.Min(pieces, most));
+            return true;
+        }
+
         private bool SetMain(int approach)
         {
             if (approach < 0 || approach >= m_Layout.Edges.Count)
@@ -442,7 +456,7 @@ namespace TLL.UI.Planner
 
         private bool ValidMovement(int movement)
         {
-            return m_Layout != null && movement >= 0 && movement < m_Layout.Model.Movements.Count && movement < 64;
+            return m_Layout != null && movement >= 0 && movement < Model.Movements.Count && movement < 64;
         }
 
         // ---- Templates ----
@@ -453,14 +467,14 @@ namespace TLL.UI.Planner
         /// </summary>
         private bool LoadTemplate(TemplateKind kind)
         {
-            TemplatePlan plan = PlanTemplates.Build(m_Layout.Model, kind, MainApproach(), Weights(), m_TemplateScramble);
+            TemplatePlan plan = PlanTemplates.Build(Model, kind, MainApproach(), Weights(), m_TemplateScramble);
             if (plan == null)
                 return false;
             var timing = new List<PhaseTiming>();
             foreach (ulong green in plan.Phases)
             {
                 int same = m_Draft.Phases.IndexOf(green);
-                timing.Add(same >= 0 ? m_Draft.Timing[same] : PhaseTiming.Default(m_Layout.Model, green));
+                timing.Add(same >= 0 ? m_Draft.Timing[same] : PhaseTiming.Default(Model, green));
             }
             m_Draft.Phases.Clear();
             m_Draft.Timing.Clear();
@@ -476,7 +490,7 @@ namespace TLL.UI.Planner
         /// <summary>An approach of the main road: the draft's choice, else the one with the most lanes (JunctionInitSystem.MajorApproach).</summary>
         private int MainApproach()
         {
-            return JunctionInitSystem.MajorApproach(m_Layout.Lanes, m_Layout.Model, m_Layout.Edges, m_Draft.MajorApproach);
+            return JunctionInitSystem.MajorApproach(m_Layout.Lanes, Model, m_Layout.Edges, m_Draft.MajorApproach);
         }
 
         /// <summary>The day's peak per movement, for planning by traffic; null before anything is measured.</summary>
@@ -501,7 +515,7 @@ namespace TLL.UI.Planner
         /// the main road, the draft's phases, and its times if the player
         /// keeps them with it.
         /// </summary>
-        private PlanPreset Capture(string name, bool timing)
+        private PlanPreset Capture(string name, bool timing, bool lanes = true)
         {
             int arms = m_Layout.Edges.Count;
             int main = Math.Max(0, MainApproach());
@@ -516,7 +530,7 @@ namespace TLL.UI.Planner
                 float relative = (m_Layout.Angles[approach] - m_Layout.Angles[main]) % 360f;
                 preset.Angles[k] = relative < 0f ? relative + 360f : relative;
             }
-            foreach (Movement m in m_Layout.Model.Movements)
+            foreach (Movement m in Model.Movements)
                 preset.Movements.Add(new Movement(armOf[m.Source], m.Target >= 0 ? armOf[m.Target] : -1, m.Kind));
             uint crosswalkPhases = CrosswalkPhases(m_Draft.Phases);
             for (int p = 0; p < m_Draft.Phases.Count; p++)
@@ -531,6 +545,25 @@ namespace TLL.UI.Planner
                     Scramble = m_Draft.Scramble && (crosswalkPhases & (1U << p)) != 0U,
                 });
             }
+            if (lanes)
+            {
+                for (int a = 0; a < m_Draft.Solid.Length && a < arms; a++)
+                {
+                    if (m_Draft.Solid[a] > 0)
+                        preset.SolidLines.Add(new PresetSolidLines { Arm = armOf[a], Pieces = m_Draft.Solid[a] });
+                }
+                foreach (ApproachLanes approach in m_Approaches)
+                {
+                    LaneUse[] uses = UsesOf(approach);
+                    for (int j = 0; j < uses.Length; j++)
+                    {
+                        int targets = 0;
+                        for (int m = uses[j].First; m <= uses[j].Last; m++)
+                            targets |= 1 << armOf[approach.Targets[m]];
+                        preset.Lanes.Add(new PresetLane { Arm = armOf[approach.Approach], Lane = j, Targets = targets });
+                    }
+                }
+            }
             preset.HasTiming = timing;
             preset.Mode = m_Draft.Mode == ControlMode.Coordinated ? ControlMode.Adaptive : m_Draft.Mode;
             preset.AutoTiming = m_Draft.Owner != PlannerOwner.Everything;
@@ -539,12 +572,12 @@ namespace TLL.UI.Planner
             return preset;
         }
 
-        private void SavePreset(string name, bool timing)
+        private void SavePreset(string name, bool timing, bool lanes)
         {
             if (!m_Open)
                 return;
             name = string.IsNullOrWhiteSpace(name) ? DefaultPresetName() : name.Trim();
-            string id = m_Presets.Save(Capture(name, timing));
+            string id = m_Presets.Save(Capture(name, timing, lanes));
             Say(id != null ? "PresetSaved" : "PresetNotSaved", name);
             m_PresetRows = null;
             Changed();
@@ -590,7 +623,10 @@ namespace TLL.UI.Planner
 
         private bool LoadPreset(PlanPreset preset, int[] map, int fits)
         {
-            TransferResult result = PlanTransfer.Transfer(preset.Movements, preset.Greens(), map, m_Layout.Model);
+            // Lanes first: they decide which movements share a lane, and so
+            // how the phases can be carried over.
+            LoadPresetLanes(preset, map);
+            TransferResult result = PlanTransfer.Transfer(preset.Movements, preset.Greens(), map, Model);
             if (result.Unplaced != 0UL)
             {
                 Say("PresetDoesNotFit", preset.Name);
@@ -601,7 +637,7 @@ namespace TLL.UI.Planner
             for (int p = 0; p < result.Phases.Count; p++)
             {
                 int origin = result.Origin[p];
-                PhaseTiming timing = PhaseTiming.Default(m_Layout.Model, result.Phases[p]);
+                PhaseTiming timing = PhaseTiming.Default(Model, result.Phases[p]);
                 if (preset.HasTiming && origin >= 0)
                 {
                     PresetPhase source = preset.Phases[origin];
@@ -621,6 +657,13 @@ namespace TLL.UI.Planner
                 m_Draft.TurnOnRed = preset.TurnOnRed;
                 m_Draft.Scramble = preset.Scramble;
             }
+            // Solid lines as far back as each road allows here.
+            foreach (PresetSolidLines solid in preset.SolidLines)
+            {
+                int approach = solid.Arm < map.Length ? map[solid.Arm] : -1;
+                if (approach >= 0 && approach < m_Draft.Solid.Length)
+                    SetSolid(approach, solid.Pieces);
+            }
             m_Selected = 0;
             m_Hold = -1;
             int added = PlanEditing.Count(result.Added);
@@ -629,6 +672,51 @@ namespace TLL.UI.Planner
                 added + dropped > 0 ? $"{added}/{dropped}" : preset.Name);
             WriteUser("planner_preset", preset.Name);
             return true;
+        }
+
+        /// <summary>
+        /// The preset's lane arrows, on the roads here with as many lanes as
+        /// the preset's and the same roads to lead into. A road that differs
+        /// keeps its lanes.
+        /// </summary>
+        private void LoadPresetLanes(PlanPreset preset, int[] map)
+        {
+            var byArm = new Dictionary<int, List<PresetLane>>();
+            foreach (PresetLane lane in preset.Lanes)
+            {
+                if (!byArm.TryGetValue(lane.Arm, out List<PresetLane> list))
+                    byArm[lane.Arm] = list = new List<PresetLane>();
+                list.Add(lane);
+            }
+            foreach (KeyValuePair<int, List<PresetLane>> arm in byArm)
+            {
+                int approachIndex = arm.Key < map.Length ? map[arm.Key] : -1;
+                ApproachLanes approach = m_Approaches.Find(a => a.Approach == approachIndex);
+                if (approach == null || arm.Value.Count != approach.Lanes.Count)
+                    continue;
+                var uses = new LaneUse[approach.Lanes.Count];
+                bool fits = true;
+                foreach (PresetLane lane in arm.Value)
+                {
+                    int first = int.MaxValue;
+                    int last = -1;
+                    for (int presetArm = 0; presetArm < map.Length && fits; presetArm++)
+                    {
+                        if ((lane.Targets & (1 << presetArm)) == 0)
+                            continue;
+                        int m = approach.Targets.IndexOf(map[presetArm]);
+                        fits = m >= 0;
+                        first = Math.Min(first, m);
+                        last = Math.Max(last, m);
+                    }
+                    fits &= last >= 0 && lane.Lane >= 0 && lane.Lane < uses.Length;
+                    if (!fits)
+                        break;
+                    uses[lane.Lane] = new LaneUse(first, last);
+                }
+                if (fits && LaneEditing.Check(uses, approach.Receiving) == LaneEdit.Done)
+                    SetLanes(approach, uses);
+            }
         }
 
         private void DeletePreset(string id)

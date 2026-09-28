@@ -110,6 +110,49 @@ export interface Template {
   phases: TemplatePhase[];
 }
 
+/** Numbers as in TLL.Core.Planning.LaneEdit: what a click on a lane's direction would do. */
+export enum LaneEdit {
+  Done = 0,
+  LastDirection = 1,
+  Gap = 2,
+  Cross = 3,
+  Uncovered = 4,
+  TooMany = 5,
+}
+
+export interface LaneUse {
+  /** The directions a lane serves: targets[first] to targets[last]. */
+  first: number;
+  last: number;
+}
+
+/** The lanes of one road leading in, from the kerb outwards. */
+export interface ApproachLanes {
+  approach: number;
+  /** The roads the lanes lead into, from the kerb side outwards. */
+  targets: number[];
+  uses: LaneUse[];
+  /** The draft changes these lanes. */
+  changed: boolean;
+  /** The junction has lane rules for this road now, the player's or the autopilot's. */
+  ruled: boolean;
+  /** Per lane, per target: what a click would do. */
+  options: LaneEdit[][];
+  /** The lanes the autopilot would choose for the measured traffic; null where they are these. */
+  suggestion: LaneUse[] | null;
+  /** The share by which the suggestion lowers the busiest lane's load. */
+  gain: number;
+}
+
+/** Solid lines on one road leading in. */
+export interface Solid {
+  approach: number;
+  /** Road pieces back from the stop line; 0 for none. */
+  pieces: number;
+  /** The length of 1, 2, … pieces, metres, as far back as the road goes. */
+  lengths: number[];
+}
+
 export interface Preset {
   id: string;
   name: string;
@@ -141,6 +184,8 @@ export interface PlannerInfo {
   /** Movements a click would add to the selected phase without a refusal. */
   addable: number[];
   phases: PlannerPhase[];
+  lanes: ApproachLanes[];
+  solid: Solid[];
   selected: number;
   owner: Owner;
   mode: ControlMode;
@@ -211,7 +256,11 @@ export const planner = {
   hover: (movement: number) => trigger(group, "plannerHover", movement),
   template: (kind: TemplateKind) => trigger(group, "plannerTemplate", kind),
   templateScramble: (on: boolean) => trigger(group, "plannerTemplateScramble", on),
-  savePreset: (name: string, timing: boolean) => trigger(group, "plannerSavePreset", name, timing),
+  savePreset: (name: string, timing: boolean, lanes: boolean) => trigger(group, "plannerSavePreset", name, timing, lanes),
+  toggleLane: (approach: number, lane: number, target: number) => trigger(group, "plannerToggleLane", approach, lane, target),
+  useLaneSuggestion: (approach: number) => trigger(group, "plannerUseLaneSuggestion", approach),
+  resetLanes: (approach: number) => trigger(group, "plannerResetLanes", approach),
+  setSolid: (approach: number, pieces: number) => trigger(group, "plannerSetSolid", approach, pieces),
   applyPreset: (id: string) => trigger(group, "plannerApplyPreset", id),
   turnPreset: () => trigger(group, "plannerTurnPreset"),
   deletePreset: (id: string) => trigger(group, "plannerDeletePreset", id),
