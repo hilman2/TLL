@@ -482,14 +482,26 @@ namespace TLL.Systems
                 return;
             if (settings.VerboseLogging)
             {
-                bool tried = state.Memory.Get(Array.IndexOf(JunctionAdvisor.Strategies, choice), wave).Measured;
+                int target = Array.IndexOf(JunctionAdvisor.Strategies, choice);
+                bool tried = state.Memory.Get(target, wave).Measured;
+                PlanEstimate now = running >= 0 ? corrected[running] : default;
                 Mod.Log.Info($"Autopilot: junction {node} changes from {junction.Strategy} to {choice}, expected mean delay {best.AverageDelay:0.0} s"
-                    + $" ({(tried ? "measured before" : "not tried yet")}){(jammed ? ", the current layout jams" : "")}.");
+                    + $" ({(tried ? "measured before" : "not tried yet")}){(jammed ? ", the current layout jams" : "")};"
+                    + $" now {now.AverageDelay:0.0} s at load {now.WorstSaturation:0.00}, {Remembered(state.Memory, running, wave)};"
+                    + $" then load {best.WorstSaturation:0.00}, {Remembered(state.Memory, target, wave)}; traffic window {window}.");
             }
             m_LayoutChanges++;
             junction.Strategy = choice;
             state.PendingRounds = 0;
             rebuild = true;
+        }
+
+        private static string Remembered(LayoutMemory memory, int layout, bool wave)
+        {
+            if (layout < 0)
+                return "unknown layout";
+            Calibration c = memory.Get(layout, wave);
+            return c.Measured ? $"measured x{c.Factor:0.00} over {c.Samples} periods, backlog {c.Backlog:0.00}" : "never measured";
         }
 
         /// <summary>Measurement periods need this many rounds and vehicles to say anything about a layout.</summary>
