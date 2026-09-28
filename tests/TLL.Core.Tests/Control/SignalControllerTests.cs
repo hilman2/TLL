@@ -881,6 +881,39 @@ namespace TLL.Core.Tests.Control
             Assert.True(green - 50 <= h.Phases[0].MinGreen + config.Intergreen + 1, $"green after {green - 50} steps");
         }
 
+        [Theory]
+        [InlineData(ControlMode.Actuated)]
+        [InlineData(ControlMode.Adaptive)]
+        [InlineData(ControlMode.Drain)]
+        public void AGreenAnEmergencyVehicleIsComingForHolds(ControlMode mode)
+        {
+            // The vehicle's movement has green already when the request comes,
+            // 30 s ahead of it: its queue has gone and the other phase waits,
+            // which would end the green before the vehicle is there.
+            var h = new ControllerHarness(ControllerConfig.Default(mode),
+                ControllerHarness.Phase(5, 60, 40),
+                ControllerHarness.Phase(5, 60, 20));
+            h.Run(0, 50, (s, p) => { p[0].Demand = 5f; p[0].Queue = 5f; p[0].Pressure = 5f; });
+            Assert.Equal(0, h.State.Phase);
+
+            h.Run(50, 400, (s, p) =>
+            {
+                p[0].Preempt = true;
+                p[0].Demand = 0f;
+                p[0].Queue = 0f;
+                p[0].Pressure = 0f;
+                p[1].Demand = 5f;
+                p[1].Queue = 5f;
+                p[1].Pressure = 5f;
+            });
+
+            Assert.All(h.Trace.Where(r => r.Step >= 50), r => Assert.True(r.Phase == 0 && r.Stage == Stage.Green, $"{r.Stage} {r.Phase} at step {r.Step}"));
+
+            // The vehicle has passed: the other phase follows at once.
+            h.Run(450, 100, (s, p) => { p[0].Preempt = false; p[1].Demand = 5f; p[1].Queue = 5f; p[1].Pressure = 5f; });
+            Assert.Contains(h.Trace, r => r.Step >= 450 && r.Step < 450 + 20 && r.Phase == 1 && r.Stage == Stage.Green);
+        }
+
         [Fact]
         public void CoordinatedPhaseStartsAtTheSameCyclePositionWhateverTheSideStreetsDo()
         {

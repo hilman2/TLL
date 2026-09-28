@@ -178,8 +178,17 @@ namespace TLL.Components
         /// </summary>
         public int DesiredCycle;
 
-        /// <summary>Turning vehicles against pedestrians over the last vehicle greens; decides the scramble.</summary>
+        /// <summary>Turning vehicles against pedestrians over the last vehicle greens, for the panel.</summary>
         public PedestrianConflicts Conflicts;
+
+        /// <summary>
+        /// Movements an emergency vehicle on its way will take through the
+        /// junction within its lead time (EmergencyRouteSystem), and the
+        /// controller step up to which that holds. Their phases get green
+        /// as for an emergency vehicle at the line.
+        /// </summary>
+        public ulong EmergencyMovements;
+        public long EmergencyUntil;
 
         /// <summary>The running vehicle green has seen such a conflict.</summary>
         public bool ConflictThisGreen;

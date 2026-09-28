@@ -279,7 +279,8 @@ namespace TLL.Systems
 
                     DynamicBuffer<DetectorLane> detectors = hasDetectors ? detectorBuffers[i] : default;
                     bool scramble = (junction.Options & JunctionOptions.Scramble) != 0;
-                    Sense(phases, lanes, detectors, hasDetectors, counters, statistics, movements, runtime.State, scramble, out bool conflict);
+                    ulong emergency = GlobalStep <= runtime.EmergencyUntil ? runtime.EmergencyMovements : 0UL;
+                    Sense(phases, lanes, detectors, hasDetectors, counters, statistics, movements, runtime.State, scramble, emergency, out bool conflict);
 
                     ControllerConfig config = junction.ToConfig();
                     config.DivertPedestrians = scramble;
@@ -319,7 +320,7 @@ namespace TLL.Systems
             private unsafe void Sense(DynamicBuffer<JunctionPhase> phases, DynamicBuffer<JunctionLane> lanes,
                 DynamicBuffer<DetectorLane> detectors, bool hasDetectors,
                 DynamicBuffer<MovementCounter> counters, DynamicBuffer<MovementStatistics> statistics,
-                DynamicBuffer<JunctionMovement> movements, ControllerState state, bool divert, out bool conflict)
+                DynamicBuffer<JunctionMovement> movements, ControllerState state, bool divert, ulong emergency, out bool conflict)
             {
                 int movementCount = movements.Length;
                 float* waiting = stackalloc float[movementCount];
@@ -367,7 +368,9 @@ namespace TLL.Systems
                         else
                             soon[m] += 1f;
                     }
-                    if (signal.m_Priority >= kEmergencyPriority)
+                    // An emergency vehicle at the line, or one on its way
+                    // (EmergencyRouteSystem).
+                    if (signal.m_Priority >= kEmergencyPriority || (emergency & (1UL << m)) != 0)
                         preempt[m] = true;
                     signal.m_Petitioner = Entity.Null;
                     signal.m_Priority = signal.m_Default;

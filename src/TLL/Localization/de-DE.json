@@ -27,6 +27,8 @@
   "Settings.Group.Rules": "Verkehrsregeln an TLL-Kreuzungen",
   "Settings.TurnOnRed.Label": "Grünpfeil durch den Autopiloten",
   "Settings.TurnOnRed.Description": "Der Autopilot setzt an automatischen Kreuzungen einen Grünpfeil, wo er nach seiner Schätzung Wartezeit spart. Rechtsabbieger (bei Linksverkehr Linksabbieger) halten dann bei Rot an und fahren, wenn frei ist; nur wo sie ausschließlich Verkehr kreuzen, dem sie Vorrang geben müssen, und nie während Rundum-Grün. An eigenen Kreuzungen schaltest du den Grünpfeil im Panel.",
+  "Settings.EmergencyGreenWave.Label": "Grüne Welle für Einsatzfahrzeuge",
+  "Settings.EmergencyGreenWave.Description": "Krankenwagen, Feuerwehr und Polizei im Einsatz bekommen an jeder TLL-Ampel auf ihrer Route etwa 30 Sekunden vor ihrer Ankunft Grün für ihre Fahrtrichtung, bis sie durch sind. Die laufende Grünphase endet dafür nach ihrer Mindestzeit.",
   "Settings.KeepClear.Label": "Kreuzung freihalten",
   "Settings.KeepClear.Description": "Eine Spur bleibt rot, solange ihre Ausfahrt bis zur Kreuzung zurückgestaut ist. So bleibt niemand mitten auf der Kreuzung stehen und blockiert den Querverkehr.",
 

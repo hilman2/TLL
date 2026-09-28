@@ -27,6 +27,8 @@
   "Settings.Group.Rules": "Traffic rules at TLL junctions",
   "Settings.TurnOnRed.Label": "Turn on red by the autopilot",
   "Settings.TurnOnRed.Description": "The autopilot allows turning on red at automatic junctions where its estimate says it saves time. Right turns (left turns in left-hand traffic) then stop at red and go when the way is clear; only where they meet nothing but traffic they give way to, and never during a pedestrian scramble. At your own junctions, switch it in the panel.",
+  "Settings.EmergencyGreenWave.Label": "Green wave for emergency vehicles",
+  "Settings.EmergencyGreenWave.Description": "Ambulances, fire engines and police on a call get green for their direction at every TLL signal on their route, about 30 seconds before they arrive, until they have passed. The running green ends after its minimum for it.",
   "Settings.KeepClear.Label": "Keep junctions clear",
   "Settings.KeepClear.Description": "A lane stays red while its exit is backed up to the junction, so nobody gets stuck in the middle and blocks the cross traffic.",
 

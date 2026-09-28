@@ -86,6 +86,10 @@ namespace TLL
         [SettingsUISection(kSection, kRules)]
         public bool KeepClear { get; set; }
 
+        /// <summary>Emergency vehicles get green along their route ahead of them (EmergencyRouteSystem).</summary>
+        [SettingsUISection(kSection, kRules)]
+        public bool EmergencyGreenWave { get; set; }
+
         [SettingsUISection(kSection, kMap)]
         public bool ShowProblems { get; set; }
 
@@ -191,6 +195,7 @@ namespace TLL
             AutoLaneArrows = true;
             TurnOnRed = false;
             KeepClear = true;
+            EmergencyGreenWave = true;
             ShowProblems = false;
             ShowCongestion = false;
             VerboseLogging = false;

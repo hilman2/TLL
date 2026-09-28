@@ -39,6 +39,7 @@ namespace TLL
             // the signal poles are derived from them. See JunctionInitSystem.
             updateSystem.UpdateAfter<JunctionInitSystem, TrafficLightInitializationSystem>(SystemUpdatePhase.Modification4B);
             updateSystem.UpdateBefore<SignalControlSystem, TrafficLightSystem>(SystemUpdatePhase.GameSimulation);
+            updateSystem.UpdateBefore<EmergencyRouteSystem, SignalControlSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<AutoManageSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<OptimizerSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAfter<AutopilotSystem, OptimizerSystem>(SystemUpdatePhase.GameSimulation);

@@ -283,6 +283,13 @@ namespace TLL.Core.Control
             LateWalk(ref s, in c, ref phases);
             bool pastMin = s.StageSteps >= current.MinGreen && s.WalkLeft == 0;
 
+            // An emergency vehicle on its way for the phase that has green
+            // already: the green holds as one entered for the vehicle does.
+            // Asked for well ahead of the vehicle, it would otherwise run
+            // out while its queue is gone.
+            if (current.Preempt)
+                s.Preempting = true;
+
             if (s.Preempting)
             {
                 if (current.Preempt || !pastMin)

@@ -43,6 +43,8 @@ namespace TLL.UI
                 for (int b = 0; b < PedestrianConflicts.Window; b++)
                     history += (runtime.Conflicts.History & (1 << b)) != 0 ? 'x' : '.';
                 text.Append($"  scramble {(junction.Options & JunctionOptions.Scramble) != 0}, turning vehicles waited for people in {runtime.Conflicts.Count}/{PedestrianConflicts.Window} greens [{history}], this green {runtime.ConflictThisGreen}\n");
+                if (runtime.EmergencyMovements != 0UL)
+                    text.Append($"  emergency vehicles on their way for movements 0x{runtime.EmergencyMovements:x}, asked until step {runtime.EmergencyUntil}\n");
             }
             text.Append($"  turn on red {(junction.Options & JunctionOptions.TurnOnRed) != 0}\n");
             if (em.HasComponent<AutopilotState>(node))
