@@ -66,15 +66,28 @@ window["cs2/api"] = strictModule("cs2/api", {
   useValue: (binding) => binding.value,
   trigger: (...args) => triggers.push(args),
 });
+// The game has the panel's texts from en-US.json, under "TLL." and the key
+// (LocaleSource). Many texts are empty in the code and set only in the file;
+// with the file's text, a tooltip is drawn where the game draws one.
+const texts = JSON.parse(readFileSync(join(here, "..", "..", "src", "TLL", "Localization", "en-US.json"), "utf8"));
 window["cs2/l10n"] = strictModule("cs2/l10n", {
-  useLocalization: () => ({ translate: (id, fallback) => fallback }),
+  useLocalization: () => ({
+    translate: (id, fallback) => (id.startsWith("TLL.") && id.slice(4) in texts ? texts[id.slice(4)] : fallback),
+  }),
 });
 window["cs2/ui"] = strictModule("cs2/ui", {
   Button: element("button"),
   FloatingButton: element("button"),
   Panel: element("section"),
   Scrollable: element("div"),
-  Tooltip: element("span"),
+  // The game's tooltip puts its content in a FocusBoundary, which holds a
+  // single focusable element. A second button inside it logs an error in
+  // the game each time the tooltip is drawn.
+  Tooltip: (props) => {
+    const buttons = (renderToString(React.createElement(React.Fragment, null, props.children)).match(/<button/g) || []).length;
+    if (buttons > 1) throw new Error(`A tooltip wraps ${buttons} buttons; the game's tooltip holds one (FocusBoundary).`);
+    return element("span")(props);
+  },
 });
 window["cs2/modding"] = strictModule("cs2/modding", {});
 
@@ -208,11 +221,11 @@ const scenarios = {
         ],
       },
     },
-    // Texts the open panel must show; the stand-in translation gives the fallbacks.
+    // Texts the open panel must show, in the English of en-US.json.
     expect: [
       ">Next review in 45 min<", "Pedestrian scramble · turns waited 3/8<",
       "Measured wait Ø 12 s · model Ø 9 s", "Kept out of green waves for 12 h", " •<",
-      ">ProtectedTurns + scramble •<", ">Next review changes to: ProtectedTurns + scramble<",
+      ">Protected + scramble •<", ">Next review changes to: Protected turns + scramble<",
     ],
   },
   "junction with a scramble": {
@@ -239,7 +252,7 @@ const scenarios = {
         { source: 2, target: 2, kind: 3, state: 4, volume: -1 },
       ],
     },
-    expect: [">Turns<", ">forbidden · autopilot<", ">Main Street → Oak Avenue<", ">Left · 312/h<", ">allowed · you<", ">Connect lanes<"],
+    expect: [">Turns<", ">forbidden · autopilot<", ">Main Street → Oak Avenue<", ">left · 312/h<", ">allowed · you<", ">Connect lanes<"],
   },
   "lane tool open": {
     "tll.laneToolActive": true,

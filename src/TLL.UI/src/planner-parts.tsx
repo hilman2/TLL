@@ -120,18 +120,24 @@ export const Stepper = ({ label, value, min, max, onChange, hint, format, step }
 }) => {
   const by = step ?? (value < 10 ? 1 : value < 30 ? 2 : 5);
   const text = format ? format(value) : `${Math.round(value * 10) / 10} s`;
+  // The game's tooltip holds one focusable element, so it goes on the label
+  // and the value, not around the two buttons.
   return (
-    <Hint text={hint ?? null}>
-      <div className={styles.stepper}>
-        {label && <div className={styles.stepperLabel}>{label}</div>}
-        <Button variant="flat" className={styles.stepperButton} disabled={value <= min} onSelect={() => onChange(Math.max(min, value - by))}>
-          −
-        </Button>
+    <div className={styles.stepper}>
+      {label && (
+        <Hint text={hint ?? null}>
+          <div className={styles.stepperLabel}>{label}</div>
+        </Hint>
+      )}
+      <Button variant="flat" className={styles.stepperButton} disabled={value <= min} onSelect={() => onChange(Math.max(min, value - by))}>
+        −
+      </Button>
+      <Hint text={hint ?? null}>
         <div className={classNames(styles.stepperValue, format && styles.stepperWide)}>{text}</div>
-        <Button variant="flat" className={styles.stepperButton} disabled={max !== undefined && value >= max} onSelect={() => onChange(max !== undefined ? Math.min(max, value + by) : value + by)}>
-          +
-        </Button>
-      </div>
-    </Hint>
+      </Hint>
+      <Button variant="flat" className={styles.stepperButton} disabled={max !== undefined && value >= max} onSelect={() => onChange(max !== undefined ? Math.min(max, value + by) : value + by)}>
+        +
+      </Button>
+    </div>
   );
 };

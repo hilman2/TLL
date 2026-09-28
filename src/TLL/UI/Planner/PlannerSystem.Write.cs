@@ -20,7 +20,12 @@ namespace TLL.UI.Planner
         {
             if (!m_Open || m_Draft == null || m_Layout == null)
             {
-                writer.TypeBegin("tll.Planner");
+                // The closed panel has a type name of its own. Written as a
+                // tll.Planner with only these two fields, the game crashed in
+                // TypeEnd when the planner opened and the full tll.Planner
+                // followed; under its own name it does not. The game's UI
+                // engine appears to hold a type name to its first fields.
+                writer.TypeBegin("tll.PlannerClosed");
                 writer.PropertyName("open");
                 writer.Write(false);
                 writer.PropertyName("tourSeen");
