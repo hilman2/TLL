@@ -14,11 +14,10 @@ namespace TLL.Components
     /// </summary>
     public struct AutopilotState : IComponentData, ISerializable
     {
-        private const byte kVersion = 3;
+        private const byte kVersion = 4;
 
-        /// <summary>A layout recommended but not yet applied, and in how many reviews in a row.</summary>
-        public PlanStrategy Pending;
-        public byte PendingRounds;
+        /// <summary>A layout recommended but not yet applied, and how long the running one has run.</summary>
+        public LayoutSchedule Layout;
 
         public FlashSchedule Flash;
 
@@ -52,8 +51,8 @@ namespace TLL.Components
         public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
         {
             writer.Write(kVersion);
-            writer.Write((byte)Pending);
-            writer.Write(PendingRounds);
+            writer.Write((byte)Layout.Pending);
+            writer.Write(Layout.PendingReviews);
             writer.Write(Flash.RoundsSinceChange);
             writer.Write(Flash.EndedByBacklog);
             for (int i = 0; i < LayoutMemory.Layouts * 2; i++)
@@ -64,13 +63,16 @@ namespace TLL.Components
                 writer.Write(c.Backlog);
             }
             writer.Write(WaveBan);
+            writer.Write(Layout.Age);
         }
 
         public void Deserialize<TReader>(TReader reader) where TReader : IReader
         {
             reader.Read(out byte version);
             reader.Read(out byte pending);
-            reader.Read(out PendingRounds);
+            reader.Read(out Layout.PendingReviews);
+            // Saves from before the dwell count: the running layout is old.
+            Layout.Age = byte.MaxValue;
             reader.Read(out Flash.RoundsSinceChange);
             if (version >= 2)
                 reader.Read(out Flash.EndedByBacklog);
@@ -86,7 +88,9 @@ namespace TLL.Components
                 }
                 reader.Read(out WaveBan);
             }
-            Pending = (PlanStrategy)pending;
+            if (version >= 4)
+                reader.Read(out Layout.Age);
+            Layout.Pending = (PlanStrategy)pending;
         }
     }
 }

@@ -434,7 +434,7 @@ namespace TLL.UI
             writer.PropertyName("tooQuiet");
             writer.Write(a.TooQuiet);
             writer.PropertyName("pending");
-            writer.Write(a.PendingRounds > 0 ? (int)a.Pending : -1);
+            writer.Write(a.Layout.PendingReviews > 0 ? (int)a.Layout.Pending : -1);
             writer.PropertyName("measuredWait");
             writer.Write(a.MeasuredWait);
             writer.PropertyName("modelledWait");

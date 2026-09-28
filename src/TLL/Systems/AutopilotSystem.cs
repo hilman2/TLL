@@ -41,7 +41,6 @@ namespace TLL.Systems
         /// </summary>
         public const int kLayoutEvery = 4;
         public const int kRoundFrames = 4096;
-        private const int kConfirmRounds = 2;
 
         /// <summary>Share of the new round in the recent figure: the last three or so rounds, about a game hour, count.</summary>
         private const float kRecentWeight = 0.3f;
@@ -255,7 +254,7 @@ namespace TLL.Systems
         {
             AutopilotState state = EntityManager.HasComponent<AutopilotState>(node)
                 ? EntityManager.GetComponentData<AutopilotState>(node)
-                : new AutopilotState { Flash = FlashSchedule.Start };
+                : new AutopilotState { Flash = FlashSchedule.Start, Layout = LayoutSchedule.Start };
             DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node, true);
             DynamicBuffer<JunctionMovement> movements = EntityManager.GetBuffer<JunctionMovement>(node, true);
             List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
@@ -462,24 +461,8 @@ namespace TLL.Systems
 
             if (settings.AutoLayout != AutoLayout.Automatic)
                 return;
-            if (choice == junction.Strategy)
-            {
-                state.PendingRounds = 0;
-                return;
-            }
-            if (state.Pending == choice)
-            {
-                state.PendingRounds++;
-            }
-            else
-            {
-                state.Pending = choice;
-                state.PendingRounds = 1;
-            }
-            // A layout that measurably jams is left at the first review that
-            // finds one expected to cope; otherwise two reviews must agree.
             bool jammed = running >= 0 && state.Memory.Get(running, wave).Backlog >= LayoutMemory.BacklogShare;
-            if (state.PendingRounds < (jammed ? 1 : kConfirmRounds))
+            if (!state.Layout.Review(junction.Strategy, choice, jammed))
                 return;
             if (settings.VerboseLogging)
             {
@@ -493,7 +476,6 @@ namespace TLL.Systems
             }
             m_LayoutChanges++;
             junction.Strategy = choice;
-            state.PendingRounds = 0;
             rebuild = true;
         }
 
