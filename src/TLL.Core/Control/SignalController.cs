@@ -115,6 +115,9 @@ namespace TLL.Core.Control
         /// <summary>Set after the first step, so a fresh controller can pick its start phase.</summary>
         public bool Started;
 
+        /// <summary>Why the green ends that a decision just ended; recorded in PhaseData.LastEnd as the change begins.</summary>
+        public GreenEnd Ending;
+
         /// <summary>
         /// The crosswalks of the green phase show walk. Only with a
         /// pedestrian call, except in fixed-time mode, where pedestrians
@@ -280,6 +283,7 @@ namespace TLL.Core.Control
             int preempt = PreemptingPhase(ref phases, s.Phase);
             if (preempt >= 0 && pastMin)
             {
+                s.Ending = GreenEnd.Emergency;
                 BeginTransition(ref s, in c, ref phases, preempt, globalStep);
                 return;
             }
@@ -364,6 +368,7 @@ namespace TLL.Core.Control
                 if (Requested(in c, ref phases[candidate]))
                 {
                     CountEnd(ref current, maxedOut, gappedOut);
+                    s.Ending = gappedOut ? GreenEnd.Empty : GreenEnd.Maximum;
                     return candidate;
                 }
             }
@@ -419,20 +424,32 @@ namespace TLL.Core.Control
             bool drain = c.Mode == ControlMode.Drain;
             bool maxedOut = s.StageSteps >= (drain ? c.DrainMax : current.MaxGreen);
             bool gappedOut = drain ? current.Queue < 1f || current.Blocked : current.Demand <= 0f;
-            bool starvedCut = bestStarved && !drain;
-            // A heavier queue elsewhere takes over only once the running
-            // phase's own queue has left and it serves stragglers. Cutting
-            // into a queue still leaving costs the change and the start-up
-            // again, and its rest waits a whole round more; with a tram
-            // counting ten cars, the phase opposite a tram line got hardly
-            // more than its minimum green.
-            bool outweighed = !drain && !bestStarved && current.Queue < 1f
+            // Neither a heavier queue elsewhere nor a phase that has waited
+            // too long cuts into a queue that is still leaving: that costs the
+            // change and the start-up again, and the rest of the queue waits
+            // a whole round more. They take over once only stragglers are
+            // left, or the queue stands because its exits are backed up, and
+            // otherwise at the maximum green. With a tram counting ten cars,
+            // the phase opposite a tram line got hardly more than its minimum
+            // green, and at junctions of five phases the ones rarely chosen
+            // cut in at the maximum wait all the time.
+            bool leaving = current.Queue >= 1f && !current.Blocked;
+            bool starvedCut = bestStarved && !drain && !leaving;
+            bool outweighed = !drain && !bestStarved && !leaving
                 && phases[best].Pressure > current.Pressure * c.SwitchRatio && phases[best].Pressure > current.Pressure + 1f;
             if (!(maxedOut || gappedOut || starvedCut || outweighed))
                 return -1;
             if (!drain && !maxedOut && !bestStarved && HoldForPlatoon(ref current, ref phases[best]))
                 return -1;
             CountEnd(ref current, maxedOut, gappedOut);
+            if (gappedOut)
+                s.Ending = current.Queue >= 1f && current.Blocked ? GreenEnd.Blocked : GreenEnd.Empty;
+            else if (maxedOut)
+                s.Ending = GreenEnd.Maximum;
+            else if (starvedCut)
+                s.Ending = current.Blocked ? GreenEnd.Blocked : GreenEnd.Starved;
+            else
+                s.Ending = GreenEnd.Outweighed;
             return called >= 0 && !bestStarved ? called : best;
         }
 
@@ -534,6 +551,12 @@ namespace TLL.Core.Control
         private static void BeginTransition<TPhases>(ref ControllerState s, in ControllerConfig c, ref TPhases phases, int next, long globalStep)
             where TPhases : struct, IPhaseAccess
         {
+            if (s.Stage == Stage.Green && s.Phase < phases.Count)
+            {
+                phases[s.Phase].LastGreen = s.StageSteps;
+                phases[s.Phase].LastEnd = s.Ending != GreenEnd.None ? s.Ending : GreenEnd.Schedule;
+            }
+            s.Ending = GreenEnd.None;
             s.Next = (byte)next;
             s.StageSteps = 0;
             if (c.Yellow > 0)

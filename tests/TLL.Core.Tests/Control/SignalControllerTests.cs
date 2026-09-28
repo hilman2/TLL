@@ -517,6 +517,75 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
+        public void AStarvedPhaseWaitsForALeavingQueue()
+        {
+            // Phase 1 has waited past the maximum wait. Phase 0 still has a
+            // queue leaving; it keeps its green up to its maximum, then phase
+            // 1 comes.
+            var config = ControllerConfig.Default(ControlMode.Adaptive);
+            config.MaxWait = (ushort)SimTime.ToSteps(30f);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 40, 20), ControllerHarness.Phase(5, 40, 20));
+            h.Run(0, 600, (s, p) =>
+            {
+                p[0].Demand = 9f;
+                p[0].Queue = 9f;
+                p[0].Pressure = 9f;
+                bool later = h.GreenStarts().Any(g => g.phase == 0);
+                p[1].Demand = later ? 2f : 0f;
+                p[1].Queue = later ? 2f : 0f;
+                p[1].Pressure = later ? 2f : 0f;
+            });
+            var first = h.GreenLengths().First(g => g.phase == 0);
+            Assert.True(first.length >= h.Phases[0].MaxGreen, $"phase 0 green cut to {first.length} steps, maximum {h.Phases[0].MaxGreen}");
+            Assert.Equal(GreenEnd.Maximum, h.Phases[0].LastEnd);
+        }
+
+        [Fact]
+        public void AStarvedPhaseStillEndsAGreenForStragglers()
+        {
+            // No queue left at phase 0, only a trickle, with more pressure
+            // than phase 1 has. The maximum wait ends the green, not the
+            // maximum green.
+            var config = ControllerConfig.Default(ControlMode.Adaptive);
+            config.MaxWait = (ushort)SimTime.ToSteps(30f);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 90, 20), ControllerHarness.Phase(5, 40, 20));
+            h.Run(0, 800, (s, p) =>
+            {
+                p[0].Demand = 2f;
+                p[0].Queue = 0f;
+                p[0].Pressure = 2f;
+                bool later = h.GreenStarts().Any(g => g.phase == 0);
+                p[1].Demand = later ? 1f : 0f;
+                p[1].Queue = later ? 1f : 0f;
+                p[1].Pressure = later ? 1f : 0f;
+            });
+            var first = h.GreenLengths().First(g => g.phase == 0);
+            Assert.InRange(first.length, config.MaxWait - 2, config.MaxWait + 2);
+            Assert.Equal(GreenEnd.Starved, h.Phases[0].LastEnd);
+        }
+
+        [Fact]
+        public void AQueueHeldByItsExitGivesWayToAStarvedPhase()
+        {
+            var config = ControllerConfig.Default(ControlMode.Adaptive);
+            config.MaxWait = (ushort)SimTime.ToSteps(30f);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 90, 20), ControllerHarness.Phase(5, 40, 20));
+            h.Run(0, 800, (s, p) =>
+            {
+                p[0].Demand = 9f;
+                p[0].Queue = 9f;
+                p[0].Pressure = 0.9f;
+                p[0].Blocked = h.GreenStarts().Any(g => g.phase == 0);
+                bool later = h.GreenStarts().Any(g => g.phase == 0);
+                p[1].Demand = later ? 1f : 0f;
+                p[1].Queue = later ? 1f : 0f;
+                p[1].Pressure = later ? 0.5f : 0f;
+            });
+            var first = h.GreenLengths().First(g => g.phase == 0);
+            Assert.InRange(first.length, config.MaxWait - 2, config.MaxWait + 2);
+        }
+
+        [Fact]
         public void DrainRunsUntilTheQueueHasLeft()
         {
             // 30 vehicles leave at one every 2 s: about 58 s until fewer than

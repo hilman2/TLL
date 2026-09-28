@@ -23,6 +23,33 @@ namespace TLL.Core.Control
         Scramble = 4,
     }
 
+    /// <summary>Why a green ended, for diagnostics.</summary>
+    public enum GreenEnd : byte
+    {
+        None,
+
+        /// <summary>Its queue had left (drain mode) or nobody asked for it any more.</summary>
+        Empty,
+
+        /// <summary>It reached its maximum green.</summary>
+        Maximum,
+
+        /// <summary>Another phase had waited past the maximum wait.</summary>
+        Starved,
+
+        /// <summary>Only stragglers were left, and another phase had far more pressure.</summary>
+        Outweighed,
+
+        /// <summary>Its queue could not leave: the exits were backed up.</summary>
+        Blocked,
+
+        /// <summary>An emergency vehicle asked for another phase.</summary>
+        Emergency,
+
+        /// <summary>The fixed schedule of the timed modes, or the fixed order of the actuated mode.</summary>
+        Schedule,
+    }
+
     /// <summary>
     /// Configuration, sensor readings and running counters of one phase.
     /// Durations are in controller steps (see <see cref="SimTime"/>).
@@ -90,6 +117,10 @@ namespace TLL.Core.Control
 
         /// <summary>Steps this phase has had demand without green. Reset when it gets green.</summary>
         public ushort WaitSteps;
+
+        /// <summary>Length in steps of this phase's last green, and why it ended.</summary>
+        public ushort LastGreen;
+        public GreenEnd LastEnd;
 
         /// <summary>Statistics for the optimiser. The optimiser resets them after reading.</summary>
         public PhaseStatistics Stats;

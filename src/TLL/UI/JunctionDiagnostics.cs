@@ -90,6 +90,7 @@ namespace TLL.UI
                 var d = phases[p].Data;
                 text.Append($"  phase {p + 1}: demand {d.Demand:0.#}, queue {d.Queue:0.#}, pressure {d.Pressure:0.#}, approaching {d.Approaching:0.#}, call {d.PedestrianCall}, waiting {SimTime.ToSeconds(d.WaitSteps):0} s, flags {d.Flags}"
                     + $"; green min {SimTime.ToSeconds(d.MinGreen):0} s, max {SimTime.ToSeconds(d.MaxGreen):0} s, planned {SimTime.ToSeconds(d.Green):0} s, walk {SimTime.ToSeconds(d.WalkGreen):0} s"
+                    + $"; last green {SimTime.ToSeconds(d.LastGreen):0} s, ended: {d.LastEnd}"
                     + $"; since the optimiser's last round {d.Stats.Greens} greens of {(d.Stats.Greens > 0 ? SimTime.ToSeconds((int)(d.Stats.GreenSteps / d.Stats.Greens)) : 0f):0} s on average, {d.Stats.MaxOuts} at the maximum, {d.Stats.GapOuts} ran empty\n");
             }
 

@@ -162,7 +162,7 @@ namespace TLL.Systems
             }
 
             MarkMajorRoad(lanes, model, edges, node, junction.MajorApproach);
-            WriteBuffers(node, storedMovements, phases, lanes, keys);
+            bool carriesOn = WriteBuffers(node, storedMovements, phases, lanes, keys);
             WriteDetectors(node, JunctionAnalysis.DetectorChain(EntityManager, node, layout, SignalControlSystem.kDetectionRange));
             WriteMeasurement(node, lanes, keys, savedToCurrent);
             WriteSignalGroups(node, phases, lanes, keys, layout.Unassigned, ref lights);
@@ -170,7 +170,8 @@ namespace TLL.Systems
             if (EntityManager.HasComponent<JunctionDirty>(node))
                 EntityManager.RemoveComponent<JunctionDirty>(node);
             if (Mod.Settings != null && Mod.Settings.VerboseLogging)
-                Mod.Log.Info($"Junction {node}: {edges.Count} approaches, {keys.Count} movements, {lanes.Count} lanes, {phases.Count} phases, mode {junction.Mode}.\n{Describe(model, angles, phases)}");
+                Mod.Log.Info($"Junction {node}: {edges.Count} approaches, {keys.Count} movements, {lanes.Count} lanes, {phases.Count} phases, mode {junction.Mode}, "
+                    + $"{(carriesOn ? "same plan, the controller carries on" : "new plan, the controller starts over")}.\n{Describe(model, angles, phases)}");
         }
 
         /// <summary>
@@ -558,8 +559,55 @@ namespace TLL.Systems
             }
         }
 
-        private void WriteBuffers(Entity node, List<JunctionMovement> movements, List<JunctionPhase> phases, List<LaneInfo> lanes, List<MovementKey> keys)
+        /// <summary>
+        /// Whether the node's current buffers hold exactly this plan: the same
+        /// movements, and phases giving green to the same movements in the
+        /// same order. Then a rebuild changes nothing the controller works on.
+        /// </summary>
+        private bool SamePlan(Entity node, List<JunctionMovement> movements, List<JunctionPhase> phases)
         {
+            if (!EntityManager.HasBuffer<JunctionMovement>(node) || !EntityManager.HasBuffer<JunctionPhase>(node) || !EntityManager.HasComponent<JunctionRuntime>(node))
+                return false;
+            DynamicBuffer<JunctionMovement> oldMovements = EntityManager.GetBuffer<JunctionMovement>(node, true);
+            DynamicBuffer<JunctionPhase> oldPhases = EntityManager.GetBuffer<JunctionPhase>(node, true);
+            if (oldMovements.Length != movements.Count || oldPhases.Length != phases.Count)
+                return false;
+            for (int m = 0; m < movements.Count; m++)
+            {
+                if (oldMovements[m].Source != movements[m].Source || oldMovements[m].Target != movements[m].Target || oldMovements[m].Kind != movements[m].Kind)
+                    return false;
+            }
+            for (int p = 0; p < phases.Count; p++)
+            {
+                if (oldPhases[p].Movements != phases[p].Movements)
+                    return false;
+            }
+            return true;
+        }
+
+        /// <returns>Whether the plan stayed the same and the controller carries on.</returns>
+        private bool WriteBuffers(Entity node, List<JunctionMovement> movements, List<JunctionPhase> phases, List<LaneInfo> lanes, List<MovementKey> keys)
+        {
+            // The game rebuilds a node for many reasons that leave its plan
+            // as it was, a building connecting to the road nearby among them.
+            // Starting the controller over each time cut the running green,
+            // began with all red, and forgot how long every phase had waited.
+            bool samePlan = SamePlan(node, movements, phases);
+            if (samePlan)
+            {
+                DynamicBuffer<JunctionPhase> oldPhases = EntityManager.GetBuffer<JunctionPhase>(node, true);
+                for (int p = 0; p < phases.Count; p++)
+                {
+                    JunctionPhase phase = phases[p];
+                    PhaseData old = oldPhases[p].Data;
+                    phase.Data.WaitSteps = old.WaitSteps;
+                    phase.Data.LastGreen = old.LastGreen;
+                    phase.Data.LastEnd = old.LastEnd;
+                    phase.Data.Stats = old.Stats;
+                    phases[p] = phase;
+                }
+            }
+
             DynamicBuffer<JunctionMovement> movementBuffer = EntityManager.HasBuffer<JunctionMovement>(node)
                 ? EntityManager.GetBuffer<JunctionMovement>(node)
                 : EntityManager.AddBuffer<JunctionMovement>(node);
@@ -590,19 +638,32 @@ namespace TLL.Systems
                 });
             }
 
-            // A rebuilt plan starts its controller from scratch. The
-            // pedestrian conflicts are about the crossing, not the plan: the
-            // scramble stays until its review, whatever else changes.
+            // A new plan starts its controller from scratch; the same plan
+            // carries on where it was. Either way the traffic counters start
+            // over (WriteMeasurement), so the autopilot's round in progress
+            // is not measured. The pedestrian conflicts are about the
+            // crossing, not the plan: the scramble stays until its review,
+            // whatever else changes.
             var runtime = new JunctionRuntime();
             if (EntityManager.HasComponent<JunctionRuntime>(node))
             {
-                runtime.Conflicts = EntityManager.GetComponentData<JunctionRuntime>(node).Conflicts;
+                JunctionRuntime old = EntityManager.GetComponentData<JunctionRuntime>(node);
+                if (samePlan)
+                {
+                    runtime = old;
+                    runtime.CountsSince = 0;
+                }
+                else
+                {
+                    runtime.Conflicts = old.Conflicts;
+                }
                 EntityManager.SetComponentData(node, runtime);
             }
             else
             {
                 EntityManager.AddComponentData(node, runtime);
             }
+            return samePlan;
         }
 
         private void WriteDetectors(Entity node, List<DetectorLane> detectors)
