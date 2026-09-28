@@ -135,7 +135,7 @@ One record per change at a junction. `kind` says which, and the fields vary with
 | kind | fields |
 |---|---|
 | `layout` | `from`, `to`, `jammed`, `tried` (measured before), `expected_delay_s`, `current_delay_s`, `window`; a layout the green waves chose has `reason` `wave` and the `group` instead |
-| `flash` | `to` (flashing or not), `reason` (`traffic`, `backlog`, `setting`), `major_per_h`, `minor_per_h`, `minor_total_per_h`, `side_load`, `worst_free_queue` |
+| `flash` | `to` (flashing or not), `reason` (`traffic`, `advice` when the autopilot advises priority rules, `backlog`, `setting`), `major_per_h`, `minor_per_h`, `minor_total_per_h`, `side_load`, `worst_free_queue` |
 | `turn_on_red` | `to`, `layout` |
 | `scramble` | `to` (pedestrians diverted into the scramble, for good), `conflicts` in the last 8 greens |
 | `wave` | `action`: `start`, `replan`, `keep` or `reject` a corridor, `end` one that did not help, `layouts` when members got layouts that let a wave run, `trial_failed` when the corridor still had no band with them (all at the corridor's first junction, with `group`, `members`, `junctions`, `cycle_s`, `band_a_s`, `band_b_s`); `leave` for a junction taken out of a wave. For `keep`, the figures are those of the plan it was compared with; for `layouts`, those of the plan on paper. |

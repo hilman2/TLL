@@ -63,6 +63,26 @@ namespace TLL.Core.Tests.Advisor
         }
 
         [Fact]
+        public void AdvisedPriorityRulesFlashAboveTheNightThreshold()
+        {
+            // Junction 1315988: a main road of 593 vehicles an hour, a side
+            // road of 52 at 11 % of its gap capacity. Too much traffic in all
+            // for the night threshold, but the side road copes easily, and the
+            // autopilot advises priority rules.
+            var s = FlashSchedule.Start;
+            Assert.True(s.Round(false, true, 593f, 52f, 60f, 0f, removeSignals: true));
+            var without = FlashSchedule.Start;
+            Assert.False(without.Round(false, true, 593f, 52f, 60f, 0f, removeSignals: false));
+        }
+
+        [Fact]
+        public void AdvisedPriorityRulesStillEndAtABacklog()
+        {
+            var s = new FlashSchedule();
+            Assert.False(s.Round(true, true, 593f, 52f, 60f, FlashSchedule.BacklogQueue, removeSignals: true));
+        }
+
+        [Fact]
         public void SwitchedOffEndsFlashing()
         {
             var s = FlashSchedule.Start;

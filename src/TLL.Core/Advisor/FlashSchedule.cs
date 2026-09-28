@@ -45,12 +45,18 @@ namespace TLL.Core.Advisor
         /// <param name="allowed">Flashing is on in the settings and the junction has a main road.</param>
         /// <param name="major">See <see cref="FlashAdvisor.Decide"/>; likewise minor and totalMinor.</param>
         /// <param name="worstQueue">Mean vehicles waiting per lane over the last round, on the approach where it is highest.</param>
-        public bool Round(bool flashing, bool allowed, float major, float minor, float totalMinor, float worstQueue)
+        /// <param name="removeSignals">
+        /// The autopilot advises priority rules for the junction even at its
+        /// peak (SignalAdvisor): then it flashes whatever the traffic, as far
+        /// as no queue builds up. The traffic thresholds of FlashAdvisor are
+        /// for quiet hours at junctions that need their signals otherwise.
+        /// </param>
+        public bool Round(bool flashing, bool allowed, float major, float minor, float totalMinor, float worstQueue, bool removeSignals = false)
         {
             if (RoundsSinceChange < ushort.MaxValue)
                 RoundsSinceChange++;
             bool backlog = flashing && worstQueue >= BacklogQueue;
-            bool wanted = allowed && !backlog && FlashAdvisor.Decide(flashing, major, minor, totalMinor);
+            bool wanted = allowed && !backlog && (removeSignals || FlashAdvisor.Decide(flashing, major, minor, totalMinor));
             if (wanted == flashing)
                 return flashing;
             int hold = EndedByBacklog ? BacklogHoldRounds : HoldRounds;

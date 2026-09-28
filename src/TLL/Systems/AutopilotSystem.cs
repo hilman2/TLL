@@ -296,7 +296,8 @@ namespace TLL.Systems
 
             // Flashing yellow at low traffic.
             bool flashing = junction.Mode == ControlMode.Flashing;
-            bool wantFlash = state.Flash.Round(flashing, settings.AutoFlash && majorApproach >= 0, major, minor, minorTotal, worstQueue);
+            bool wantFlash = state.Flash.Round(flashing, settings.AutoFlash && majorApproach >= 0, major, minor, minorTotal, worstQueue,
+                state.SignalAdvice == SignalAdvice.RemoveSignals);
             if (wantFlash != flashing)
             {
                 bool backlog = !wantFlash && worstQueue >= FlashSchedule.BacklogQueue;
@@ -304,7 +305,8 @@ namespace TLL.Systems
                     Mod.Log.Info($"Autopilot: junction {node} stops flashing, {worstQueue:0.#} vehicles waiting per lane.");
                 MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "flash")?
                     .Add("to", wantFlash)
-                    .Add("reason", backlog ? "backlog" : !settings.AutoFlash ? "setting" : "traffic")
+                    .Add("reason", backlog ? "backlog" : !settings.AutoFlash ? "setting"
+                        : state.SignalAdvice == SignalAdvice.RemoveSignals ? "advice" : "traffic")
                     .Add("major_per_h", major)
                     .Add("minor_per_h", minor)
                     .Add("minor_total_per_h", minorTotal)
