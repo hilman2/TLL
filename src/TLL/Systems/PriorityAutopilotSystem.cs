@@ -44,6 +44,7 @@ namespace TLL.Systems
         private const float kFlowUpdatesPerHour = 262144f / 512f / 24f;
 
         private SimulationSystem m_Simulation;
+        private Game.City.CityConfigurationSystem m_CityConfiguration;
         private EntityQuery m_Query;
 
         public override int GetUpdateInterval(SystemUpdatePhase phase)
@@ -55,6 +56,7 @@ namespace TLL.Systems
         {
             base.OnCreate();
             m_Simulation = World.GetOrCreateSystemManaged<SimulationSystem>();
+            m_CityConfiguration = World.GetOrCreateSystemManaged<Game.City.CityConfigurationSystem>();
             m_Query = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[] { ComponentType.ReadOnly<Node>(), ComponentType.ReadOnly<ConnectedEdge>(), ComponentType.ReadOnly<SubLane>() },
@@ -78,30 +80,90 @@ namespace TLL.Systems
                     if ((uint)node.Index % kSlices != slice || changed >= kMaxChanges)
                         continue;
                     reviewed++;
-                    if (Review(node, settings.AutoPrioritySigns, settings.VerboseLogging))
+                    if (Review(node, settings))
                         changed++;
                 }
             }
             if (changed > 0)
-                Mod.Log.Info($"Priority signs: {changed} of {reviewed} junctions without signals changed their signs.");
+                Mod.Log.Info($"Junctions without signals: {changed} of {reviewed} changed their signs or lane arrows.");
+        }
+
+        /// <returns>Whether the junction's signs or lane arrows changed.</returns>
+        private bool Review(Entity node, Setting settings)
+        {
+            List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
+            if (edges.Count < 3 || edges.Count > 64)
+                return false;
+            bool ours = false;
+            bool player = false;
+            if (EntityManager.HasBuffer<PriorityRule>(node))
+            {
+                DynamicBuffer<PriorityRule> rules = EntityManager.GetBuffer<PriorityRule>(node, true);
+                for (int i = 0; i < rules.Length; i++)
+                {
+                    player |= rules[i].ByPlayer;
+                    ours |= !rules[i].ByPlayer;
+                }
+            }
+            float[,] flow = Flow(node, edges, ours || player);
+            bool changed = !player && ReviewSigns(node, edges, flow, settings.AutoPrioritySigns, settings.VerboseLogging);
+            changed |= ReviewLanes(node, flow, settings.AutoLaneArrows);
+            return changed;
+        }
+
+        /// <summary>
+        /// The autopilot's lane rules for the junction (LaneArrowReview),
+        /// judged by the load of its busiest lanes; with the setting off, its
+        /// rules go.
+        /// </summary>
+        private bool ReviewLanes(Entity node, float[,] flow, bool enabled)
+        {
+            List<LaneConnectionRule> rules = null;
+            string summary = null;
+            if (enabled && flow != null)
+            {
+                rules = LaneArrowReview.Decide(EntityManager, node, flow, null, m_CityConfiguration.leftHandTraffic, out summary);
+            }
+            else if (!enabled && EntityManager.HasBuffer<LaneConnectionRule>(node))
+            {
+                DynamicBuffer<LaneConnectionRule> stored = EntityManager.GetBuffer<LaneConnectionRule>(node, true);
+                var players = new List<LaneConnectionRule>();
+                for (int i = 0; i < stored.Length; i++)
+                {
+                    if (!stored[i].Auto)
+                        players.Add(stored[i]);
+                }
+                if (players.Count != stored.Length)
+                    rules = players;
+            }
+            if (rules == null)
+                return false;
+            DynamicBuffer<LaneConnectionRule> buffer = EntityManager.HasBuffer<LaneConnectionRule>(node)
+                ? EntityManager.GetBuffer<LaneConnectionRule>(node)
+                : EntityManager.AddBuffer<LaneConnectionRule>(node);
+            buffer.Clear();
+            foreach (LaneConnectionRule rule in rules)
+                buffer.Add(rule);
+            EntityManager.AddComponent<RebuildRequest>(node);
+            if (summary != null)
+                Mod.Log.Info($"Lane arrows: junction {node} changes {summary}.");
+            MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "lanes")?.Add("summary", summary ?? "off").Add("rules", rules.Count));
+            return true;
         }
 
         /// <returns>Whether the junction's signs changed.</returns>
-        private bool Review(Entity node, bool enabled, bool verbose)
+        private bool ReviewSigns(Entity node, List<Entity> edges, float[,] flow, bool enabled, bool verbose)
         {
             bool hasRules = EntityManager.HasBuffer<PriorityRule>(node);
             ulong current = 0UL;
             bool any = false;
             // The rules no longer match the roads: one was added, replaced or removed.
             bool stale = false;
-            List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
             if (hasRules)
             {
                 DynamicBuffer<PriorityRule> rules = EntityManager.GetBuffer<PriorityRule>(node, true);
                 for (int i = 0; i < rules.Length; i++)
                 {
-                    if (rules[i].ByPlayer)
-                        return false;
                     any = true;
                     int approach = edges.IndexOf(rules[i].Edge);
                     stale |= approach < 0;
@@ -110,7 +172,7 @@ namespace TLL.Systems
                 }
                 stale |= any && rules.Length != edges.Count;
             }
-            ulong wanted = enabled && edges.Count >= 3 && edges.Count <= 64 ? Wanted(node, edges, current, any) : 0UL;
+            ulong wanted = enabled && flow != null ? PriorityAdvisor.Choose(flow, current) : 0UL;
             if (wanted == current && !stale && (wanted != 0UL || !any))
                 return false;
 
@@ -132,13 +194,13 @@ namespace TLL.Systems
         }
 
         /// <summary>
-        /// The approaches that should form the priority road, from the
-        /// traffic on the junction's lanes; 0 to leave the game's rule. Also
-        /// 0 where the game's rule is not to be touched: roundabouts,
-        /// motorway junctions and the game's all-way stop.
+        /// Vehicles per hour from approach [s] into approach [t], from the
+        /// traffic on the junction's lanes; null where the autopilot keeps
+        /// out: roundabouts, motorway junctions, the game's all-way stop, and
+        /// roads that only meet a path.
         /// </summary>
-        /// <param name="ours">The junction has signs of the autopilot now, which explain any Stop or Yield on its lanes.</param>
-        private ulong Wanted(Entity node, List<Entity> edges, ulong current, bool ours)
+        /// <param name="signs">The junction has signs of TLL now, which explain any Stop on its lanes.</param>
+        private float[,] Flow(Entity node, List<Entity> edges, bool signs)
         {
             int n = edges.Count;
             var flow = new float[n, n];
@@ -150,8 +212,8 @@ namespace TLL.Systems
                 if (!EntityManager.HasComponent<CarLane>(lane) || EntityManager.HasComponent<MasterLane>(lane))
                     continue;
                 CarLaneFlags flags = EntityManager.GetComponentData<CarLane>(lane).m_Flags;
-                if ((flags & (CarLaneFlags.Roundabout | CarLaneFlags.Highway)) != 0 || ((flags & CarLaneFlags.Stop) != 0 && !ours))
-                    return 0UL;
+                if ((flags & (CarLaneFlags.Roundabout | CarLaneFlags.Highway)) != 0 || ((flags & CarLaneFlags.Stop) != 0 && !signs))
+                    return null;
                 Lane path = EntityManager.GetComponentData<Lane>(lane);
                 int s = IndexOf(path.m_StartNode, edges);
                 int t = IndexOf(path.m_EndNode, edges);
@@ -165,9 +227,7 @@ namespace TLL.Systems
             }
             // A road that only meets a path or a service way is no junction
             // for cars.
-            if (math.countbits(used) < 3)
-                return 0UL;
-            return PriorityAdvisor.Choose(flow, current);
+            return math.countbits(used) < 3 ? null : flow;
         }
 
         private static int IndexOf(PathNode pathNode, List<Entity> edges)

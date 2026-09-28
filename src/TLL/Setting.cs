@@ -72,6 +72,10 @@ namespace TLL
         [SettingsUISection(kSection, kAutomation)]
         public bool AutoTurnBans { get; set; }
 
+        /// <summary>The autopilot fits the lane arrows to the traffic (LaneArrowReview).</summary>
+        [SettingsUISection(kSection, kAutomation)]
+        public bool AutoLaneArrows { get; set; }
+
         /// <summary>The autopilot puts priority signs on junctions without signals (PriorityAutopilotSystem).</summary>
         [SettingsUISection(kSection, kAutomation)]
         public bool AutoPrioritySigns { get; set; }
@@ -176,6 +180,7 @@ namespace TLL
             AutoFlash = true;
             AutoTurnBans = true;
             AutoPrioritySigns = true;
+            AutoLaneArrows = true;
             TurnOnRed = false;
             KeepClear = true;
             ShowProblems = false;

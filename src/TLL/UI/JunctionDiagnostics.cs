@@ -182,7 +182,7 @@ namespace TLL.UI
             {
                 DynamicBuffer<LaneConnectionRule> rules = em.GetBuffer<LaneConnectionRule>(node, true);
                 for (int i = 0; i < rules.Length; i++)
-                    text.Append($"  lane rule {edges.IndexOf(rules[i].FromEdge)}.{rules[i].FromLane} -> {edges.IndexOf(rules[i].ToEdge)}.{rules[i].ToLane}: {rules[i].Change}\n");
+                    text.Append($"  lane rule {edges.IndexOf(rules[i].FromEdge)}.{rules[i].FromLane} -> {edges.IndexOf(rules[i].ToEdge)}.{rules[i].ToLane}: {rules[i].Change}{(rules[i].Auto ? " by the autopilot" : "")}\n");
             }
         }
 

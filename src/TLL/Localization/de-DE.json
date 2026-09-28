@@ -17,6 +17,8 @@
   "Settings.AutoFlash.Label": "Gelb blinken bei wenig Verkehr",
   "Settings.AutoFlash.Description": "Ist an einer Kreuzung so wenig los, dass Vorfahrtsregeln reichen, blinkt sie gelb: Die Hauptstraße fährt, die Nebenstraßen achten die Vorfahrt. Mit mehr Verkehr kommen die Ampeln zurück. Getrennte Schwellen fürs Ein- und Ausschalten verhindern Flackern.",
 
+  "Settings.AutoLaneArrows.Label": "Spurpfeile nach dem Verkehr",
+  "Settings.AutoLaneArrows.Description": "Der Autopilot verteilt die Spuren jeder Zufahrt auf die Richtungen, die sie brauchen, ohne dass sich Wege in der Kreuzung kreuzen. An Ampeln wählt er die Aufteilung mit der geringsten Wartezeit über den besten Phasenplan; eine Spur für Geradeaus und Linksabbieger zugleich gibt es dort nur, wo die Zufahrt nur eine Spur hat. Ohne Ampel entlastet er die vollste Spur. Er ändert nur, wo es deutlich hilft, und lässt Zufahrten in Ruhe, an denen du selbst Spuren verbunden hast.",
   "Settings.AutoPrioritySigns.Label": "Vorfahrtstraßen nach dem Verkehr",
   "Settings.AutoPrioritySigns.Description": "An Kreuzungen ohne Ampel entscheidet das Spiel die Vorfahrt nach der Straßenart. Trägt ein Paar von Zufahrten den größten Teil des Verkehrs, bekommt es eine Vorfahrtstraße und die übrigen Zufahrten „Vorfahrt gewähren“, auch wo der Hauptstrom abbiegt. Grundlage ist die Verkehrszählung des Spiels. Jede Kreuzung wird alle sechs Spielstunden geprüft; Kreuzungen, an denen du selbst Schilder gesetzt hast, bleiben unberührt.",
   "Settings.AutoTurnBans.Label": "Wenden verbieten, wo es bremst",

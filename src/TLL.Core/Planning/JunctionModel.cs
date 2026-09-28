@@ -104,6 +104,50 @@ namespace TLL.Core.Planning
             return result;
         }
 
+        /// <summary>
+        /// The junction with other lanes on one approach: each of
+        /// <paramref name="movements"/> (model indices, in the order of
+        /// <paramref name="lanes"/>) runs on the lanes that serve it, and two
+        /// of them share a lane where one lane serves both. Ties to other
+        /// movements of the approach, such as a tram on a car lane, stay.
+        /// </summary>
+        public JunctionModel WithLanes(int[] movements, LaneUse[] lanes)
+        {
+            var result = new JunctionModel
+            {
+                ApproachCount = ApproachCount,
+                OppositeOf = OppositeOf,
+                LeftHandTraffic = LeftHandTraffic,
+                Conflicts = Conflicts,
+            };
+            for (int i = 0; i < Movements.Count; i++)
+                result.Movements.Add(Movements[i]);
+            if (SharedLane != null)
+                result.SharedLane = (ulong[])SharedLane.Clone();
+            for (int a = 0; a < movements.Length; a++)
+            {
+                int count = 0;
+                foreach (LaneUse lane in lanes)
+                    count += lane.Serves(a) ? 1 : 0;
+                Movement m = result.Movements[movements[a]];
+                m.LaneCount = Math.Max(1, count);
+                result.Movements[movements[a]] = m;
+                for (int b = 0; b < movements.Length; b++)
+                {
+                    if (a == b)
+                        continue;
+                    bool shared = false;
+                    foreach (LaneUse lane in lanes)
+                        shared |= lane.Serves(a) && lane.Serves(b);
+                    if (result.SharedLane != null)
+                        result.SharedLane[movements[a]] &= ~(1UL << movements[b]);
+                    if (shared)
+                        result.ShareLane(movements[a], movements[b]);
+                }
+            }
+            return result;
+        }
+
         /// <summary>The values of the movements a <see cref="Without"/> kept, in its order.</summary>
         public static float[] Select(float[] values, int[] kept)
         {

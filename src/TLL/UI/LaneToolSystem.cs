@@ -177,6 +177,17 @@ namespace TLL.UI
             DynamicBuffer<LaneConnectionRule> rules = EntityManager.HasBuffer<LaneConnectionRule>(m_Node)
                 ? EntityManager.GetBuffer<LaneConnectionRule>(m_Node)
                 : EntityManager.AddBuffer<LaneConnectionRule>(m_Node);
+            // The player takes the approach over: the autopilot's rules for
+            // it become the player's, and the autopilot leaves it alone.
+            for (int i = 0; i < rules.Length; i++)
+            {
+                if (rules[i].Auto && rules[i].FromEdge == from.Edge)
+                {
+                    LaneConnectionRule own = rules[i];
+                    own.Auto = false;
+                    rules[i] = own;
+                }
+            }
             for (int i = 0; i < rules.Length; i++)
             {
                 LaneConnectionRule r = rules[i];

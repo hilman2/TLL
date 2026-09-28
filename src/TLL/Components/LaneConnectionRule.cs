@@ -22,8 +22,11 @@ namespace TLL.Components
     [InternalBufferCapacity(0)]
     public struct LaneConnectionRule : IBufferElementData, ISerializable
     {
-        /// <summary>Layout of the saved data. Raise it when fields are added and read old layouts in Deserialize.</summary>
-        private const byte kVersion = 1;
+        /// <summary>
+        /// Layout of the saved data. Raise it when fields are added and read
+        /// old layouts in Deserialize. 2 added <see cref="Auto"/>.
+        /// </summary>
+        private const byte kVersion = 2;
 
         public Entity FromEdge;
         public Entity ToEdge;
@@ -34,6 +37,13 @@ namespace TLL.Components
 
         public LaneConnectionChange Change;
 
+        /// <summary>
+        /// The autopilot set the rule, fitting the lane arrows to the traffic
+        /// (LaneArrowReview); otherwise the player did. The autopilot leaves
+        /// an approach with a rule of the player's alone.
+        /// </summary>
+        public bool Auto;
+
         public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
         {
             writer.Write(kVersion);
@@ -42,6 +52,7 @@ namespace TLL.Components
             writer.Write(FromLane);
             writer.Write(ToLane);
             writer.Write((byte)Change);
+            writer.Write(Auto);
         }
 
         public void Deserialize<TReader>(TReader reader) where TReader : IReader
@@ -53,6 +64,8 @@ namespace TLL.Components
             reader.Read(out ToLane);
             reader.Read(out byte change);
             Change = (LaneConnectionChange)change;
+            if (version >= 2)
+                reader.Read(out Auto);
         }
     }
 }

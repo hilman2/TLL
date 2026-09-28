@@ -17,6 +17,8 @@
   "Settings.AutoFlash.Label": "Flashing yellow at low traffic",
   "Settings.AutoFlash.Description": "When a junction is quiet enough for priority rules, its signals flash yellow: the main road passes, the side roads give way. Signals come back as traffic grows. Separate thresholds for on and off keep it from flickering.",
 
+  "Settings.AutoLaneArrows.Label": "Lane arrows by traffic",
+  "Settings.AutoLaneArrows.Description": "The autopilot gives the lanes of each approach to the directions that need them, without paths crossing inside the junction. At signals it picks the split with the least waiting time under the best phase layout; one lane for straight and left traffic together exists there only where the approach has just one lane. Without signals it relieves the fullest lane. It changes only where it clearly helps, and leaves approaches where you connected lanes yourself.",
   "Settings.AutoPrioritySigns.Label": "Priority roads by traffic",
   "Settings.AutoPrioritySigns.Description": "At junctions without signals, the game decides right of way by the kind of road. Where one pair of approaches carries most of the traffic, it gets a priority road and the other approaches give way, also where the main flow turns. It works from the game's own traffic count. Each junction is reviewed every six game hours; junctions where you set signs yourself are left alone.",
   "Settings.AutoTurnBans.Label": "Forbid U-turns where they slow a junction",

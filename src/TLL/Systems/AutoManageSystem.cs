@@ -165,6 +165,7 @@ namespace TLL.Systems
                 // Otherwise the autopilot would put its rules back.
                 settings.AutoTurnBans = false;
                 settings.AutoPrioritySigns = false;
+                settings.AutoLaneArrows = false;
                 settings.ApplyAndSave();
                 ResetLanes();
             }

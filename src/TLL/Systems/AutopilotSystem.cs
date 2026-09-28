@@ -374,6 +374,22 @@ namespace TLL.Systems
                 m_ReviewTime.Stop();
             }
 
+            // The lane arrows, one change at a time: not while the turns change.
+            List<LaneConnectionRule> laneRules = null;
+            if (layoutRound && turnRules == null && junction.Mode != ControlMode.Flashing)
+            {
+                m_ReviewTime.Start();
+                try
+                {
+                    laneRules = ReviewLaneArrows(node, settings, statistics, movements, edges);
+                }
+                catch (Exception e)
+                {
+                    Mod.Log.Error(e, $"Junction {node}: the autopilot could not review its lane arrows.");
+                }
+                m_ReviewTime.Stop();
+            }
+
             // A junction without an estimate yet gets one at once, from the
             // saved statistics; only changing its layout waits for the
             // regular reviews.
@@ -384,7 +400,7 @@ namespace TLL.Systems
                 try
                 {
                     ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, layoutRound, round, period,
-                        turnRules != null, ref changed, ref rebuild);
+                        turnRules != null || laneRules != null, ref changed, ref rebuild);
                 }
                 catch (Exception e)
                 {
@@ -403,6 +419,16 @@ namespace TLL.Systems
                     buffer.Add(rule);
                 // The game builds the junction's lanes anew, LaneRuleSystem
                 // flags them, and the set-up plans the signals without them.
+                rebuild = true;
+            }
+            if (laneRules != null)
+            {
+                DynamicBuffer<LaneConnectionRule> buffer = EntityManager.HasBuffer<LaneConnectionRule>(node)
+                    ? EntityManager.GetBuffer<LaneConnectionRule>(node)
+                    : EntityManager.AddBuffer<LaneConnectionRule>(node);
+                buffer.Clear();
+                foreach (LaneConnectionRule rule in laneRules)
+                    buffer.Add(rule);
                 rebuild = true;
             }
             if (changed || rebuild)
@@ -469,6 +495,60 @@ namespace TLL.Systems
                 return null;
             Mod.Log.Info($"Autopilot: junction {node}{summary}.");
             MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "turns")?.Add("summary", summary).Add("rules", rules.Count));
+            return rules;
+        }
+
+        /// <summary>
+        /// The lane rules the junction should have from now on, or null to
+        /// keep its own (LaneArrowReview), judged by the delay of the best
+        /// phase layout at the day's peak. With the setting off, the
+        /// autopilot's lane rules go and the player's stay.
+        /// </summary>
+        private List<LaneConnectionRule> ReviewLaneArrows(Entity node, Setting settings, DynamicBuffer<MovementStatistics> statistics,
+            DynamicBuffer<JunctionMovement> movements, List<Entity> edges)
+        {
+            if (!settings.AutoLaneArrows)
+            {
+                if (!EntityManager.HasBuffer<LaneConnectionRule>(node))
+                    return null;
+                DynamicBuffer<LaneConnectionRule> stored = EntityManager.GetBuffer<LaneConnectionRule>(node, true);
+                var players = new List<LaneConnectionRule>();
+                for (int i = 0; i < stored.Length; i++)
+                {
+                    if (!stored[i].Auto)
+                        players.Add(stored[i]);
+                }
+                return players.Count != stored.Length ? players : null;
+            }
+            JunctionLayout layout = JunctionAnalysis.Analyse(EntityManager, node, m_CityConfiguration.leftHandTraffic);
+            if (layout == null || layout.Keys.Count != statistics.Length || movements.Length != statistics.Length)
+                return null;
+            var flow = new float[edges.Count, edges.Count];
+            var volumes = new float[statistics.Length];
+            float total = 0f;
+            for (int m = 0; m < statistics.Length; m++)
+            {
+                volumes[m] = statistics[m].Peak;
+                MovementKind kind = movements[m].Kind;
+                if (kind == MovementKind.Pedestrian || kind == MovementKind.Track)
+                    continue;
+                int s = edges.IndexOf(movements[m].Source);
+                int t = edges.IndexOf(movements[m].Target);
+                if (s < 0 || t < 0)
+                    continue;
+                flow[s, t] += statistics[m].Peak;
+                total += statistics[m].Peak;
+            }
+            if (total < kMinimumVolume)
+                return null;
+            DelayParameters parameters = DelayParameters.Default;
+            parameters.TurnOnRed = settings.TurnOnRed;
+            var model = new LaneArrowReview.SignalModel { Layout = layout, Volumes = volumes, Parameters = parameters };
+            List<LaneConnectionRule> rules = LaneArrowReview.Decide(EntityManager, node, flow, model, m_CityConfiguration.leftHandTraffic, out string summary);
+            if (rules == null)
+                return null;
+            Mod.Log.Info($"Autopilot: junction {node} changes its lane arrows: {summary}.");
+            MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "lanes")?.Add("summary", summary).Add("rules", rules.Count));
             return rules;
         }
 
