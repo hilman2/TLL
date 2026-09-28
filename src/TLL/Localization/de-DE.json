@@ -52,6 +52,8 @@
 
   "Settings.VerboseLogging.Label": "Ausführliches Protokoll",
   "Settings.VerboseLogging.Description": "Schreibt pro Kreuzungsplan eine Zeile nach Logs/TLL.log. Hilfreich, wenn du ein Problem meldest.",
+  "Settings.WriteMetrics.Label": "Messdaten aufzeichnen",
+  "Settings.WriteMetrics.Description": "Schreibt pro Spielsitzung Messdaten aller Kreuzungen nach ModsData/TLL/Metrics: Verkehr und Wartezeiten je Runde, Grünphasen und warum sie endeten, Entscheidungen des Autopiloten. Einige MB pro Spielstunde. Zum Auswerten und Verbessern der Steuerung.",
 
   "Enum.AutoControlMode.Automatic": "Automatisch (empfohlen)",
   "Enum.AutoControlMode.Adaptive": "Adaptiv",

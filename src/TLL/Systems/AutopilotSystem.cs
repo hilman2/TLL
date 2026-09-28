@@ -10,6 +10,7 @@ using TLL.Core;
 using TLL.Core.Advisor;
 using TLL.Core.Control;
 using TLL.Core.Planning;
+using TLL.Metrics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -138,7 +139,9 @@ namespace TLL.Systems
                         Measure(node, counters, now - runtime.CountsSince, round);
                         worstQueue = WorstQueuePerLane(node);
                         AddToPeriod(ref runtime, counters, junction.Mode, worstQueue);
+                        MetricsRecords.Round(EntityManager, node, junction, runtime, counters, now - runtime.CountsSince, m_Simulation.frameIndex, round, worstQueue, worstQueue >= kBacklogQueue);
                     }
+                    MetricsRecords.ClearPhases(EntityManager, node);
                     for (int i = 0; i < counters.Length; i++)
                     {
                         ref MovementCounter c = ref counters.ElementAt(i);
@@ -146,6 +149,8 @@ namespace TLL.Systems
                         c.PedestrianSteps = 0f;
                         c.QueueSteps = 0f;
                         c.FreeQueueSteps = 0f;
+                        c.Flowing = 0;
+                        c.BlockedSteps = 0;
                     }
                     runtime.CountsSince = now;
                     bool layoutRound = (round + (uint)node.Index) % kLayoutEvery == 0;
@@ -179,6 +184,7 @@ namespace TLL.Systems
                     }
                 }
             }
+            MetricsLog.Flush();
             if (round % kLayoutEvery == 0)
             {
                 Mod.Log.Info($"Autopilot: {m_Estimated} layout estimate(s) in {m_ReviewTime.Elapsed.TotalMilliseconds:0} ms, {m_LayoutChanges} layout change(s) in the last {kLayoutEvery} rounds.");
@@ -287,8 +293,17 @@ namespace TLL.Systems
             bool wantFlash = state.Flash.Round(flashing, settings.AutoFlash && majorApproach >= 0, major, minor, minorTotal, worstQueue);
             if (wantFlash != flashing)
             {
-                if (!wantFlash && worstQueue >= FlashSchedule.BacklogQueue && settings.VerboseLogging)
+                bool backlog = !wantFlash && worstQueue >= FlashSchedule.BacklogQueue;
+                if (backlog && settings.VerboseLogging)
                     Mod.Log.Info($"Autopilot: junction {node} stops flashing, {worstQueue:0.#} vehicles waiting per lane.");
+                MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "flash")?
+                    .Add("to", wantFlash)
+                    .Add("reason", backlog ? "backlog" : !settings.AutoFlash ? "setting" : "traffic")
+                    .Add("major_per_h", major)
+                    .Add("minor_per_h", minor)
+                    .Add("minor_total_per_h", minorTotal)
+                    .Add("side_load", FlashAdvisor.SideLoad(major, minor))
+                    .Add("worst_free_queue", worstQueue));
                 if (wantFlash)
                 {
                     junction.Mode = ControlMode.Flashing;
@@ -422,9 +437,10 @@ namespace TLL.Systems
 
             int running = Array.IndexOf(JunctionAdvisor.Strategies, ran);
             bool wave = junction.Mode == ControlMode.Coordinated;
+            bool recorded = false;
             if (decide)
             {
-                Remember(ref state, layout.Model, junction, ran, running, wave, recent, period);
+                recorded = Remember(ref state, layout.Model, junction, ran, running, wave, recent, period);
                 state.Memory.Fade(running);
             }
 
@@ -457,13 +473,22 @@ namespace TLL.Systems
             {
                 junction.Options ^= JunctionOptions.TurnOnRed;
                 changed = true;
+                MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "turn_on_red")?.Add("to", turnOnRed).Add("layout", upcoming.ToString()));
             }
 
-            if (settings.AutoLayout != AutoLayout.Automatic)
-                return;
             bool jammed = running >= 0 && state.Memory.Get(running, wave).Backlog >= LayoutMemory.BacklogShare;
-            if (!state.Layout.Review(junction.Strategy, choice, jammed))
+            bool change = settings.AutoLayout == AutoLayout.Automatic && state.Layout.Review(junction.Strategy, choice, jammed);
+            WriteReview(node, junction, round, state, estimates, corrected, wave, choice, jammed, change, recorded, period);
+            if (!change)
                 return;
+            MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "layout")?
+                .Add("from", junction.Strategy.ToString())
+                .Add("to", choice.ToString())
+                .Add("jammed", jammed)
+                .Add("tried", state.Memory.Get(Array.IndexOf(JunctionAdvisor.Strategies, choice), wave).Measured)
+                .Add("expected_delay_s", best.AverageDelay)
+                .Add("current_delay_s", running >= 0 ? corrected[running].AverageDelay : float.NaN)
+                .Add("window", window));
             if (settings.VerboseLogging)
             {
                 int target = Array.IndexOf(JunctionAdvisor.Strategies, choice);
@@ -477,6 +502,45 @@ namespace TLL.Systems
             m_LayoutChanges++;
             junction.Strategy = choice;
             rebuild = true;
+        }
+
+        /// <summary>
+        /// One record per review in the metrics log: every layout's estimate,
+        /// as the model has it and as corrected by the junction's memory, the
+        /// memory itself, the measurement the review recorded, and what it
+        /// decided.
+        /// </summary>
+        private void WriteReview(Entity node, ManagedJunction junction, uint round, AutopilotState state, PlanEstimate[] estimates, PlanEstimate[] corrected,
+            bool wave, PlanStrategy choice, bool jammed, bool change, bool recorded, JunctionRuntime period)
+        {
+            MetricsRow row = MetricsRecords.Review(m_Simulation.frameIndex, node, junction, round);
+            if (row == null)
+                return;
+            row.Add("wave", wave)
+                .Add("choice", choice.ToString())
+                .Add("jammed", jammed)
+                .Add("change", change)
+                .Add("pending", state.Layout.PendingReviews)
+                .Add("age", state.Layout.Age)
+                .Add("recorded", recorded)
+                .Add("period_rounds", period.PeriodRounds)
+                .Add("period_vehicles", period.PeriodVehicles)
+                .Add("period_backlog", period.PeriodBacklog)
+                .Add("measured_wait_s", recorded ? state.MeasuredWait : float.NaN)
+                .Add("modelled_wait_s", recorded ? state.ModelledWait : float.NaN);
+            for (int i = 0; i < estimates.Length && i < MetricsRecords.LayoutColumns.Length; i++)
+            {
+                string name = MetricsRecords.LayoutColumns[i];
+                Calibration c = state.Memory.Get(i, wave);
+                row.Add("est_delay_" + name, estimates[i].AverageDelay)
+                    .Add("est_load_" + name, estimates[i].WorstSaturation)
+                    .Add("cor_delay_" + name, corrected[i].AverageDelay)
+                    .Add("cor_load_" + name, corrected[i].WorstSaturation)
+                    .Add("factor_" + name, c.Measured ? c.Factor : float.NaN)
+                    .Add("samples_" + name, c.Samples)
+                    .Add("backlog_" + name, c.Backlog);
+            }
+            MetricsLog.Write(row);
         }
 
         private static string Remembered(LayoutMemory memory, int layout, bool wave)
@@ -497,21 +561,23 @@ namespace TLL.Systems
         /// expects of the layout for the period's traffic. A period that
         /// mixed running alone and in a wave, or flashed, is left out.
         /// </summary>
-        private static void Remember(ref AutopilotState state, JunctionModel model, ManagedJunction junction, PlanStrategy ran, int running, bool wave,
+        /// <returns>Whether the period was recorded.</returns>
+        private static bool Remember(ref AutopilotState state, JunctionModel model, ManagedJunction junction, PlanStrategy ran, int running, bool wave,
             float[] recent, JunctionRuntime period)
         {
             if (running < 0 || period.PeriodMixed || period.PeriodWave != wave
                 || period.PeriodRounds < kMinPeriodRounds || period.PeriodVehicles < kMinPeriodVehicles)
-                return;
+                return false;
             DelayParameters p = DelayParameters.Default;
             p.TurnOnRed = (junction.Options & JunctionOptions.TurnOnRed) != 0;
             PlanEstimate e = DelayModel.Estimate(model, PhasePlanner.Build(model, ran), recent, p);
-            if (e.Vehicles <= 0f)
-                return;
+            if (e.Vehicles <= 0f || e.VehicleDelay / e.Vehicles < LayoutMemory.MinModelled)
+                return false;
             float measured = period.PeriodWait / period.PeriodVehicles;
             state.Memory.Record(running, wave, measured, e.VehicleDelay / e.Vehicles, period.PeriodBacklog);
             state.MeasuredWait = measured;
             state.ModelledWait = e.VehicleDelay / e.Vehicles;
+            return true;
         }
 
         /// <summary>The day is split into this many windows, each with its own traffic figures.</summary>

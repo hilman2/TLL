@@ -6,8 +6,10 @@ using Game.City;
 using Game.Common;
 using Game.Net;
 using Game.Pathfind;
+using Game.Simulation;
 using Game.Tools;
 using TLL.Components;
+using TLL.Metrics;
 using TLL.Core;
 using TLL.Core.Advisor;
 using TLL.Core.Control;
@@ -38,11 +40,13 @@ namespace TLL.Systems
         private EntityQuery m_UnbuiltQuery;
         private CityConfigurationSystem m_CityConfiguration;
         private SignalControlSystem m_Control;
+        private SimulationSystem m_Simulation;
 
         protected override void OnCreate()
         {
             base.OnCreate();
             m_CityConfiguration = World.GetOrCreateSystemManaged<CityConfigurationSystem>();
+            m_Simulation = World.GetOrCreateSystemManaged<SimulationSystem>();
             m_Control = World.GetOrCreateSystemManaged<SignalControlSystem>();
             m_ChangedQuery = GetEntityQuery(new EntityQueryDesc
             {
@@ -166,6 +170,17 @@ namespace TLL.Systems
             WriteDetectors(node, JunctionAnalysis.DetectorChain(EntityManager, node, layout, SignalControlSystem.kDetectionRange));
             WriteMeasurement(node, lanes, keys, savedToCurrent);
             WriteSignalGroups(node, phases, lanes, keys, layout.Unassigned, ref lights);
+
+            // Who asked for the set-up: the game, which rebuilds nodes for
+            // reasons of its own, or TLL (a new plan, a new main road).
+            MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "rebuild")?
+                .Add("trigger", EntityManager.HasComponent<Updated>(node) ? "game" : "mod")
+                .Add("carries_on", carriesOn)
+                .Add("layout", junction.Strategy.ToString())
+                .Add("mode", junction.Mode.ToString())
+                .Add("approaches", edges.Count)
+                .Add("movements", keys.Count)
+                .Add("phases", phases.Count));
 
             if (EntityManager.HasComponent<JunctionDirty>(node))
                 EntityManager.RemoveComponent<JunctionDirty>(node);

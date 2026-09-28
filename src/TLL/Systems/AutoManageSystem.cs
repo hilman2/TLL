@@ -82,6 +82,8 @@ namespace TLL.Systems
             Requests.RebuildVanilla = false;
             Requests.ResetAllToAutomatic = false;
             Requests.RebuildGreenWaves = false;
+            // Every city loaded is a session of its own in the metrics log.
+            Metrics.MetricsLog.NewSession();
         }
 
         protected override void OnSafeUpdate()

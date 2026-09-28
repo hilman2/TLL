@@ -10,6 +10,7 @@ using TLL.Core.Control;
 using TLL.Core.Coordination;
 using TLL.Core.Optimization;
 using TLL.Core.Planning;
+using TLL.Metrics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -339,12 +340,16 @@ namespace TLL.Systems
             }
 
             if (running && Hurts(path, nodes, runningGroup))
+            {
+                WriteWave("end", path, nodes, runningGroup, default, running);
                 return false;
+            }
 
             CoordinationPlan plan = Coordinator.Plan(path, members, OptimizerLimits.Default);
             if (!Coupling.BandWorthIt(plan.BandwidthA, plan.BandwidthB, plan.Cycle, hasA, hasB, running))
             {
                 m_BandTooNarrow++;
+                WriteWave("reject", path, nodes, group, plan, running);
                 if (Mod.Settings != null && Mod.Settings.VerboseLogging)
                 {
                     var text = new System.Text.StringBuilder($"Green wave not started: {path.Junctions.Count} junctions, cycle {Core.SimTime.ToSeconds(plan.Cycle):0} s,"
@@ -368,8 +373,10 @@ namespace TLL.Systems
                     kept.Group = group;
                     EntityManager.SetComponentData(nodes[j], kept);
                 }
+                WriteWave("keep", path, nodes, group, plan, running);
                 return true;
             }
+            WriteWave(running ? "replan" : "start", path, nodes, group, plan, running);
             for (int k = 0; k < path.Junctions.Count; k++)
             {
                 Entity node = nodes[path.Junctions[k]];
@@ -561,6 +568,7 @@ namespace TLL.Systems
             ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
             if (junction.Mode != ControlMode.Coordinated && junction.Group == 0)
                 return;
+            MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "wave")?.Add("action", "leave").Add("group", junction.Group));
             junction.Mode = settings.AutoControl();
             junction.Group = 0;
             junction.Offset = 0;
@@ -568,6 +576,29 @@ namespace TLL.Systems
             DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(node);
             for (int p = 0; p < phases.Length; p++)
                 phases.ElementAt(p).Data.Flags &= ~PhaseFlags.Coordinated;
+        }
+
+        /// <summary>
+        /// A record in the metrics log for what a round did with a corridor,
+        /// at its first junction: start, keep, replan, reject or end, with its
+        /// members, cycle and bands.
+        /// </summary>
+        private void WriteWave(string action, CorridorPath path, List<Entity> nodes, int group, CoordinationPlan plan, bool running)
+        {
+            MetricsRow row = MetricsRecords.Decision(m_Simulation.frameIndex, nodes[path.Junctions[0]], "wave");
+            if (row == null)
+                return;
+            var members = new System.Text.StringBuilder();
+            foreach (int j in path.Junctions)
+                members.Append(members.Length > 0 ? "," : "").Append(nodes[j].Index);
+            MetricsLog.Write(row.Add("action", action)
+                .Add("group", group)
+                .Add("running", running)
+                .Add("members", members.ToString())
+                .Add("junctions", path.Junctions.Count)
+                .Add("cycle_s", Core.SimTime.ToSeconds(plan.Cycle))
+                .Add("band_a_s", Core.SimTime.ToSeconds(plan.BandwidthA))
+                .Add("band_b_s", Core.SimTime.ToSeconds(plan.BandwidthB)));
         }
 
         private static Entity EdgeAt(List<Entity> edges, int approach)

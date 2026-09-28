@@ -75,6 +75,29 @@
     </PropertyGroup>
   </Target>
 
+  <!-- The commit a build comes from, with "-dirty" for uncommitted changes,
+       as BuildInfo.Commit: every session of the metrics log records it, so
+       measurements can be told apart by build. "unknown" without git. -->
+  <Target Name="WriteBuildInfo" BeforeTargets="CoreCompile">
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="TllCommit" />
+      <Output TaskParameter="ExitCode" PropertyName="TllCommitExit" />
+    </Exec>
+    <Exec Command="git diff --quiet HEAD" IgnoreExitCode="true" StandardOutputImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="TllDirtyExit" />
+    </Exec>
+    <PropertyGroup>
+      <TllCommit Condition="'$(TllCommitExit)' != '0'">unknown</TllCommit>
+      <TllCommit Condition="'$(TllCommitExit)' == '0' And '$(TllDirtyExit)' != '0'">$(TllCommit)-dirty</TllCommit>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(IntermediateOutputPath)BuildInfo.g.cs" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="namespace TLL { internal static class BuildInfo { public const string Commit = &quot;$(TllCommit)&quot;%3B } }" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)BuildInfo.g.cs" />
+      <FileWrites Include="$(IntermediateOutputPath)BuildInfo.g.cs" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <!-- The traffic control logic is compiled into the mod assembly, so the mod ships as a single DLL. -->
     <Compile Include="..\TLL.Core\**\*.cs" Exclude="..\TLL.Core\obj\**;..\TLL.Core\bin\**" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />

@@ -138,6 +138,12 @@ namespace TLL.Components
         /// </summary>
         public float FreeQueueSteps;
 
+        /// <summary>Vehicles among <see cref="Vehicles"/> that entered at speed, without stopping at the line.</summary>
+        public uint Flowing;
+
+        /// <summary>Steps during which the movement's exit was backed up to the junction.</summary>
+        public uint BlockedSteps;
+
         /// <summary>Crosswalks: length in metres, for turning occupancy into people.</summary>
         public float Length;
     }

@@ -52,6 +52,8 @@
 
   "Settings.VerboseLogging.Label": "Detailed log",
   "Settings.VerboseLogging.Description": "Writes one line per junction plan to Logs/TLL.log. Useful when reporting a problem.",
+  "Settings.WriteMetrics.Label": "Record metrics",
+  "Settings.WriteMetrics.Description": "Writes measurements of every junction to ModsData/TLL/Metrics, one folder per game session: traffic and waiting per round, greens and why they ended, the autopilot's decisions. A few MB per hour of play. For analysing and improving the control.",
 
   "Enum.AutoControlMode.Automatic": "Automatic (recommended)",
   "Enum.AutoControlMode.Adaptive": "Adaptive",

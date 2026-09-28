@@ -50,6 +50,13 @@ namespace TLL.Systems
         private const float kBlockedOccupancy = 0.85f;
 
         /// <summary>
+        /// Speed in m/s above which a vehicle entering the junction did not
+        /// stop at the line. One released from the queue starts from
+        /// standstill at the line and enters slower.
+        /// </summary>
+        private const float kFlowingSpeed = 5f;
+
+        /// <summary>
         /// Weight of a tram against a car in the adaptive mode's pressure,
         /// roughly their passengers at typical loads. The maximum wait keeps
         /// the cars from being starved by a busy tram line.
@@ -382,6 +389,13 @@ namespace TLL.Systems
                             if (entrant != lane.LastEntrant && position < 0.5f)
                             {
                                 counter.Vehicles++;
+                                // A vehicle that comes in at speed did not stop
+                                // at the line: the share of those is what a
+                                // green wave is measured by.
+                                if (Movings.TryGetComponent(entrant, out Game.Objects.Moving entering) && math.length(entering.m_Velocity) > kFlowingSpeed)
+                                    counter.Flowing++;
+                                if (state.Stage == Stage.Green && state.Phase < phases.Length && (phases[state.Phase].Movements & (1UL << m)) != 0)
+                                    phases.ElementAt(state.Phase).Data.Metrics.Served++;
                                 lane.LastEntrant = entrant;
                                 lanes[l] = lane;
                             }
@@ -445,6 +459,8 @@ namespace TLL.Systems
                     counter.QueueSteps += waiting[m];
                     if (!blocked[m])
                         counter.FreeQueueSteps += waiting[m];
+                    else
+                        counter.BlockedSteps++;
                 }
 
                 conflict = state.Stage == Stage.Green && state.Phase < phases.Length

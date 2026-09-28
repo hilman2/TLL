@@ -12,6 +12,7 @@ using TLL.Core;
 using TLL.Core.Advisor;
 using TLL.Core.Control;
 using TLL.Core.Planning;
+using TLL.Metrics;
 using TLL.Systems;
 using Unity.Collections;
 using Unity.Entities;
@@ -176,7 +177,11 @@ namespace TLL.UI
             AddBinding(new TriggerBinding(kGroup, "rebuildGreenWaves", () => Requests.RebuildGreenWaves = true));
             AddBinding(new TriggerBinding(kGroup, "toggleTool", () => m_Tool.Toggle()));
             AddBinding(new TriggerBinding(kGroup, "diagnose", OnDiagnose));
-            AddBinding(new TriggerBinding(kGroup, "resetAllToAutomatic", () => Requests.ResetAllToAutomatic = true));
+            AddBinding(new TriggerBinding(kGroup, "resetAllToAutomatic", () =>
+            {
+                WriteUser("reset_all", null);
+                Requests.ResetAllToAutomatic = true;
+            }));
             AddBinding(new TriggerBinding(kGroup, "toggleShowProblems", () => ChangeSetting(s => s.ShowProblems = !s.ShowProblems)));
             AddBinding(new TriggerBinding(kGroup, "toggleShowCongestion", () => ChangeSetting(s => s.ShowCongestion = !s.ShowCongestion)));
             AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "toolActive", () => m_Tool.IsActive));
@@ -572,10 +577,17 @@ namespace TLL.UI
                 camera.pivot = EntityManager.GetComponentData<Node>(node).m_Position;
         }
 
+        /// <summary>A record in the metrics log of what the player did, at the selected junction.</summary>
+        private void WriteUser(string action, string value)
+        {
+            MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, m_Selected, "user")?.Add("action", action).Add("value", value));
+        }
+
         private void OnSetMode(int mode)
         {
             if (!TryGetSelected(out ManagedJunction junction) || mode < 0 || mode > (int)ControlMode.Drain)
                 return;
+            WriteUser("mode", ((ControlMode)mode).ToString());
             TakeOverByPlayer(ref junction);
             junction.Mode = (ControlMode)mode;
             EntityManager.SetComponentData(m_Selected, junction);
@@ -612,6 +624,7 @@ namespace TLL.UI
         {
             if (!TryGetSelected(out _))
                 return;
+            WriteUser("make_automatic", null);
             Setting settings = Mod.Settings;
             ManagedJunction junction = ManagedJunction.Create(JunctionOrigin.Auto,
                 settings != null ? settings.AutoControl() : ControlMode.Adaptive,
@@ -629,6 +642,7 @@ namespace TLL.UI
         {
             if (!TryGetSelected(out ManagedJunction junction) || strategy < 0 || strategy > (int)PlanStrategy.ExclusivePedestrian)
                 return;
+            WriteUser("layout", ((PlanStrategy)strategy).ToString());
             TakeOverByPlayer(ref junction);
             junction.Strategy = (PlanStrategy)strategy;
             EntityManager.SetComponentData(m_Selected, junction);
@@ -646,6 +660,7 @@ namespace TLL.UI
             if (!TryGetSelected(out ManagedJunction junction))
                 return;
             junction.Options ^= JunctionOptions.ScrambleOnDemand;
+            WriteUser("scramble_on_demand", ((junction.Options & JunctionOptions.ScrambleOnDemand) != 0).ToString());
             TakeOverByPlayer(ref junction);
             EntityManager.SetComponentData(m_Selected, junction);
             EntityManager.GetBuffer<JunctionPhase>(m_Selected).Clear();
@@ -659,6 +674,7 @@ namespace TLL.UI
             if (!TryGetSelected(out ManagedJunction junction))
                 return;
             junction.Options ^= JunctionOptions.TurnOnRed;
+            WriteUser("turn_on_red", ((junction.Options & JunctionOptions.TurnOnRed) != 0).ToString());
             TakeOverByPlayer(ref junction);
             EntityManager.SetComponentData(m_Selected, junction);
             m_DetailTime = default;
@@ -683,6 +699,7 @@ namespace TLL.UI
             EntityManager.RemoveComponent<JunctionExcluded>(node);
             EntityManager.AddComponentData(node, junction);
             EntityManager.AddComponent<RebuildRequest>(node);
+            WriteUser("manage", origin.ToString());
             m_DetailTime = default;
             m_SummaryTime = default;
         }
@@ -691,6 +708,7 @@ namespace TLL.UI
         {
             if (!TryGetSelected(out _))
                 return;
+            WriteUser("release", null);
             // Excluded, so the automation does not take it straight back.
             JunctionInitSystem.Release(EntityManager, m_Selected, exclude: true);
             m_Selected = Entity.Null;

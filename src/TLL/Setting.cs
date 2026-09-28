@@ -111,6 +111,10 @@ namespace TLL
         [SettingsUISection(kSection, kDebug)]
         public bool VerboseLogging { get; set; }
 
+        /// <summary>Writes the metrics log (Metrics.MetricsLog).</summary>
+        [SettingsUISection(kSection, kDebug)]
+        public bool WriteMetrics { get; set; }
+
         /// <summary>The mode automatic junctions run in when neither a green wave nor flashing applies.</summary>
         public ControlMode AutoControl()
         {

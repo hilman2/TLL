@@ -48,6 +48,7 @@ namespace TLL
         public void OnDispose()
         {
             Log.Info("Unloading TLL");
+            Metrics.MetricsLog.Close();
             if (Settings != null)
             {
                 Settings.UnregisterInOptionsUI();
