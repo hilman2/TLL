@@ -332,8 +332,34 @@ const TurnsCard = ({ junction, t }: { junction: JunctionInfo; t: Translate }) =>
           </Button>
         </Hint>
       </div>
+      {laneTool && <LaneLegend t={t} />}
       {junction.turns.map((turn) => (
         <TurnRow key={`${turn.source}-${turn.target}`} turn={turn} junction={junction} t={t} />
+      ))}
+    </div>
+  );
+};
+
+/**
+ * What the lane tool's lines mean. The tool tells its states apart by the
+ * line, not only by colour (LaneToolSystem.Draw).
+ */
+const LaneLegend = ({ t }: { t: Translate }) => {
+  const rows: [string, string, string][] = [
+    [styles.legendLane, "Panel.LaneLegendConnected", "connected"],
+    [styles.legendAdded, "Panel.LaneLegendAdded", "added by you; a click removes it entirely"],
+    [styles.legendRemoved, "Panel.LaneLegendRemoved", "taken away; a click connects it again"],
+    [styles.legendForbidden, "Panel.LaneLegendForbidden", "turn forbidden, see the list below"],
+  ];
+  return (
+    <div className={styles.legend}>
+      {rows.map(([line, key, fallback]) => (
+        <div key={key} className={styles.legendRow}>
+          <svg viewBox="0 0 24 8" className={styles.legendSwatch}>
+            <line x1={1} y1={4} x2={23} y2={4} className={line} />
+          </svg>
+          <div className={styles.legendText}>{t(key, fallback)}</div>
+        </div>
       ))}
     </div>
   );

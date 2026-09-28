@@ -838,15 +838,16 @@ namespace TLL.UI
                     index = i;
             }
             TurnRule rule = index >= 0 ? rules[index] : new TurnRule { From = edges[source], To = edges[target] };
-            if (rule.ByPlayer && !rule.Forbidden)
+            TurnChoice now = !rule.ByPlayer ? TurnChoice.Autopilot : rule.Forbidden ? TurnChoice.Forbidden : TurnChoice.Allowed;
+            TurnChoice next = TurnChoices.Next(now, autopilotForbids: rule.Forbidden);
+            if (next == TurnChoice.Autopilot)
             {
+                // The autopilot decides again at its next review of the turns.
                 rules.RemoveAt(index);
             }
             else
             {
-                // Forbidden by the autopilot: the player allows it. Allowed,
-                // by anyone: the player forbids it.
-                rule.Flags = rule.Forbidden && !rule.ByPlayer ? TurnRuleFlags.Player : TurnRuleFlags.Player | TurnRuleFlags.Forbidden;
+                rule.Flags = next == TurnChoice.Forbidden ? TurnRuleFlags.Player | TurnRuleFlags.Forbidden : TurnRuleFlags.Player;
                 if (index >= 0)
                     rules[index] = rule;
                 else

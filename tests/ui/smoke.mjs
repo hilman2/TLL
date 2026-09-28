@@ -183,7 +183,7 @@ const scenarios = {
   "lane tool open": {
     "tll.laneToolActive": true,
     "tll.selected": { ...managed, turns: [{ source: 0, target: 1, kind: 1, state: 0, volume: 40 }] },
-    expect: [">Click a lane leading in, then one leading out…<"],
+    expect: [">Click a lane leading in, then one leading out…<", ">taken away; a click connects it again<", ">turn forbidden, see the list below<"],
   },
   "junction without signals, with turns": {
     "tll.selected": {

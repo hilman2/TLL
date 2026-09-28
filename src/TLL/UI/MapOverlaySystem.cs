@@ -70,6 +70,7 @@ namespace TLL.UI
 
         private OverlayRenderSystem m_Overlay;
         private TllUISystem m_UI;
+        private LaneToolSystem m_LaneTool;
         private EntityQuery m_ProblemQuery;
         private EntityQuery m_RoadQuery;
         private EntityQuery m_NoticeQuery;
@@ -83,6 +84,7 @@ namespace TLL.UI
             base.OnCreate();
             m_Overlay = World.GetOrCreateSystemManaged<OverlayRenderSystem>();
             m_UI = World.GetOrCreateSystemManaged<TllUISystem>();
+            m_LaneTool = World.GetOrCreateSystemManaged<LaneToolSystem>();
             m_ProblemQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[] { ComponentType.ReadOnly<ManagedJunction>(), ComponentType.ReadOnly<JunctionHealth>(), ComponentType.ReadOnly<Node>() },
@@ -158,7 +160,9 @@ namespace TLL.UI
                         buffer.DrawCircle(kNotice, kNoticeFill, 1.5f, OverlayRenderSystem.StyleFlags.Projected, new float2(0f, 1f), node.m_Position, 30f);
                 }
             }
-            if (selected != Entity.Null)
+            // The lane tool draws the junction's lanes itself; the signal
+            // colours on top of them would only confuse.
+            if (selected != Entity.Null && !m_LaneTool.IsActive)
                 DrawSelected(buffer, selected);
             if (hovered != Entity.Null && hovered != selected)
             {

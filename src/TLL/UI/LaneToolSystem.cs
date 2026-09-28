@@ -39,7 +39,13 @@ namespace TLL.UI
         private static readonly Color kPicked = new Color(0.3f, 0.65f, 1f, 1f);
         private static readonly Color kAdded = new Color(0.3f, 0.85f, 0.45f, 1f);
         private static readonly Color kRemoved = new Color(0.9f, 0.25f, 0.25f, 0.9f);
-        private static readonly Color kForbidden = new Color(0.96f, 0.6f, 0.2f, 0.8f);
+
+        /// <summary>
+        /// Lanes of a forbidden turn keep their colour at this opacity. The
+        /// state shows in the line itself, not in a colour of its own: the
+        /// turn is set in the panel's turn list, not with this tool.
+        /// </summary>
+        private const float kForbiddenAlpha = 0.2f;
 
         private OverlayRenderSystem m_Overlay;
         private Entity m_Node;
@@ -230,7 +236,9 @@ namespace TLL.UI
             dependencies.Complete();
             const OverlayRenderSystem.StyleFlags projected = OverlayRenderSystem.StyleFlags.Projected;
 
-            // The junction's lanes as they run now.
+            // The junction's lanes as they run now: solid, green where the
+            // player added them. Dashes are kept for connections taken away,
+            // so a lane that exists is never drawn dashed.
             DynamicBuffer<SubLane> lanes = EntityManager.GetBuffer<SubLane>(m_Node, true);
             for (int i = 0; i < lanes.Length; i++)
             {
@@ -243,11 +251,10 @@ namespace TLL.UI
                 bool added = path.m_MiddleNode.GetLaneIndex() >= 0xE000;
                 bool forbidden = (EntityManager.GetComponentData<CarLane>(lane).m_Flags & CarLaneFlags.Forbidden) != 0;
                 Color color = added ? kAdded : picked ? kPicked : kLane;
-                float width = picked || added ? 0.45f : 0.25f;
                 if (forbidden)
-                    buffer.DrawDashedCurve(kForbidden, kForbidden, 0f, projected, curve, width, 1.2f, 0.8f);
-                else
-                    buffer.DrawCurve(color, color, 0f, projected, curve, width, new float2(1f, 1f));
+                    color.a = kForbiddenAlpha;
+                float width = picked || added ? 0.45f : 0.25f;
+                buffer.DrawCurve(color, color, 0f, projected, curve, width, new float2(1f, 1f));
             }
 
             // Connections taken away: the lanes are gone, so the line is

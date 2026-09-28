@@ -426,6 +426,54 @@ $line: rgba(255, 255, 255, 0.12);
   padding: 2rem 6rem;
 }
 
+// The lane tool's legend. The lines match LaneToolSystem.Draw.
+.legend {
+  display: flex;
+  flex-direction: column;
+  margin: 2rem 12rem 6rem;
+}
+
+.legendRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 1rem 0;
+}
+
+.legendSwatch {
+  width: 24rem;
+  height: 8rem;
+  flex-shrink: 0;
+  margin: 0 8rem 0 0;
+}
+
+.legendText {
+  flex: 1;
+  font-size: 12rem;
+  opacity: 0.85;
+}
+
+.legendLane {
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 2;
+}
+
+.legendAdded {
+  stroke: $green;
+  stroke-width: 3.5;
+}
+
+.legendRemoved {
+  stroke: $red;
+  stroke-width: 2.5;
+  stroke-dasharray: 4 3;
+}
+
+.legendForbidden {
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 2;
+}
+
 .turnDiagram {
   width: 40rem;
   height: 40rem;
