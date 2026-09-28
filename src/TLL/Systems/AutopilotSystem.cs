@@ -146,6 +146,7 @@ namespace TLL.Systems
                         c.Vehicles = 0;
                         c.PedestrianSteps = 0f;
                         c.QueueSteps = 0f;
+                        c.FreeQueueSteps = 0f;
                     }
                     runtime.CountsSince = now;
                     bool layoutRound = (round + (uint)node.Index) % kLayoutEvery == 0;
@@ -223,7 +224,7 @@ namespace TLL.Systems
                 // Recent: one jammed round alone does not make a problem spot.
                 s.RecentQueue = fresh ? queue : s.RecentQueue + kRecentWeight * (queue - s.RecentQueue);
                 s.PeakQueue = math.max(s.PeakQueue * kPeakDecay, s.RecentQueue);
-                s.LastQueue = queue;
+                s.LastQueue = c.FreeQueueSteps / elapsedSteps;
                 s.SetWindow(window, math.max(s.Window(window) * kWindowDecay, s.Recent));
             }
         }

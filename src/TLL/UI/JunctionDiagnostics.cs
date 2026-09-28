@@ -78,7 +78,7 @@ namespace TLL.UI
                 for (int m = 0; m < stats.Length && m < moves.Length; m++)
                 {
                     MovementStatistics st = stats[m];
-                    text.Append($"  movement {m} [{roads.IndexOf(moves[m].Source)}->{roads.IndexOf(moves[m].Target)} {moves[m].Kind}]: recent {st.Recent:0}/h, peak {st.Peak:0}/h, queue {st.RecentQueue:0.0} (last round {st.LastQueue:0.0}, peak {st.PeakQueue:0.0})\n");
+                    text.Append($"  movement {m} [{roads.IndexOf(moves[m].Source)}->{roads.IndexOf(moves[m].Target)} {moves[m].Kind}]: recent {st.Recent:0}/h, peak {st.Peak:0}/h, queue {st.RecentQueue:0.0} (last round with the exit free {st.LastQueue:0.0}, peak {st.PeakQueue:0.0})\n");
                 }
             }
 

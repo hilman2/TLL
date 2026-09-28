@@ -440,7 +440,12 @@ namespace TLL.Systems
                 }
 
                 for (int m = 0; m < movementCount; m++)
-                    counters.ElementAt(m).QueueSteps += waiting[m];
+                {
+                    ref MovementCounter counter = ref counters.ElementAt(m);
+                    counter.QueueSteps += waiting[m];
+                    if (!blocked[m])
+                        counter.FreeQueueSteps += waiting[m];
+                }
 
                 conflict = state.Stage == Stage.Green && state.Phase < phases.Length
                     && !phases[state.Phase].Data.HasFlag(PhaseFlags.Scramble)

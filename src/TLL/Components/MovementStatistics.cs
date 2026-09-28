@@ -40,7 +40,10 @@ namespace TLL.Components
 
         /// <summary>
         /// Mean number of vehicles waiting in the last round alone, unsmoothed,
-        /// for decisions that cannot wait for the average. Not saved.
+        /// for decisions that cannot wait for the average, counted only
+        /// while the movement's exit was free: a queue behind a backed-up
+        /// exit is not the signal's doing, and neither flashing nor another
+        /// layout would clear it. Not saved.
         /// </summary>
         public float LastQueue;
 
@@ -127,6 +130,13 @@ namespace TLL.Components
 
         /// <summary>Sum over steps of the vehicles waiting for this movement.</summary>
         public float QueueSteps;
+
+        /// <summary>
+        /// The part of <see cref="QueueSteps"/> while the movement's exit was
+        /// free: vehicles waiting for the signal, not for room behind the
+        /// junction.
+        /// </summary>
+        public float FreeQueueSteps;
 
         /// <summary>Crosswalks: length in metres, for turning occupancy into people.</summary>
         public float Length;
