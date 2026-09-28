@@ -119,6 +119,7 @@ One record per layout review of an automatic junction.
 | `choice` | the layout the review recommends |
 | `jammed` | the running layout counts as jammed in the layout memory |
 | `change` | the layout changes now |
+| `held` | the layout is kept for a green wave, whatever the review recommends |
 | `pending`, `age` | reviews in a row recommending the change, and reviews since the last change |
 | `recorded` | the measurement period was recorded in the layout memory |
 | `period_rounds`, `period_vehicles`, `period_backlog` | the measurement period |
@@ -133,11 +134,11 @@ One record per change at a junction. `kind` says which, and the fields vary with
 
 | kind | fields |
 |---|---|
-| `layout` | `from`, `to`, `jammed`, `tried` (measured before), `expected_delay_s`, `current_delay_s`, `window` |
+| `layout` | `from`, `to`, `jammed`, `tried` (measured before), `expected_delay_s`, `current_delay_s`, `window`; a layout the green waves chose has `reason` `wave` and the `group` instead |
 | `flash` | `to` (flashing or not), `reason` (`traffic`, `backlog`, `setting`), `major_per_h`, `minor_per_h`, `minor_total_per_h`, `side_load`, `worst_free_queue` |
 | `turn_on_red` | `to`, `layout` |
 | `scramble` | `to` (pedestrians diverted into the scramble, for good), `conflicts` in the last 8 greens |
-| `wave` | `action`: `start`, `replan`, `keep` or `reject` a corridor, `end` one that did not help (all at the corridor's first junction, with `group`, `members`, `junctions`, `cycle_s`, `band_a_s`, `band_b_s`); `leave` for a junction taken out of a wave. For `keep`, the figures are those of the plan it was compared with. |
+| `wave` | `action`: `start`, `replan`, `keep` or `reject` a corridor, `end` one that did not help, `layouts` when members got layouts that let a wave run, `trial_failed` when the corridor still had no band with them (all at the corridor's first junction, with `group`, `members`, `junctions`, `cycle_s`, `band_a_s`, `band_b_s`); `leave` for a junction taken out of a wave. For `keep`, the figures are those of the plan it was compared with; for `layouts`, those of the plan on paper. |
 | `rebuild` | `trigger` (`game` or `mod`), `carries_on` (same plan, the controller went on), `layout`, `mode`, `approaches`, `movements`, `phases` |
 | `user` | `action` in the panel (`mode`, `layout`, `scramble_on_demand`, `turn_on_red`, `make_automatic`, `manage`, `release`, `reset_all`) and its `value` |
 

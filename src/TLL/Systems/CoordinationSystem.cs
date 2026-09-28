@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game;
+using Game.City;
 using Game.Common;
 using Game.Net;
 using Game.Simulation;
@@ -78,6 +79,9 @@ namespace TLL.Systems
         private int m_LinksTooQuiet;
         private int m_BandTooNarrow;
         private int m_Hurting;
+        private int m_WaveLayouts;
+        private int m_TrialsFailed;
+        private CityConfigurationSystem m_CityConfiguration;
 
         public override int GetUpdateInterval(SystemUpdatePhase phase)
         {
@@ -91,6 +95,7 @@ namespace TLL.Systems
             base.OnCreate();
             m_Control = World.GetOrCreateSystemManaged<SignalControlSystem>();
             m_Simulation = World.GetOrCreateSystemManaged<SimulationSystem>();
+            m_CityConfiguration = World.GetOrCreateSystemManaged<CityConfigurationSystem>();
             m_Query = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[]
@@ -161,6 +166,8 @@ namespace TLL.Systems
             m_LinksTooQuiet = 0;
             m_BandTooNarrow = 0;
             m_Hurting = 0;
+            m_WaveLayouts = 0;
+            m_TrialsFailed = 0;
             if (settings.AutoGreenWaves && nodes.Count >= 2)
             {
                 SignalNetwork network = BuildNetwork(nodes, out List<List<Entity>> edgesOf);
@@ -185,7 +192,8 @@ namespace TLL.Systems
             Corridors = corridors;
             CoordinatedJunctions = inCorridor.Count;
             Mod.Log.Info($"Green waves: {corridors} corridor(s) over {inCorridor.Count} junction(s); {m_LinksTooQuiet} link(s) with too little traffic, {m_BandTooNarrow} corridor(s) with too narrow a band, "
-                + $"{m_Hurting} ended because they did not help, {banned.Count} junction(s) kept out for now.");
+                + $"{m_Hurting} ended because they did not help, {m_WaveLayouts} given layouts for a wave, {m_TrialsFailed} whose layout trial failed, "
+                + $"{banned.Count} junction(s) kept out for now.");
         }
 
         private SignalNetwork BuildNetwork(List<Entity> nodes, out List<List<Entity>> edgesOf)
@@ -348,6 +356,8 @@ namespace TLL.Systems
             CoordinationPlan plan = Coordinator.Plan(path, members, OptimizerLimits.Default);
             if (!Coupling.BandWorthIt(plan.BandwidthA, plan.BandwidthB, plan.Cycle, hasA, hasB, running))
             {
+                if (!running && TryWaveLayouts(path, nodes, members, hasA, hasB, group))
+                    return false;
                 m_BandTooNarrow++;
                 WriteWave("reject", path, nodes, group, plan, running);
                 if (Mod.Settings != null && Mod.Settings.VerboseLogging)
@@ -383,11 +393,16 @@ namespace TLL.Systems
                 ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
                 // A junction new to this wave starts its measurement in it
                 // afresh, so a wave that failed once gets a fair new trial.
-                if (!running && EntityManager.HasComponent<AutopilotState>(node))
+                // A layout trial for it has come off.
+                if (EntityManager.HasComponent<AutopilotState>(node))
                 {
                     AutopilotState state = EntityManager.GetComponentData<AutopilotState>(node);
-                    for (int layout = 0; layout < LayoutMemory.Layouts; layout++)
-                        state.Memory.Set(layout, true, default);
+                    if (!running)
+                    {
+                        for (int layout = 0; layout < LayoutMemory.Layouts; layout++)
+                            state.Memory.Set(layout, true, default);
+                    }
+                    state.WaveTrial = false;
                     EntityManager.SetComponentData(node, state);
                 }
                 junction.Mode = ControlMode.Coordinated;
@@ -448,7 +463,207 @@ namespace TLL.Systems
                 member.PhaseMovements[p] = phases[p].Movements;
                 member.Ratios[p] = phases[p].FlowRatio;
             }
+            FillUnmeasured(node, junction, member);
             return member;
+        }
+
+        /// <summary>
+        /// A layout chosen for a wave may cost its junction at most this much
+        /// more waiting than its own layout, by the autopilot's corrected
+        /// estimates: a factor, and seconds on top for small delays.
+        /// </summary>
+        private const float kWaveLayoutCost = 1.25f;
+        private const float kWaveLayoutSeconds = 3f;
+
+        /// <summary>Rounds a layout chosen for a wave is kept (AutopilotState.LayoutHold): 3 game hours, for the wave to start and be measured.</summary>
+        private const ushort kWaveLayoutHold = 8;
+
+        /// <summary>
+        /// Where the layouts the members chose for themselves leave too narrow
+        /// a band, tries the layouts they can afford instead
+        /// (<see cref="WaveLayouts"/>) and, if some give a wave, switches
+        /// those members to them. They are rebuilt, and the wave starts at the
+        /// next round with their new plans. If the corridor still has no band
+        /// then, the trial failed: its members stay out of waves for a day,
+        /// and the autopilot has their layouts back once the hold runs out.
+        /// </summary>
+        /// <returns>Whether layouts were switched.</returns>
+        private bool TryWaveLayouts(CorridorPath path, List<Entity> nodes, List<CorridorMember> members, bool hasA, bool hasB, int group)
+        {
+            int n = path.Junctions.Count;
+            bool failed = false;
+            for (int k = 0; k < n; k++)
+            {
+                Entity node = nodes[path.Junctions[k]];
+                failed |= EntityManager.HasComponent<AutopilotState>(node) && EntityManager.GetComponentData<AutopilotState>(node).WaveTrial;
+            }
+            if (failed)
+            {
+                for (int k = 0; k < n; k++)
+                {
+                    Entity node = nodes[path.Junctions[k]];
+                    if (!EntityManager.HasComponent<AutopilotState>(node))
+                        continue;
+                    AutopilotState state = EntityManager.GetComponentData<AutopilotState>(node);
+                    if (!state.WaveTrial)
+                        continue;
+                    state.WaveTrial = false;
+                    state.WaveBan = kWaveBanRounds;
+                    EntityManager.SetComponentData(node, state);
+                }
+                m_TrialsFailed++;
+                WriteWave("trial_failed", path, nodes, group, new CoordinationPlan(), false);
+                return false;
+            }
+
+            var options = new List<IList<CorridorMember>>(n);
+            var strategies = new List<List<PlanStrategy>>(n);
+            for (int k = 0; k < n; k++)
+            {
+                Entity node = nodes[path.Junctions[k]];
+                var own = new List<CorridorMember> { members[k] };
+                var layouts = new List<PlanStrategy> { EntityManager.GetComponentData<ManagedJunction>(node).Strategy };
+                AddAffordable(node, members[k], own, layouts);
+                options.Add(own);
+                strategies.Add(layouts);
+            }
+            int[] choice = WaveLayouts.Choose(path, options, hasA, hasB, OptimizerLimits.Default, out CoordinationPlan plan);
+            if (choice == null)
+                return false;
+
+            bool switched = false;
+            for (int k = 0; k < n; k++)
+            {
+                if (choice[k] == 0)
+                    continue;
+                switched = true;
+                Entity node = nodes[path.Junctions[k]];
+                ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
+                PlanStrategy from = junction.Strategy;
+                junction.Strategy = strategies[k][choice[k]];
+                EntityManager.SetComponentData(node, junction);
+                AutopilotState state = EntityManager.GetComponentData<AutopilotState>(node);
+                state.LayoutHold = kWaveLayoutHold;
+                state.WaveTrial = true;
+                state.Layout.Age = 0;
+                state.Layout.PendingReviews = 0;
+                EntityManager.SetComponentData(node, state);
+                EntityManager.AddComponent<RebuildRequest>(node);
+                MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "layout")?
+                    .Add("from", from.ToString())
+                    .Add("to", junction.Strategy.ToString())
+                    .Add("reason", "wave")
+                    .Add("group", group));
+                if (Mod.Settings != null && Mod.Settings.VerboseLogging)
+                    Mod.Log.Info($"Green waves: junction {node} changes from {from} to {junction.Strategy} so that a wave can run.");
+            }
+            if (!switched)
+                return false;
+            m_WaveLayouts++;
+            WriteWave("layouts", path, nodes, group, plan, false);
+            // The members are rebuilt first; the round waits for that.
+            Requests.RebuildGreenWaves = true;
+            return true;
+        }
+
+        /// <summary>
+        /// Adds the layouts an automatic junction can afford for a wave, as
+        /// the coordinator sees them: those the autopilot's last review
+        /// expects to cope, at no more than kWaveLayoutCost of its own
+        /// layout's waiting.
+        /// </summary>
+        private void AddAffordable(Entity node, CorridorMember current, List<CorridorMember> own, List<PlanStrategy> layouts)
+        {
+            ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
+            if (junction.Origin != JunctionOrigin.Auto || !EntityManager.HasComponent<AutopilotState>(node))
+                return;
+            AutopilotState state = EntityManager.GetComponentData<AutopilotState>(node);
+            int running = System.Array.IndexOf(JunctionAdvisor.Strategies, junction.Strategy);
+            if (!state.HasEstimate || running < 0)
+                return;
+            JunctionLayout layout = JunctionAnalysis.Analyse(EntityManager, node, m_CityConfiguration.leftHandTraffic);
+            DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node, true);
+            if (layout == null || layout.Keys.Count != statistics.Length)
+                return;
+            var volumes = new float[statistics.Length];
+            for (int m = 0; m < volumes.Length; m++)
+                volumes[m] = statistics[m].Recent;
+            float delay = state.LayoutDelay[running];
+            for (int i = 0; i < JunctionAdvisor.Strategies.Length; i++)
+            {
+                if (i == running || state.LayoutSaturation[i] > JunctionAdvisor.Capacity
+                    || state.LayoutDelay[i] > delay * kWaveLayoutCost + kWaveLayoutSeconds)
+                    continue;
+                own.Add(OnPaper(layout, junction, JunctionAdvisor.Strategies[i], current, volumes));
+                layouts.Add(JunctionAdvisor.Strategies[i]);
+            }
+        }
+
+        /// <summary>
+        /// The junction as the coordinator would see it with another layout:
+        /// the plan a set-up would give it, split by the flow ratios the
+        /// delay model expects of that layout for the recent traffic.
+        /// </summary>
+        private CorridorMember OnPaper(JunctionLayout layout, ManagedJunction junction, PlanStrategy strategy, CorridorMember current, float[] volumes)
+        {
+            List<JunctionPhase> phases = JunctionInitSystem.PlanFor(EntityManager, layout, junction, strategy);
+            var member = new CorridorMember
+            {
+                Phases = new PhaseData[phases.Count],
+                PhaseMovements = new ulong[phases.Count],
+                Ratios = Expected(layout, strategy, volumes, phases.Count, out int cycle),
+                Intergreen = current.Intergreen,
+                MovementA = current.MovementA,
+                MovementB = current.MovementB,
+                DesiredCycle = cycle,
+            };
+            for (int p = 0; p < phases.Count; p++)
+            {
+                member.Phases[p] = phases[p].Data;
+                member.PhaseMovements[p] = phases[p].Movements;
+            }
+            return member;
+        }
+
+        /// <summary>
+        /// Per phase of the plan <paramref name="strategy"/> gives, the flow
+        /// ratio the delay model expects for <paramref name="volumes"/>, and
+        /// its cycle in steps. A scramble on demand at the end of the plan is
+        /// not in the model's plan and asks for no share.
+        /// </summary>
+        private static float[] Expected(JunctionLayout layout, PlanStrategy strategy, float[] volumes, int phaseCount, out int cycle)
+        {
+            PlanEstimate estimate = DelayModel.Estimate(layout.Model, PhasePlanner.Build(layout.Model, strategy), volumes, DelayParameters.Default);
+            cycle = Core.SimTime.ToSteps(estimate.Cycle);
+            var ratios = new float[phaseCount];
+            for (int p = 0; p < phaseCount; p++)
+                ratios[p] = estimate.PhaseRatio != null && p < estimate.PhaseRatio.Length ? estimate.PhaseRatio[p] : 0f;
+            return ratios;
+        }
+
+        /// <summary>
+        /// For an automatic junction the optimiser has not measured since its
+        /// last rebuild, the ratios and cycle the delay model expects of its
+        /// plan: the same the layout was chosen on for a wave, rather than the
+        /// greens of a plan fresh from the set-up.
+        /// </summary>
+        private void FillUnmeasured(Entity node, ManagedJunction junction, CorridorMember member)
+        {
+            float sum = 0f;
+            foreach (float r in member.Ratios)
+                sum += r;
+            if (sum > 0f || junction.Origin != JunctionOrigin.Auto || !EntityManager.HasBuffer<MovementStatistics>(node))
+                return;
+            JunctionLayout layout = JunctionAnalysis.Analyse(EntityManager, node, m_CityConfiguration.leftHandTraffic);
+            DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node, true);
+            if (layout == null || layout.Keys.Count != statistics.Length)
+                return;
+            var volumes = new float[statistics.Length];
+            for (int m = 0; m < volumes.Length; m++)
+                volumes[m] = statistics[m].Recent;
+            member.Ratios = Expected(layout, junction.Strategy, volumes, member.Phases.Length, out int cycle);
+            if (member.DesiredCycle <= 0)
+                member.DesiredCycle = cycle;
         }
 
         /// <summary>

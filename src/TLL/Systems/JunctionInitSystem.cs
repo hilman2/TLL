@@ -161,7 +161,7 @@ namespace TLL.Systems
             {
                 JunctionPhase phase = phases[p];
                 phase.TurnOnRed = PhasePlanner.TurnOnRed(model, phase.Movements);
-                phase.Data.WalkGreen = WalkGreen(phase.Movements, lanes, keys, junction);
+                phase.Data.WalkGreen = WalkGreen(EntityManager, phase.Movements, lanes, keys, junction);
                 phases[p] = phase;
             }
 
@@ -437,14 +437,14 @@ namespace TLL.Systems
         /// longest of its crosswalks. The yellow and all-red that follow count
         /// towards that clearance. Zero for a phase without a crosswalk.
         /// </summary>
-        private ushort WalkGreen(ulong movements, List<LaneInfo> lanes, List<MovementKey> keys, ManagedJunction junction)
+        private static ushort WalkGreen(EntityManager em, ulong movements, List<LaneInfo> lanes, List<MovementKey> keys, ManagedJunction junction)
         {
             float longest = -1f;
             foreach (LaneInfo lane in lanes)
             {
                 if ((lane.Flags & JunctionLaneFlags.Pedestrian) == 0 || (movements & (1UL << keys.IndexOf(lane.Key))) == 0)
                     continue;
-                float length = EntityManager.HasComponent<Curve>(lane.Lane) ? EntityManager.GetComponentData<Curve>(lane.Lane).m_Length : 0f;
+                float length = em.HasComponent<Curve>(lane.Lane) ? em.GetComponentData<Curve>(lane.Lane).m_Length : 0f;
                 longest = Math.Max(longest, length);
             }
             if (longest < 0f)
@@ -452,6 +452,24 @@ namespace TLL.Systems
             int walk = SimTime.ToSteps(kWalkInterval);
             int clearance = SimTime.ToSteps(longest / DelayModel.WalkingSpeed) - junction.Yellow - junction.AllRed;
             return (ushort)(walk + Math.Max(0, clearance));
+        }
+
+        /// <summary>
+        /// The plan the junction would get with <paramref name="strategy"/>,
+        /// with its walk greens, as a set-up makes a new plan, but not applied:
+        /// for the green waves, to try layouts on paper
+        /// (CoordinationSystem).
+        /// </summary>
+        internal static List<JunctionPhase> PlanFor(EntityManager em, JunctionLayout layout, ManagedJunction junction, PlanStrategy strategy)
+        {
+            List<JunctionPhase> phases = NewPlan(layout.Model, strategy, (junction.Options & JunctionOptions.ScrambleOnDemand) != 0);
+            for (int p = 0; p < phases.Count; p++)
+            {
+                JunctionPhase phase = phases[p];
+                phase.Data.WalkGreen = WalkGreen(em, phase.Movements, layout.Lanes, layout.Keys, junction);
+                phases[p] = phase;
+            }
+            return phases;
         }
 
         /// <param name="scrambleOnDemand">

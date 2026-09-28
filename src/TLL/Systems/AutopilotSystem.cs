@@ -342,6 +342,8 @@ namespace TLL.Systems
 
             if (state.WaveBan > 0)
                 state.WaveBan--;
+            if (state.LayoutHold > 0)
+                state.LayoutHold--;
 
             // Junctions taken over before scrambles on demand existed get one.
             // It costs nothing until pedestrians and turning vehicles clash.
@@ -483,8 +485,14 @@ namespace TLL.Systems
             }
 
             bool jammed = running >= 0 && state.Memory.Get(running, wave).Backlog >= LayoutMemory.BacklogShare;
-            bool change = settings.AutoLayout == AutoLayout.Automatic && state.Layout.Review(junction.Strategy, choice, jammed);
-            WriteReview(node, junction, round, state, estimates, corrected, wave, choice, jammed, change, recorded, period);
+            // A layout the green waves chose stays while their trial runs and
+            // while the wave does: a change would rebuild the junction and
+            // take its timing out of the wave. Whether the wave helps, the
+            // measurement decides (CoordinationSystem.Hurts), which then
+            // frees the layout again.
+            bool held = state.LayoutHold > 0 || wave;
+            bool change = settings.AutoLayout == AutoLayout.Automatic && !held && state.Layout.Review(junction.Strategy, choice, jammed);
+            WriteReview(node, junction, round, state, estimates, corrected, wave, choice, jammed, change, recorded, period, held);
             if (!change)
                 return;
             MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "layout")?
@@ -517,7 +525,7 @@ namespace TLL.Systems
         /// decided.
         /// </summary>
         private void WriteReview(Entity node, ManagedJunction junction, uint round, AutopilotState state, PlanEstimate[] estimates, PlanEstimate[] corrected,
-            bool wave, PlanStrategy choice, bool jammed, bool change, bool recorded, JunctionRuntime period)
+            bool wave, PlanStrategy choice, bool jammed, bool change, bool recorded, JunctionRuntime period, bool held)
         {
             MetricsRow row = MetricsRecords.Review(m_Simulation.frameIndex, node, junction, round);
             if (row == null)
@@ -526,6 +534,7 @@ namespace TLL.Systems
                 .Add("choice", choice.ToString())
                 .Add("jammed", jammed)
                 .Add("change", change)
+                .Add("held", held)
                 .Add("pending", state.Layout.PendingReviews)
                 .Add("age", state.Layout.Age)
                 .Add("recorded", recorded)

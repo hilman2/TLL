@@ -14,7 +14,7 @@ namespace TLL.Components
     /// </summary>
     public struct AutopilotState : IComponentData, ISerializable
     {
-        private const byte kVersion = 4;
+        private const byte kVersion = 5;
 
         /// <summary>A layout recommended but not yet applied, and how long the running one has run.</summary>
         public LayoutSchedule Layout;
@@ -29,6 +29,19 @@ namespace TLL.Components
         /// made its junctions wait longer than running alone.
         /// </summary>
         public ushort WaveBan;
+
+        /// <summary>
+        /// Rounds the autopilot keeps the layout, after the green waves chose
+        /// it so that a wave can run (CoordinationSystem). While the junction
+        /// runs in a wave, the autopilot keeps its layout anyway.
+        /// </summary>
+        public ushort LayoutHold;
+
+        /// <summary>
+        /// The layout was chosen for a wave that has not started yet. If the
+        /// corridor still has no band at the next round, the trial failed.
+        /// </summary>
+        public bool WaveTrial;
 
         /// <summary>From the last measurement period: the vehicles' mean wait measured, and what the model expected, in seconds. Not saved.</summary>
         public float MeasuredWait;
@@ -64,6 +77,8 @@ namespace TLL.Components
             }
             writer.Write(WaveBan);
             writer.Write(Layout.Age);
+            writer.Write(LayoutHold);
+            writer.Write(WaveTrial);
         }
 
         public void Deserialize<TReader>(TReader reader) where TReader : IReader
@@ -90,6 +105,11 @@ namespace TLL.Components
             }
             if (version >= 4)
                 reader.Read(out Layout.Age);
+            if (version >= 5)
+            {
+                reader.Read(out LayoutHold);
+                reader.Read(out WaveTrial);
+            }
             Layout.Pending = (PlanStrategy)pending;
         }
     }
