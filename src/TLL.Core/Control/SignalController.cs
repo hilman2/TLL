@@ -263,6 +263,7 @@ namespace TLL.Core.Control
         {
             ref PhaseData current = ref phases[s.Phase];
             current.Stats.GreenSteps++;
+            current.Metrics.GreenSteps++;
             if (current.Busy)
                 current.Stats.BusySteps++;
             if (s.GreenLeft > 0)
@@ -553,8 +554,10 @@ namespace TLL.Core.Control
         {
             if (s.Stage == Stage.Green && s.Phase < phases.Count)
             {
-                phases[s.Phase].LastGreen = s.StageSteps;
-                phases[s.Phase].LastEnd = s.Ending != GreenEnd.None ? s.Ending : GreenEnd.Schedule;
+                ref PhaseData ending = ref phases[s.Phase];
+                ending.LastGreen = s.StageSteps;
+                ending.LastEnd = s.Ending != GreenEnd.None ? s.Ending : GreenEnd.Schedule;
+                ending.Metrics.CountEnd(ending.LastEnd, in ending);
             }
             s.Ending = GreenEnd.None;
             s.Next = (byte)next;
@@ -598,6 +601,8 @@ namespace TLL.Core.Control
             s.StageSteps = 0;
             ref PhaseData p = ref phases[phase];
             p.Stats.Greens++;
+            p.Metrics.Greens++;
+            p.Metrics.WaitAtStart += p.WaitSteps;
             p.WaitSteps = 0;
             s.Preempting = p.Preempt;
             // Push button: pedestrians walk only when someone asked, except

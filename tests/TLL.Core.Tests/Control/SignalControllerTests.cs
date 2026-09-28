@@ -586,6 +586,63 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
+        public void MetricsCountGreensTheyEndAndTheQueueLeftStanding()
+        {
+            // Phase 0 always has a queue that never clears: every one of its
+            // greens ends at the maximum with vehicles still standing, a
+            // green too short for its queue. Phase 1 empties.
+            var config = ControllerConfig.Default(ControlMode.Adaptive);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 20, 20), ControllerHarness.Phase(5, 20, 20));
+            h.Run(0, 1200, (s, p) =>
+            {
+                p[0].Demand = 6f;
+                p[0].Queue = 6f;
+                p[0].Pressure = 6f;
+                bool green1 = h.State.Stage == Stage.Green && h.State.Phase == 1;
+                p[1].Demand = green1 ? 0f : 2f;
+                p[1].Queue = green1 ? 0f : 2f;
+                p[1].Pressure = green1 ? 0f : 2f;
+            });
+            // GreenLengths lists the completed greens only.
+            int ended0 = h.GreenLengths().Count(g => g.phase == 0);
+            PhaseMetrics m0 = h.Phases[0].Metrics;
+            Assert.True(ended0 >= 3, $"only {ended0} greens of phase 0 ended");
+            Assert.Equal(ended0, (int)m0.EndMaximum);
+            Assert.Equal(ended0, (int)m0.Failures);
+            Assert.Equal(6f * ended0, m0.ResidualQueue, 3);
+            Assert.Equal(h.GreenStarts().Count(g => g.phase == 0), (int)m0.Greens);
+            Assert.True(m0.WaitAtStart > 0, "phase 0 never waited");
+
+            PhaseMetrics m1 = h.Phases[1].Metrics;
+            Assert.Equal(0, (int)m1.Failures);
+            Assert.True(m1.EndEmpty > 0, "phase 1 never ran empty");
+            // The trace counts a green from its first step, the controller
+            // from the step after: one step apart per green, and the green
+            // still running counts only in the controller.
+            int traced = h.Trace.Count(r => r.Stage == Stage.Green && r.Phase == 1);
+            Assert.InRange((int)m1.GreenSteps, traced - (int)m1.Greens, traced);
+        }
+
+        [Fact]
+        public void AQueueHeldByItsExitIsNoFailure()
+        {
+            var config = ControllerConfig.Default(ControlMode.Adaptive);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 20, 20), ControllerHarness.Phase(5, 20, 20));
+            h.Run(0, 600, (s, p) =>
+            {
+                p[0].Demand = 6f;
+                p[0].Queue = 6f;
+                p[0].Pressure = 6f;
+                p[0].Blocked = true;
+                p[1].Demand = 2f;
+                p[1].Queue = 2f;
+                p[1].Pressure = 2f;
+            });
+            Assert.True(h.Phases[0].Metrics.EndMaximum + h.Phases[0].Metrics.EndBlocked + h.Phases[0].Metrics.EndStarved > 0, "phase 0 never ended");
+            Assert.Equal(0, (int)h.Phases[0].Metrics.Failures);
+        }
+
+        [Fact]
         public void DrainRunsUntilTheQueueHasLeft()
         {
             // 30 vehicles leave at one every 2 s: about 58 s until fewer than

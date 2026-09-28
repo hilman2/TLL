@@ -125,6 +125,9 @@ namespace TLL.Core.Control
         /// <summary>Statistics for the optimiser. The optimiser resets them after reading.</summary>
         public PhaseStatistics Stats;
 
+        /// <summary>Counters for the metrics log. Whoever writes the log reads and clears them.</summary>
+        public PhaseMetrics Metrics;
+
         public bool HasFlag(PhaseFlags flag)
         {
             return (Flags & flag) != 0;
@@ -171,6 +174,65 @@ namespace TLL.Core.Control
 
         /// <summary>Number of greens.</summary>
         public uint Greens;
+
+        public void Clear()
+        {
+            this = default;
+        }
+    }
+
+    /// <summary>
+    /// What one phase's greens did since the counters were last cleared, for
+    /// the metrics log: how often and how long it had green, why its greens
+    /// ended, and whether they were long enough for the queue.
+    /// </summary>
+    public struct PhaseMetrics
+    {
+        public uint Greens;
+        public uint GreenSteps;
+
+        /// <summary>
+        /// Greens that ended with vehicles still standing at the line while
+        /// their exits were free: too short for the queue. A queue held by a
+        /// backed-up exit is not counted; no green would have moved it.
+        /// </summary>
+        public uint Failures;
+
+        /// <summary>Sum over the ended greens of the vehicles still standing at the end.</summary>
+        public float ResidualQueue;
+
+        /// <summary>Sum over the greens of the steps the phase had waited for each.</summary>
+        public uint WaitAtStart;
+
+        /// <summary>Vehicles that entered the junction on the phase's movements during its green; counted by the caller.</summary>
+        public uint Served;
+
+        /// <summary>Ended greens by <see cref="GreenEnd"/>.</summary>
+        public uint EndEmpty;
+        public uint EndMaximum;
+        public uint EndStarved;
+        public uint EndOutweighed;
+        public uint EndBlocked;
+        public uint EndEmergency;
+        public uint EndSchedule;
+
+        /// <summary>Counts a green that ends for <paramref name="reason"/> with <paramref name="phase"/>'s current readings.</summary>
+        public void CountEnd(GreenEnd reason, in PhaseData phase)
+        {
+            switch (reason)
+            {
+                case GreenEnd.Empty: EndEmpty++; break;
+                case GreenEnd.Maximum: EndMaximum++; break;
+                case GreenEnd.Starved: EndStarved++; break;
+                case GreenEnd.Outweighed: EndOutweighed++; break;
+                case GreenEnd.Blocked: EndBlocked++; break;
+                case GreenEnd.Emergency: EndEmergency++; break;
+                default: EndSchedule++; break;
+            }
+            ResidualQueue += phase.Queue;
+            if (phase.Queue >= 1f && !phase.Blocked)
+                Failures++;
+        }
 
         public void Clear()
         {
