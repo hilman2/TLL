@@ -53,6 +53,9 @@ namespace TLL.Core.Control
         /// <summary>Weighted number of road users waiting for or approaching this phase. 0 means nobody.</summary>
         public float Demand;
 
+        /// <summary>Vehicles standing in the queue of this phase's lanes, unweighted; the part of <see cref="Demand"/> already stopped.</summary>
+        public float Queue;
+
         /// <summary>
         /// Demand minus the congestion downstream. A phase whose exits are
         /// jammed has low pressure even with a long queue, because green would

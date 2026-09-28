@@ -402,7 +402,14 @@ namespace TLL.Core.Control
 
             bool maxedOut = s.StageSteps >= current.MaxGreen;
             bool gappedOut = current.Demand <= 0f;
-            bool outweighed = !bestStarved && phases[best].Pressure > current.Pressure * c.SwitchRatio && phases[best].Pressure > current.Pressure + 1f;
+            // A heavier queue elsewhere takes over only once the running
+            // phase's own queue has left and it serves stragglers. Cutting
+            // into a queue still leaving costs the change and the start-up
+            // again, and its rest waits a whole round more; with a tram
+            // counting ten cars, the phase opposite a tram line got hardly
+            // more than its minimum green.
+            bool outweighed = !bestStarved && current.Queue < 1f
+                && phases[best].Pressure > current.Pressure * c.SwitchRatio && phases[best].Pressure > current.Pressure + 1f;
             if (!(maxedOut || gappedOut || bestStarved || outweighed))
                 return -1;
             if (!maxedOut && !bestStarved && HoldForPlatoon(ref current, ref phases[best]))

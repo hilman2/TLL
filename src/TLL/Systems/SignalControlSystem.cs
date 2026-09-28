@@ -450,6 +450,7 @@ namespace TLL.Systems
                 {
                     ref JunctionPhase phase = ref phases.ElementAt(p);
                     float demand = 0f;
+                    float queue = 0f;
                     float pressure = 0f;
                     float approaching = 0f;
                     bool phaseCall = false;
@@ -463,6 +464,7 @@ namespace TLL.Systems
                         // waits, or arrives within the passage time, as the
                         // gap setting of a real actuated controller.
                         demand += waiting[m] + soon[m];
+                        queue += waiting[m];
                         // Max-pressure: the queue plus part of what is on its
                         // way. Green for a movement whose exit is full moves
                         // nobody, so it hardly counts.
@@ -489,6 +491,7 @@ namespace TLL.Systems
                     // and no more, and the maximum wait makes sure they are
                     // served against steady traffic.
                     phase.Data.Demand = demand;
+                    phase.Data.Queue = queue;
                     phase.Data.Pressure = pressure;
                     phase.Data.Approaching = approaching;
                     phase.Data.PedestrianCall = phaseCall;

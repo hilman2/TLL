@@ -471,6 +471,52 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
+        public void AQueueStillLeavingIsNotCutForALongerOne()
+        {
+            // Phase 0 has green and a queue that is still leaving. Then phase
+            // 1 builds up more than one and a half times the pressure, a long
+            // queue and a tram. Phase 0 keeps its green: cutting into the
+            // queue costs the change and the start-up again, and the rest of
+            // the queue waits a whole round more. Phase 1 comes next.
+            var config = ControllerConfig.Default(ControlMode.Adaptive);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 40, 20), ControllerHarness.Phase(5, 40, 20));
+            h.Run(0, 400, (s, p) =>
+            {
+                p[0].Demand = 9f;
+                p[0].Queue = 9f;
+                p[0].Pressure = 9f;
+                bool later = h.GreenStarts().Any(g => g.phase == 0);
+                p[1].Demand = later ? 17f : 0f;
+                p[1].Queue = later ? 16f : 0f;
+                p[1].Pressure = later ? 31.5f : 0f;
+            });
+            var first = h.GreenLengths().First(g => g.phase == 0);
+            Assert.True(first.length >= h.Phases[0].MaxGreen, $"phase 0 green cut to {first.length} steps, maximum {h.Phases[0].MaxGreen}");
+            Assert.Contains(h.GreenStarts(), g => g.phase == 1);
+        }
+
+        [Fact]
+        public void AGreenOnlyStragglersStillUseEndsForALongQueue()
+        {
+            // No one stands any more at phase 0, a few are still coming. A
+            // long queue at phase 1 takes over after the minimum green.
+            var config = ControllerConfig.Default(ControlMode.Adaptive);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 40, 20), ControllerHarness.Phase(5, 40, 20));
+            h.Run(0, 400, (s, p) =>
+            {
+                p[0].Demand = 2f;
+                p[0].Queue = 0f;
+                p[0].Pressure = 2f;
+                bool later = h.GreenStarts().Any(g => g.phase == 0);
+                p[1].Demand = later ? 17f : 0f;
+                p[1].Queue = later ? 16f : 0f;
+                p[1].Pressure = later ? 17f : 0f;
+            });
+            var first = h.GreenLengths().First(g => g.phase == 0);
+            Assert.True(first.length < h.Phases[0].MaxGreen / 2, $"phase 0 held {first.length} steps for stragglers");
+        }
+
+        [Fact]
         public void LongRestDoesNotBlockTheJunction()
         {
             // A quiet junction rests in one green for days (more steps than a
