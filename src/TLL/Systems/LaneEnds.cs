@@ -39,11 +39,15 @@ namespace TLL.Systems
         public static List<LaneEnd> Collect(EntityManager em, Entity node, List<Entity> edges)
         {
             var result = new List<LaneEnd>();
-            float3 centre = em.GetComponentData<Node>(node).m_Position;
             foreach (Entity edge in edges)
             {
                 if (!em.HasBuffer<SubLane>(edge))
                     continue;
+                Game.Net.Edge road = em.GetComponentData<Game.Net.Edge>(edge);
+                if (road.m_Start == road.m_End)
+                    continue;
+                // Where the junction lies along the road: 0 at its start, 1 at its end.
+                float junction = road.m_Start == node ? 0f : 1f;
                 DynamicBuffer<SubLane> lanes = em.GetBuffer<SubLane>(edge, true);
                 for (int i = 0; i < lanes.Length; i++)
                 {
@@ -51,13 +55,22 @@ namespace TLL.Systems
                     // A master lane stands for its group; two-way lanes
                     // have no direction to connect by.
                     if (!em.HasComponent<CarLane>(lane) || em.HasComponent<MasterLane>(lane) || !em.HasComponent<Curve>(lane)
+                        || !em.HasComponent<EdgeLane>(lane)
                         || (em.GetComponentData<CarLane>(lane).m_Flags & CarLaneFlags.Twoway) != 0)
+                        continue;
+                    // Unless a road is a single curve, the game builds each
+                    // of its lanes in two pieces, one per half of the road
+                    // (LaneSystem.CreateEdgeLanes), and both pieces carry the
+                    // lane's index. Only the piece that reaches the junction
+                    // counts. Taking the nearer end of every piece instead
+                    // also marked the lane in the middle of the road, and
+                    // Find then matched either of the two by index.
+                    float2 delta = em.GetComponentData<EdgeLane>(lane).m_EdgeDelta;
+                    bool incoming = math.abs(delta.y - junction) < 0.001f;
+                    if (!incoming && math.abs(delta.x - junction) >= 0.001f)
                         continue;
                     Bezier4x3 curve = em.GetComponentData<Curve>(lane).m_Bezier;
                     Lane path = em.GetComponentData<Lane>(lane);
-                    // A road's lane runs from one of its nodes to the other;
-                    // the end nearer to this junction is the one at it.
-                    bool incoming = math.distancesq(curve.d, centre) < math.distancesq(curve.a, centre);
                     PathNode at = incoming ? path.m_EndNode : path.m_StartNode;
                     result.Add(new LaneEnd
                     {

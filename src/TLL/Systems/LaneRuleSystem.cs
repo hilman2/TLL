@@ -81,6 +81,56 @@ namespace TLL.Systems
             m_CityConfiguration = World.GetOrCreateSystemManaged<Game.City.CityConfigurationSystem>();
         }
 
+        /// <summary>
+        /// Rebuilds the junctions whose added lanes do not start and end
+        /// where their roads meet the junction. Before LaneEnds took only the
+        /// lane piece at the junction, an added lane could start in the
+        /// middle of a road. Such lanes are saved with the city and stay until
+        /// their junction is rebuilt; this rebuilds them once, when the city
+        /// is loaded, and leaves every other junction alone.
+        /// </summary>
+        protected override void OnGameLoadingComplete(Colossal.Serialization.Entities.Purpose purpose, Game.GameMode mode)
+        {
+            base.OnGameLoadingComplete(purpose, mode);
+            EntityQuery ruled = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<Node>(), ComponentType.ReadOnly<LaneConnectionRule>(), ComponentType.ReadOnly<SubLane>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
+            });
+            int count = 0;
+            using (NativeArray<Entity> nodes = ruled.ToEntityArray(Allocator.Temp))
+            {
+                foreach (Entity node in nodes)
+                {
+                    if (!HasStrayLane(node))
+                        continue;
+                    EntityManager.AddComponent<RebuildRequest>(node);
+                    count++;
+                }
+            }
+            if (count > 0)
+                Mod.Log.Info($"{count} junction(s) had added lanes starting or ending away from the junction; they are rebuilt.");
+        }
+
+        private bool HasStrayLane(Entity node)
+        {
+            List<LaneEnd> ends = null;
+            DynamicBuffer<SubLane> lanes = EntityManager.GetBuffer<SubLane>(node, true);
+            for (int i = 0; i < lanes.Length; i++)
+            {
+                Entity lane = lanes[i].m_SubLane;
+                if (!EntityManager.HasComponent<CarLane>(lane) || !EntityManager.HasComponent<Lane>(lane))
+                    continue;
+                Lane path = EntityManager.GetComponentData<Lane>(lane);
+                if (path.m_MiddleNode.GetLaneIndex() < kAddedLaneIndex)
+                    continue;
+                ends = ends ?? LaneEnds.Collect(EntityManager, node, NetGeometry.ConnectedEdges(EntityManager, node));
+                if (LaneEnds.Find(ends, path.m_StartNode, incoming: true) < 0 || LaneEnds.Find(ends, path.m_EndNode, incoming: false) < 0)
+                    return true;
+            }
+            return false;
+        }
+
         protected override void OnSafeUpdate()
         {
             // The lanes the game built this frame, by junction. The junction's
