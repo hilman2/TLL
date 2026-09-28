@@ -154,7 +154,7 @@ namespace TLL.Systems
             {
                 if (junction.Origin == JunctionOrigin.Manual && misfit != null)
                     Mod.Log.Warn($"Junction {node}: the saved plan was replaced by a generated one, because {misfit}.");
-                phases = NewPlan(model, junction.Strategy, (junction.Options & JunctionOptions.ScrambleOnDemand) != 0,
+                phases = NewPlan(model, junction.Strategy, (junction.Options & JunctionOptions.Scramble) != 0,
                     PlanningWeights(EntityManager, node, matched, keys.Count));
                 KeepTiming(existing, phases);
             }
@@ -510,7 +510,7 @@ namespace TLL.Systems
         /// <param name="weights">Per movement, the traffic the phases are laid out by; see PlanningWeights.</param>
         internal static List<JunctionPhase> PlanFor(EntityManager em, JunctionLayout layout, ManagedJunction junction, PlanStrategy strategy, float[] weights)
         {
-            List<JunctionPhase> phases = NewPlan(layout.Model, strategy, (junction.Options & JunctionOptions.ScrambleOnDemand) != 0, weights);
+            List<JunctionPhase> phases = NewPlan(layout.Model, strategy, (junction.Options & JunctionOptions.Scramble) != 0, weights);
             for (int p = 0; p < phases.Count; p++)
             {
                 JunctionPhase phase = phases[p];
@@ -520,53 +520,26 @@ namespace TLL.Systems
             return phases;
         }
 
-        /// <param name="scrambleOnDemand">
-        /// Adds a phase of all crosswalks at the end, run only while
-        /// pedestrians are diverted into it. The pedestrian scramble layout has
-        /// such a phase already, as its only pedestrian phase.
+        /// <param name="scramble">
+        /// Pedestrians get a phase of their own at the end, in all
+        /// directions, and walk in no other (PhasePlanner.Build). It is
+        /// marked as the scramble, the phase the controller serves the
+        /// pedestrian calls in (ControllerConfig.DivertPedestrians).
         /// </param>
-        private static List<JunctionPhase> NewPlan(JunctionModel model, PlanStrategy strategy, bool scrambleOnDemand, float[] weights)
+        private static List<JunctionPhase> NewPlan(JunctionModel model, PlanStrategy strategy, bool scramble, float[] weights)
         {
-            List<JunctionPhase> result = NewPlan(model, strategy, weights);
-            if (!scrambleOnDemand || strategy == PlanStrategy.ExclusivePedestrian || result.Count >= PhasePlanner.MaxPhases)
-                return result;
-            ulong crosswalks = 0;
-            bool turns = false;
-            for (int i = 0; i < model.Movements.Count; i++)
+            List<JunctionPhase> result = ToPhases(model, PhasePlanner.Build(model, strategy, weights, scramble));
+            if (scramble && PhasePlanner.Crosswalks(model) != 0UL && result.Count > 0)
             {
-                MovementKind kind = model.Movements[i].Kind;
-                if (kind == MovementKind.Pedestrian)
-                    crosswalks |= 1UL << i;
-                turns |= kind == MovementKind.Left || kind == MovementKind.Right;
+                JunctionPhase last = result[result.Count - 1];
+                last.Data.Flags |= PhaseFlags.Scramble;
+                result[result.Count - 1] = last;
             }
-            // Without turning traffic nobody has to wait for pedestrians. And
-            // where the plan already has a phase of crosswalks only, because
-            // they meet some vehicle in every other phase, pedestrians have
-            // their own phase anyway.
-            if (crosswalks == 0 || !turns)
-                return result;
-            foreach (JunctionPhase phase in result)
-            {
-                if ((phase.Movements & ~crosswalks) == 0)
-                    return result;
-            }
-            result.Add(new JunctionPhase
-            {
-                Movements = crosswalks,
-                Data = new PhaseData
-                {
-                    MinGreen = (ushort)SimTime.ToSteps(5f),
-                    MaxGreen = (ushort)SimTime.ToSteps(30f),
-                    Green = (ushort)SimTime.ToSteps(10f),
-                    Flags = PhaseFlags.Pedestrian | PhaseFlags.Scramble,
-                },
-            });
             return result;
         }
 
-        private static List<JunctionPhase> NewPlan(JunctionModel model, PlanStrategy strategy, float[] weights)
+        private static List<JunctionPhase> ToPhases(JunctionModel model, PhasePlan plan)
         {
-            PhasePlan plan = PhasePlanner.Build(model, strategy, weights);
             var result = new List<JunctionPhase>();
             foreach (Phase phase in plan.Phases)
             {

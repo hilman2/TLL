@@ -6,6 +6,7 @@ import {
   actions,
   AutopilotInfo,
   ControlMode,
+  Estimate,
   JunctionInfo,
   MovementKind,
   panelOpen$,
@@ -44,7 +45,7 @@ import styles from "tll-panel.module.scss";
 type Translate = ReturnType<typeof useTranslate>;
 
 const modes = [ControlMode.Adaptive, ControlMode.Drain, ControlMode.Actuated, ControlMode.FixedTime, ControlMode.Flashing];
-const strategies = [PlanStrategy.Permissive, PlanStrategy.ProtectedTurns, PlanStrategy.Split, PlanStrategy.ExclusivePedestrian];
+const strategies = [PlanStrategy.Permissive, PlanStrategy.ProtectedTurns, PlanStrategy.Split];
 
 /** Icons that ship with the game. */
 const icons = {
@@ -416,18 +417,16 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
         hint={(s) => t("StrategyHint." + PlanStrategy[s], "")}
         onSelect={actions.setStrategy}
       />
-      {junction.strategy !== PlanStrategy.ExclusivePedestrian && (
-        <Switch
-          label={
-            junction.scrambleOnDemand
-              ? `${t("Panel.ScrambleOnDemand", "Scramble on demand")}: ${junction.scrambleActive ? t("Panel.ScrambleActive", "active") : t("Panel.ScrambleWaiting", "standby")} (${junction.conflicts}/8)`
-              : t("Panel.ScrambleOnDemand", "Scramble on demand")
-          }
-          hint={t("Panel.ScrambleHint", "")}
-          on={junction.scrambleOnDemand}
-          onSelect={actions.toggleScramble}
-        />
-      )}
+      <Switch
+        label={
+          junction.scramble
+            ? t("Panel.Scramble", "Pedestrian scramble")
+            : `${t("Panel.Scramble", "Pedestrian scramble")} · ${t("Panel.TurnsWaited", "turns waited")} ${junction.conflicts}/8`
+        }
+        hint={t("Panel.ScrambleHint", "")}
+        on={junction.scramble}
+        onSelect={actions.toggleScramble}
+      />
       <Switch
         label={t("Panel.TurnOnRed", "Turn on red")}
         hint={t("Panel.TurnOnRedHint", "")}
@@ -511,9 +510,40 @@ const strategyShort = (s: PlanStrategy, t: Translate) => t("StrategyShort." + Pl
  * estimates come from the busiest hours of the last days, so they change
  * slowly on purpose.
  */
+/** One layout as the autopilot compares it: with a pedestrian scramble or without. */
+interface Variant {
+  strategy: PlanStrategy;
+  scramble: boolean;
+  delay: number;
+  saturation: number;
+  measured: boolean;
+  jammed: boolean;
+}
+
+function variants(estimates: Estimate[]): Variant[] {
+  const result: Variant[] = [];
+  for (const e of estimates) {
+    result.push({ strategy: e.strategy, scramble: false, delay: e.delay, saturation: e.saturation, measured: e.measured, jammed: e.jammed });
+    // A C# side older than the panel sends no scramble figures.
+    if (e.scrambleDelay !== undefined && e.scrambleDelay >= 0)
+      result.push({
+        strategy: e.strategy, scramble: true, delay: e.scrambleDelay, saturation: e.scrambleSaturation,
+        measured: e.scrambleMeasured, jammed: e.scrambleJammed,
+      });
+  }
+  return result;
+}
+
+const variantName = (v: { strategy: PlanStrategy; scramble: boolean }, t: Translate, short: boolean) => {
+  const layout = short ? strategyShort(v.strategy, t) : t("Strategy." + PlanStrategy[v.strategy], PlanStrategy[v.strategy]);
+  return v.scramble ? `${layout} + ${t("Panel.ScrambleShort", "scramble")}` : layout;
+};
+
 const AutopilotCard = ({ autopilot, junction, t }: { autopilot: AutopilotInfo; junction: JunctionInfo; t: Translate }) => {
-  const estimates = autopilot.estimates;
+  const estimates = variants(autopilot.estimates);
   const worst = Math.max(1, ...estimates.map((e) => e.delay));
+  const pendingScramble = autopilot.pendingScramble ?? false;
+  const changePending = autopilot.pending >= 0 && (autopilot.pending !== junction.strategy || pendingScramble !== junction.scramble);
   const traffic = `${t("Panel.MainRoad", "Main road")} ${perHour(autopilot.majorVolume)} · ${t("Panel.SideRoad", "side road")} ${perHour(autopilot.minorVolume)}`;
   return (
     <div className={styles.card}>
@@ -531,11 +561,11 @@ const AutopilotCard = ({ autopilot, junction, t }: { autopilot: AutopilotInfo; j
         </Hint>
       ) : (
         estimates.map((e) => {
-          const current = e.strategy === junction.strategy;
-          const pending = autopilot.pending === e.strategy && !current;
+          const current = e.strategy === junction.strategy && e.scramble === junction.scramble;
+          const pending = changePending && autopilot.pending === e.strategy && pendingScramble === e.scramble;
           return (
-            <div key={e.strategy} className={styles.chartRow}>
-              <div className={classNames(styles.chartLabel, current && styles.chartLabelCurrent)}>{`${strategyShort(e.strategy, t)}${e.measured ? " •" : ""}`}</div>
+            <div key={`${e.strategy}-${e.scramble}`} className={styles.chartRow}>
+              <div className={classNames(styles.chartLabel, current && styles.chartLabelCurrent)}>{`${variantName(e, t, true)}${e.measured ? " •" : ""}`}</div>
               <div className={styles.chartTrack}>
                 <div
                   className={classNames(styles.chartBar, current && styles.chartBarCurrent, pending && styles.chartBarPending, e.saturation > 1 && styles.chartBarOver)}
@@ -547,8 +577,8 @@ const AutopilotCard = ({ autopilot, junction, t }: { autopilot: AutopilotInfo; j
           );
         })
       )}
-      {autopilot.pending >= 0 && autopilot.pending !== junction.strategy && (
-        <div className={styles.note}>{`${t("Panel.PendingLayout", "Next review changes to")}: ${t("Strategy." + PlanStrategy[autopilot.pending], PlanStrategy[autopilot.pending])}`}</div>
+      {changePending && (
+        <div className={styles.note}>{`${t("Panel.PendingLayout", "Next review changes to")}: ${variantName({ strategy: autopilot.pending, scramble: pendingScramble }, t, false)}`}</div>
       )}
       {autopilot.measuredWait > 0 && (
         <div className={styles.faint}>

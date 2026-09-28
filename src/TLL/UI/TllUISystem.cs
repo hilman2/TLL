@@ -383,12 +383,10 @@ namespace TLL.UI
             writer.Write((int)d.State.Next);
             writer.PropertyName("walk");
             writer.Write(d.State.Walk);
-            writer.PropertyName("scrambleOnDemand");
-            writer.Write((d.Junction.Options & JunctionOptions.ScrambleOnDemand) != 0);
+            writer.PropertyName("scramble");
+            writer.Write((d.Junction.Options & JunctionOptions.Scramble) != 0);
             writer.PropertyName("turnOnRed");
             writer.Write((d.Junction.Options & JunctionOptions.TurnOnRed) != 0);
-            writer.PropertyName("scrambleActive");
-            writer.Write(d.Conflicts.Divert || (d.Junction.Options & JunctionOptions.PedestriansDiverted) != 0);
             writer.PropertyName("conflicts");
             writer.Write(d.Conflicts.Count);
             writer.PropertyName("reviewMinutes");
@@ -524,6 +522,8 @@ namespace TLL.UI
             writer.Write(a.TooQuiet);
             writer.PropertyName("pending");
             writer.Write(a.Layout.PendingReviews > 0 ? (int)a.Layout.Pending : -1);
+            writer.PropertyName("pendingScramble");
+            writer.Write(a.Layout.PendingReviews > 0 && a.Layout.PendingScramble);
             writer.PropertyName("measuredWait");
             writer.Write(a.MeasuredWait);
             writer.PropertyName("modelledWait");
@@ -548,6 +548,15 @@ namespace TLL.UI
                 writer.Write(c.Measured);
                 writer.PropertyName("jammed");
                 writer.Write(c.Measured && c.Backlog >= LayoutMemory.BacklogShare);
+                Calibration s = a.Memory.Get(i, wave, true);
+                writer.PropertyName("scrambleDelay");
+                writer.Write(a.ScrambleDelay[i]);
+                writer.PropertyName("scrambleSaturation");
+                writer.Write(a.ScrambleSaturation[i]);
+                writer.PropertyName("scrambleMeasured");
+                writer.Write(s.Measured);
+                writer.PropertyName("scrambleJammed");
+                writer.Write(s.Measured && s.Backlog >= LayoutMemory.BacklogShare);
                 writer.TypeEnd();
             }
             writer.ArrayEnd();
@@ -869,7 +878,8 @@ namespace TLL.UI
             Setting settings = Mod.Settings;
             ManagedJunction junction = ManagedJunction.Create(JunctionOrigin.Auto,
                 settings != null ? settings.AutoControl() : ControlMode.Adaptive,
-                settings != null ? settings.InitialStrategy() : PlanStrategy.Permissive);
+                settings != null ? settings.InitialStrategy() : PlanStrategy.Permissive,
+                settings != null && settings.InitialScramble());
             EntityManager.SetComponentData(m_Selected, junction);
             EntityManager.GetBuffer<JunctionPhase>(m_Selected).Clear();
             EntityManager.RemoveComponent<AutopilotState>(m_Selected);
@@ -881,7 +891,7 @@ namespace TLL.UI
 
         private void OnSetStrategy(int strategy)
         {
-            if (!TryGetSelected(out ManagedJunction junction) || strategy < 0 || strategy > (int)PlanStrategy.ExclusivePedestrian)
+            if (!TryGetSelected(out ManagedJunction junction) || strategy < 0 || strategy > (int)PlanStrategy.Split)
                 return;
             WriteUser("layout", ((PlanStrategy)strategy).ToString());
             TakeOverByPlayer(ref junction);
@@ -895,17 +905,14 @@ namespace TLL.UI
             m_DetailTime = default;
         }
 
-        /// <summary>Switches the scramble on demand of the selected junction; the plan is generated anew.</summary>
+        /// <summary>Switches the scramble of the selected junction; the plan is generated anew.</summary>
         private void OnToggleScramble()
         {
             if (!TryGetSelected(out ManagedJunction junction))
                 return;
-            junction.Options ^= JunctionOptions.ScrambleOnDemand;
-            WriteUser("scramble_on_demand", ((junction.Options & JunctionOptions.ScrambleOnDemand) != 0).ToString());
+            junction.Options ^= JunctionOptions.Scramble;
+            WriteUser("scramble", ((junction.Options & JunctionOptions.Scramble) != 0).ToString());
             TakeOverByPlayer(ref junction);
-            // Switched by hand, the scramble starts over: pedestrians cross
-            // with the vehicles until the conflicts pile up again.
-            junction.Options &= ~JunctionOptions.PedestriansDiverted;
             if (EntityManager.HasComponent<JunctionRuntime>(m_Selected))
             {
                 JunctionRuntime runtime = EntityManager.GetComponentData<JunctionRuntime>(m_Selected);
@@ -945,7 +952,8 @@ namespace TLL.UI
             JunctionOrigin origin = settings != null && settings.AutoManageAll ? JunctionOrigin.Auto : JunctionOrigin.Manual;
             ManagedJunction junction = ManagedJunction.Create(origin,
                 settings != null ? settings.AutoControl() : ControlMode.Adaptive,
-                settings != null ? settings.InitialStrategy() : PlanStrategy.Permissive);
+                settings != null ? settings.InitialStrategy() : PlanStrategy.Permissive,
+                settings != null && settings.InitialScramble());
             EntityManager.RemoveComponent<JunctionExcluded>(node);
             EntityManager.AddComponentData(node, junction);
             EntityManager.AddComponent<RebuildRequest>(node);

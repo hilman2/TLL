@@ -68,11 +68,52 @@ namespace TLL.Core.Advisor
         public const float MinModelled = 0.5f;
 
         // Per JunctionAdvisor.Strategies index; a struct of fields rather
-        // than an array, so it stays plain data for the ECS.
+        // than an array, so it stays plain data for the ECS. Slot 3 held
+        // the pedestrian scramble layout, which is now a layout with a
+        // scramble; saves carry it over to Scramble0 (AutopilotState).
         public Calibration Alone0, Alone1, Alone2, Alone3;
         public Calibration Wave0, Wave1, Wave2, Wave3;
 
+        /// <summary>
+        /// Per layout, run with a scramble: a plan with a phase of its own
+        /// for pedestrians and no turn waiting for people, which the plain
+        /// layout's measurement says nothing about. In a wave or not alike:
+        /// such a junction rarely runs in a wave.
+        /// </summary>
+        public Calibration Scramble0, Scramble1, Scramble2, Scramble3;
+
+        /// <summary>Slots per kind of measurement; more than there are layouts, for the saves.</summary>
         public const int Layouts = 4;
+
+        public Calibration Get(int layout, bool wave, bool scramble)
+        {
+            if (!scramble)
+                return Get(layout, wave);
+            switch (layout)
+            {
+                case 0: return Scramble0;
+                case 1: return Scramble1;
+                case 2: return Scramble2;
+                case 3: return Scramble3;
+                default: return default;
+            }
+        }
+
+        public void Set(int layout, bool wave, bool scramble, Calibration value)
+        {
+            if (!scramble)
+            {
+                Set(layout, wave, value);
+                return;
+            }
+            switch (layout)
+            {
+                case 0: Scramble0 = value; break;
+                case 1: Scramble1 = value; break;
+                case 2: Scramble2 = value; break;
+                case 3: Scramble3 = value; break;
+            }
+        }
 
         public Calibration Get(int layout, bool wave)
         {
@@ -111,9 +152,15 @@ namespace TLL.Core.Advisor
         /// <param name="backlog">A queue built up that did not clear.</param>
         public void Record(int layout, bool wave, float measured, float modelled, bool backlog)
         {
+            Record(layout, wave, false, measured, modelled, backlog);
+        }
+
+        /// <summary>Records one measurement period of the running layout, with a scramble or without.</summary>
+        public void Record(int layout, bool wave, bool scramble, float measured, float modelled, bool backlog)
+        {
             if (layout < 0 || layout >= Layouts || modelled < MinModelled)
                 return;
-            Calibration c = Get(layout, wave);
+            Calibration c = Get(layout, wave, scramble);
             float ratio = Math.Min(MaxFactor, Math.Max(MinFactor, measured / modelled));
             float jammed = backlog ? 1f : 0f;
             if (c.Measured)
@@ -128,21 +175,32 @@ namespace TLL.Core.Advisor
             }
             if (c.Samples < ushort.MaxValue)
                 c.Samples++;
-            Set(layout, wave, c);
+            Set(layout, wave, scramble, c);
         }
 
         /// <summary>Fades the backlog remembered for the layouts other than <paramref name="running"/>; called once per review.</summary>
         public void Fade(int running)
         {
-            for (int i = 0; i < Layouts * 2; i++)
+            Fade(running, false);
+        }
+
+        /// <summary>
+        /// Fades the backlog remembered for everything but what runs:
+        /// <paramref name="running"/>, with a scramble or without. Called
+        /// once per review.
+        /// </summary>
+        public void Fade(int running, bool scramble)
+        {
+            for (int i = 0; i < Layouts * 3; i++)
             {
                 int layout = i % Layouts;
-                bool wave = i >= Layouts;
-                if (layout == running)
+                bool wave = i >= Layouts && i < Layouts * 2;
+                bool slotScramble = i >= Layouts * 2;
+                if (layout == running && slotScramble == scramble)
                     continue;
-                Calibration c = Get(layout, wave);
+                Calibration c = Get(layout, wave, slotScramble);
                 c.Backlog *= BacklogFade;
-                Set(layout, wave, c);
+                Set(layout, wave, slotScramble, c);
             }
         }
     }

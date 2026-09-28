@@ -14,7 +14,11 @@ namespace TLL.Components
     /// </summary>
     public struct AutopilotState : IComponentData, ISerializable
     {
-        private const byte kVersion = 5;
+        /// <summary>
+        /// Layout of the saved data. 6 added the scramble: the pending
+        /// change's, and the measurements of the layouts run with one.
+        /// </summary>
+        private const byte kVersion = 6;
 
         /// <summary>A layout recommended but not yet applied, and how long the running one has run.</summary>
         public LayoutSchedule Layout;
@@ -50,6 +54,10 @@ namespace TLL.Components
         /// <summary>From the last layout round, per JunctionAdvisor.Strategies: mean delay in seconds and worst saturation.</summary>
         public float4 LayoutDelay;
         public float4 LayoutSaturation;
+
+        /// <summary>The same for each layout with a scramble; -1 where the junction has no crosswalks.</summary>
+        public float4 ScrambleDelay;
+        public float4 ScrambleSaturation;
         public bool HasEstimate;
 
         /// <summary>The last review found too little traffic at the peak to compare layouts.</summary>
@@ -79,6 +87,14 @@ namespace TLL.Components
             writer.Write(Layout.Age);
             writer.Write(LayoutHold);
             writer.Write(WaveTrial);
+            writer.Write(Layout.PendingScramble);
+            for (int i = 0; i < LayoutMemory.Layouts; i++)
+            {
+                Calibration c = Memory.Get(i, false, true);
+                writer.Write(c.Factor);
+                writer.Write(c.Samples);
+                writer.Write(c.Backlog);
+            }
         }
 
         public void Deserialize<TReader>(TReader reader) where TReader : IReader
@@ -111,6 +127,32 @@ namespace TLL.Components
                 reader.Read(out WaveTrial);
             }
             Layout.Pending = (PlanStrategy)pending;
+            if (version >= 6)
+            {
+                reader.Read(out Layout.PendingScramble);
+                for (int i = 0; i < LayoutMemory.Layouts; i++)
+                {
+                    var c = new Calibration();
+                    reader.Read(out c.Factor);
+                    reader.Read(out c.Samples);
+                    reader.Read(out c.Backlog);
+                    Memory.Set(i, false, true, c);
+                }
+            }
+            else
+            {
+                // The pedestrian scramble layout became the permissive one
+                // with a scramble; so does what the junction measured of it.
+                const int scrambleLayout = 3;
+                Memory.Set(0, false, true, Memory.Get(scrambleLayout, false));
+                Memory.Set(scrambleLayout, false, default(Calibration));
+                Memory.Set(scrambleLayout, true, default(Calibration));
+                if (Layout.Pending == PlanStrategy.ExclusivePedestrian)
+                {
+                    Layout.Pending = PlanStrategy.Permissive;
+                    Layout.PendingScramble = true;
+                }
+            }
         }
     }
 }

@@ -42,7 +42,7 @@ namespace TLL.UI
                 string history = "";
                 for (int b = 0; b < PedestrianConflicts.Window; b++)
                     history += (runtime.Conflicts.History & (1 << b)) != 0 ? 'x' : '.';
-                text.Append($"  scramble on demand {(junction.Options & JunctionOptions.ScrambleOnDemand) != 0}, diverting {runtime.Conflicts.Divert} (kept {(junction.Options & JunctionOptions.PedestriansDiverted) != 0}),conflicts {runtime.Conflicts.Count}/{PedestrianConflicts.Window} [{history}], this green {runtime.ConflictThisGreen}\n");
+                text.Append($"  scramble {(junction.Options & JunctionOptions.Scramble) != 0}, turning vehicles waited for people in {runtime.Conflicts.Count}/{PedestrianConflicts.Window} greens [{history}], this green {runtime.ConflictThisGreen}\n");
             }
             text.Append($"  turn on red {(junction.Options & JunctionOptions.TurnOnRed) != 0}\n");
             if (em.HasComponent<AutopilotState>(node))
@@ -57,12 +57,14 @@ namespace TLL.UI
                 // The layout memory: per layout, measured wait over the
                 // model's, periods measured, and how often a queue stayed.
                 text.Append($"  measured wait {a.MeasuredWait:0.0} s against the model's {a.ModelledWait:0.0} s, out of green waves for {a.WaveBan} rounds\n");
-                for (int i = 0; i < LayoutMemory.Layouts; i++)
+                for (int i = 0; i < JunctionAdvisor.Strategies.Length; i++)
                 {
                     Calibration alone = a.Memory.Get(i, false);
                     Calibration wave = a.Memory.Get(i, true);
+                    Calibration scramble = a.Memory.Get(i, false, true);
                     text.Append($"  layout {JunctionAdvisor.Strategies[i]}: alone x{alone.Factor:0.00} over {alone.Samples} periods, backlog {alone.Backlog:0.00};"
-                        + $" in a wave x{wave.Factor:0.00} over {wave.Samples} periods, backlog {wave.Backlog:0.00}; estimate {a.LayoutDelay[i]:0.0} s\n");
+                        + $" in a wave x{wave.Factor:0.00} over {wave.Samples} periods, backlog {wave.Backlog:0.00}; estimate {a.LayoutDelay[i]:0.0} s;"
+                        + $" with a scramble x{scramble.Factor:0.00} over {scramble.Samples} periods, backlog {scramble.Backlog:0.00}, estimate {a.ScrambleDelay[i]:0.0} s\n");
                 }
             }
             if (em.HasComponent<JunctionRuntime>(node))

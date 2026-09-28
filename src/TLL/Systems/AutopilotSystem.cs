@@ -154,16 +154,6 @@ namespace TLL.Systems
                     }
                     runtime.CountsSince = now;
                     bool layoutRound = (round + (uint)node.Index) % kLayoutEvery == 0;
-                    // A scramble found needed is kept with the junction, so it
-                    // outlasts a reload; the runtime is not saved. Manual
-                    // junctions have scrambles on demand too.
-                    if (runtime.Conflicts.Divert && (junction.Options & JunctionOptions.ScrambleOnDemand) != 0
-                        && (junction.Options & JunctionOptions.PedestriansDiverted) == 0)
-                    {
-                        junction.Options |= JunctionOptions.PedestriansDiverted;
-                        EntityManager.SetComponentData(node, junction);
-                        MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "scramble")?.Add("to", true).Add("conflicts", runtime.Conflicts.Count));
-                    }
                     EntityManager.SetComponentData(node, runtime);
                     UpdateHealth(node);
                     if (settings != null && settings.AutoManageAll && junction.Origin == JunctionOrigin.Auto)
@@ -346,14 +336,6 @@ namespace TLL.Systems
                 state.WaveBan--;
             if (state.LayoutHold > 0)
                 state.LayoutHold--;
-
-            // Junctions taken over before scrambles on demand existed get one.
-            // It costs nothing until pedestrians and turning vehicles clash.
-            if ((junction.Options & JunctionOptions.ScrambleOnDemand) == 0)
-            {
-                junction.Options |= JunctionOptions.ScrambleOnDemand;
-                rebuild = true;
-            }
 
             // The turns to forbid, reviewed with the layout. New rules take
             // effect with the rebuild below, and the layout waits for the
@@ -566,12 +548,15 @@ namespace TLL.Systems
             // The layout the measurement period ran with, before a setting
             // may change it below.
             PlanStrategy ran = junction.Strategy;
+            bool ranScramble = (junction.Options & JunctionOptions.Scramble) != 0;
             if (decide && settings.AutoLayout != AutoLayout.Automatic)
             {
                 PlanStrategy fixedChoice = settings.InitialStrategy();
-                if (junction.Strategy != fixedChoice)
+                bool fixedScramble = settings.InitialScramble();
+                if (junction.Strategy != fixedChoice || ranScramble != fixedScramble)
                 {
                     junction.Strategy = fixedChoice;
+                    junction.Options = fixedScramble ? junction.Options | JunctionOptions.Scramble : junction.Options & ~JunctionOptions.Scramble;
                     rebuild = true;
                 }
             }
@@ -611,35 +596,43 @@ namespace TLL.Systems
             bool recorded = false;
             if (decide)
             {
-                recorded = Remember(ref state, layout.Model, junction, ran, running, wave, recent, weights, period);
-                state.Memory.Fade(running);
+                recorded = Remember(ref state, layout.Model, junction, ran, running, wave, ranScramble, recent, weights, period);
+                state.Memory.Fade(running, ranScramble);
             }
 
             // With turning on red allowed, the layouts are compared as the
-            // junction would run them, with it wherever it pays. Then the
-            // model's estimates are corrected by what the junction measured
-            // when it ran them.
+            // junction would run them, with it wherever it pays; each with a
+            // scramble and without. Then the model's estimates are corrected
+            // by what the junction measured when it ran them.
             DelayParameters parameters = DelayParameters.Default;
             parameters.TurnOnRed = settings.TurnOnRed;
             PlanEstimate[] estimates = JunctionAdvisor.EvaluateAll(layout.Model, volumes, parameters, weights);
-            PlanEstimate[] corrected = JunctionAdvisor.Correct(estimates, state.Memory, running, wave);
+            PlanEstimate[] corrected = JunctionAdvisor.Correct(estimates, state.Memory, running, wave, false, ranScramble);
+            PlanEstimate[] scrambled = JunctionAdvisor.EvaluateAll(layout.Model, volumes, parameters, weights, scramble: true);
+            PlanEstimate[] scrambledCorrected = JunctionAdvisor.Correct(scrambled, state.Memory, running, wave, true, ranScramble);
             state.HasEstimate = true;
             m_Estimated++;
-            state.LayoutDelay = new float4(corrected[0].AverageDelay, corrected[1].AverageDelay, corrected[2].AverageDelay, corrected[3].AverageDelay);
-            state.LayoutSaturation = new float4(corrected[0].WorstSaturation, corrected[1].WorstSaturation, corrected[2].WorstSaturation, corrected[3].WorstSaturation);
+            state.LayoutDelay = Pack(corrected, e => e.AverageDelay);
+            state.LayoutSaturation = Pack(corrected, e => e.WorstSaturation);
+            state.ScrambleDelay = Pack(scrambledCorrected, e => e.AverageDelay);
+            state.ScrambleSaturation = Pack(scrambledCorrected, e => e.WorstSaturation);
 
-            PlanStrategy choice = JunctionAdvisor.Choose(junction.Strategy, corrected);
-            PlanEstimate best = corrected[Array.IndexOf(JunctionAdvisor.Strategies, choice)];
+            PlanStrategy choice = JunctionAdvisor.Choose(junction.Strategy, ranScramble, corrected, scrambledCorrected, out bool choiceScramble);
+            int chosen = Array.IndexOf(JunctionAdvisor.Strategies, choice);
+            PlanEstimate best = choiceScramble ? scrambledCorrected[chosen] : corrected[chosen];
             Road(peakByApproach, opposite, out _, out float major, out float minor, out _);
             state.SignalAdvice = SignalAdvisor.Decide(true, major, minor, best.AverageDelay);
 
             if (!decide)
                 return;
             // Turning on red for the layout the junction runs from now on.
-            PlanStrategy upcoming = settings.AutoLayout == AutoLayout.Automatic ? choice : junction.Strategy;
-            bool turnOnRed = settings.TurnOnRed && JunctionAdvisor.WantsTurnOnRed(
-                DelayModel.Estimate(layout.Model, PhasePlanner.Build(layout.Model, upcoming, weights), volumes, DelayParameters.Default),
-                estimates[Array.IndexOf(JunctionAdvisor.Strategies, upcoming)]);
+            bool automatic = settings.AutoLayout == AutoLayout.Automatic;
+            PlanStrategy upcoming = automatic ? choice : junction.Strategy;
+            bool upcomingScramble = automatic ? choiceScramble : (junction.Options & JunctionOptions.Scramble) != 0;
+            int next = Array.IndexOf(JunctionAdvisor.Strategies, upcoming);
+            bool turnOnRed = settings.TurnOnRed && next >= 0 && JunctionAdvisor.WantsTurnOnRed(
+                DelayModel.Estimate(layout.Model, PhasePlanner.Build(layout.Model, upcoming, weights, upcomingScramble), volumes, DelayParameters.Default),
+                upcomingScramble ? scrambled[next] : estimates[next]);
             if (turnOnRed != ((junction.Options & JunctionOptions.TurnOnRed) != 0))
             {
                 junction.Options ^= JunctionOptions.TurnOnRed;
@@ -647,38 +640,55 @@ namespace TLL.Systems
                 MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "turn_on_red")?.Add("to", turnOnRed).Add("layout", upcoming.ToString()));
             }
 
-            bool jammed = running >= 0 && state.Memory.Get(running, wave).Backlog >= LayoutMemory.BacklogShare;
+            bool jammed = running >= 0 && state.Memory.Get(running, wave, ranScramble).Backlog >= LayoutMemory.BacklogShare;
             // A layout the green waves chose stays while their trial runs and
             // while the wave does: a change would rebuild the junction and
             // take its timing out of the wave. Whether the wave helps, the
             // measurement decides (CoordinationSystem.Hurts), which then
             // frees the layout again.
             bool held = state.LayoutHold > 0 || wave || hold;
-            bool change = settings.AutoLayout == AutoLayout.Automatic && !held && state.Layout.Review(junction.Strategy, choice, jammed);
-            WriteReview(node, junction, round, state, estimates, corrected, wave, choice, jammed, change, recorded, period, held);
+            bool change = automatic && !held && state.Layout.Review(junction.Strategy, ranScramble, choice, choiceScramble, jammed);
+            WriteReview(node, junction, round, state, estimates, corrected, scrambled, scrambledCorrected, wave, choice, choiceScramble,
+                jammed, change, recorded, period, held);
             if (!change)
                 return;
+            bool tried = state.Memory.Get(chosen, wave, choiceScramble).Measured;
+            PlanEstimate now = running < 0 ? default : ranScramble ? scrambledCorrected[running] : corrected[running];
             MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "layout")?
                 .Add("from", junction.Strategy.ToString())
                 .Add("to", choice.ToString())
+                .Add("from_scramble", ranScramble)
+                .Add("to_scramble", choiceScramble)
                 .Add("jammed", jammed)
-                .Add("tried", state.Memory.Get(Array.IndexOf(JunctionAdvisor.Strategies, choice), wave).Measured)
+                .Add("tried", tried)
                 .Add("expected_delay_s", best.AverageDelay)
-                .Add("current_delay_s", running >= 0 ? corrected[running].AverageDelay : float.NaN)
+                .Add("current_delay_s", running >= 0 ? now.AverageDelay : float.NaN)
                 .Add("window", window));
             if (settings.VerboseLogging)
             {
-                int target = Array.IndexOf(JunctionAdvisor.Strategies, choice);
-                bool tried = state.Memory.Get(target, wave).Measured;
-                PlanEstimate now = running >= 0 ? corrected[running] : default;
-                Mod.Log.Info($"Autopilot: junction {node} changes from {junction.Strategy} to {choice}, expected mean delay {best.AverageDelay:0.0} s"
-                    + $" ({(tried ? "measured before" : "not tried yet")}){(jammed ? ", the current layout jams" : "")};"
-                    + $" now {now.AverageDelay:0.0} s at load {now.WorstSaturation:0.00}, {Remembered(state.Memory, running, wave)};"
-                    + $" then load {best.WorstSaturation:0.00}, {Remembered(state.Memory, target, wave)}; traffic window {window}.");
+                Mod.Log.Info($"Autopilot: junction {node} changes from {Name(junction.Strategy, ranScramble)} to {Name(choice, choiceScramble)},"
+                    + $" expected mean delay {best.AverageDelay:0.0} s ({(tried ? "measured before" : "not tried yet")}){(jammed ? ", the current layout jams" : "")};"
+                    + $" now {now.AverageDelay:0.0} s at load {now.WorstSaturation:0.00}, {Remembered(state.Memory, running, wave, ranScramble)};"
+                    + $" then load {best.WorstSaturation:0.00}, {Remembered(state.Memory, chosen, wave, choiceScramble)}; traffic window {window}.");
             }
             m_LayoutChanges++;
             junction.Strategy = choice;
+            junction.Options = choiceScramble ? junction.Options | JunctionOptions.Scramble : junction.Options & ~JunctionOptions.Scramble;
             rebuild = true;
+        }
+
+        private static string Name(PlanStrategy strategy, bool scramble)
+        {
+            return scramble ? $"{strategy} with scramble" : strategy.ToString();
+        }
+
+        /// <summary>One value per layout, in JunctionAdvisor.Strategies order; -1 for one that cannot run, 0 past the last.</summary>
+        private static float4 Pack(PlanEstimate[] estimates, Func<PlanEstimate, float> value)
+        {
+            var result = new float4(0f);
+            for (int i = 0; i < estimates.Length && i < 4; i++)
+                result[i] = JunctionAdvisor.IsAvailable(estimates[i]) ? value(estimates[i]) : -1f;
+            return result;
         }
 
         /// <summary>
@@ -688,13 +698,15 @@ namespace TLL.Systems
         /// decided.
         /// </summary>
         private void WriteReview(Entity node, ManagedJunction junction, uint round, AutopilotState state, PlanEstimate[] estimates, PlanEstimate[] corrected,
-            bool wave, PlanStrategy choice, bool jammed, bool change, bool recorded, JunctionRuntime period, bool held)
+            PlanEstimate[] scrambled, PlanEstimate[] scrambledCorrected, bool wave, PlanStrategy choice, bool choiceScramble,
+            bool jammed, bool change, bool recorded, JunctionRuntime period, bool held)
         {
             MetricsRow row = MetricsRecords.Review(m_Simulation.frameIndex, node, junction, round);
             if (row == null)
                 return;
             row.Add("wave", wave)
                 .Add("choice", choice.ToString())
+                .Add("choice_scramble", choiceScramble)
                 .Add("jammed", jammed)
                 .Add("change", change)
                 .Add("held", held)
@@ -717,15 +729,24 @@ namespace TLL.Systems
                     .Add("factor_" + name, c.Measured ? c.Factor : float.NaN)
                     .Add("samples_" + name, c.Samples)
                     .Add("backlog_" + name, c.Backlog);
+                if (!JunctionAdvisor.IsAvailable(scrambled[i]))
+                    continue;
+                Calibration s = state.Memory.Get(i, wave, true);
+                row.Add("est_delay_" + name + "_scramble", scrambled[i].AverageDelay)
+                    .Add("cor_delay_" + name + "_scramble", scrambledCorrected[i].AverageDelay)
+                    .Add("cor_load_" + name + "_scramble", scrambledCorrected[i].WorstSaturation)
+                    .Add("factor_" + name + "_scramble", s.Measured ? s.Factor : float.NaN)
+                    .Add("samples_" + name + "_scramble", s.Samples)
+                    .Add("backlog_" + name + "_scramble", s.Backlog);
             }
             MetricsLog.Write(row);
         }
 
-        private static string Remembered(LayoutMemory memory, int layout, bool wave)
+        private static string Remembered(LayoutMemory memory, int layout, bool wave, bool scramble)
         {
             if (layout < 0)
                 return "unknown layout";
-            Calibration c = memory.Get(layout, wave);
+            Calibration c = memory.Get(layout, wave, scramble);
             return c.Measured ? $"measured x{c.Factor:0.00} over {c.Samples} periods, backlog {c.Backlog:0.00}" : "never measured";
         }
 
@@ -740,19 +761,20 @@ namespace TLL.Systems
         /// mixed running alone and in a wave, or flashed, is left out.
         /// </summary>
         /// <returns>Whether the period was recorded.</returns>
+        /// <param name="scramble">The layout ran with a scramble; it is measured apart from the layout without.</param>
         private static bool Remember(ref AutopilotState state, JunctionModel model, ManagedJunction junction, PlanStrategy ran, int running, bool wave,
-            float[] recent, float[] weights, JunctionRuntime period)
+            bool scramble, float[] recent, float[] weights, JunctionRuntime period)
         {
             if (running < 0 || period.PeriodMixed || period.PeriodWave != wave
                 || period.PeriodRounds < kMinPeriodRounds || period.PeriodVehicles < kMinPeriodVehicles)
                 return false;
             DelayParameters p = DelayParameters.Default;
             p.TurnOnRed = (junction.Options & JunctionOptions.TurnOnRed) != 0;
-            PlanEstimate e = DelayModel.Estimate(model, PhasePlanner.Build(model, ran, weights), recent, p);
+            PlanEstimate e = DelayModel.Estimate(model, PhasePlanner.Build(model, ran, weights, scramble), recent, p);
             if (e.Vehicles <= 0f || e.VehicleDelay / e.Vehicles < LayoutMemory.MinModelled)
                 return false;
             float measured = period.PeriodWait / period.PeriodVehicles;
-            state.Memory.Record(running, wave, measured, e.VehicleDelay / e.Vehicles, period.PeriodBacklog);
+            state.Memory.Record(running, wave, scramble, measured, e.VehicleDelay / e.Vehicles, period.PeriodBacklog);
             state.MeasuredWait = measured;
             state.ModelledWait = e.VehicleDelay / e.Vehicles;
             return true;

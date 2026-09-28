@@ -140,14 +140,63 @@ namespace TLL.Core.Tests.Advisor
         }
 
         [Fact]
-        public void CrowdedCrosswalksWithHeavyTurningGetAPedestrianPhase()
+        public void CrowdedCrosswalksWithHeavyTurningGetAScramble()
         {
             JunctionModel m = ChordModel.Build(Cross, false);
-            PlanEstimate[] crowded = JunctionAdvisor.EvaluateAll(m, Volumes(m, 150f, 150f, 250f, 1800f), P);
-            Assert.Equal(PlanStrategy.ExclusivePedestrian, JunctionAdvisor.Choose(PlanStrategy.Permissive, crowded));
+            float[] v = Volumes(m, 150f, 150f, 250f, 1800f);
+            PlanEstimate[] plain = JunctionAdvisor.EvaluateAll(m, v, P);
+            PlanEstimate[] scrambled = JunctionAdvisor.EvaluateAll(m, v, P, scramble: true);
 
-            PlanEstimate[] quiet = JunctionAdvisor.EvaluateAll(m, Volumes(m, 150f, 150f, 250f, 50f), P);
-            Assert.NotEqual(PlanStrategy.ExclusivePedestrian, JunctionAdvisor.Choose(PlanStrategy.Permissive, quiet));
+            PlanStrategy choice = JunctionAdvisor.Choose(PlanStrategy.Split, false, plain, scrambled, out bool scramble);
+
+            Assert.True(scramble, $"{choice} without a scramble");
+        }
+
+        [Fact]
+        public void QuietCrosswalksNeedNoScramble()
+        {
+            // Split with a scramble: a phase of its own for few people, while
+            // hardly a turn waits for them.
+            JunctionModel m = ChordModel.Build(Cross, false);
+            float[] v = Volumes(m, 300f, 120f, 150f, 60f);
+            PlanEstimate[] plain = JunctionAdvisor.EvaluateAll(m, v, P);
+            PlanEstimate[] scrambled = JunctionAdvisor.EvaluateAll(m, v, P, scramble: true);
+
+            PlanStrategy choice = JunctionAdvisor.Choose(PlanStrategy.Split, true, plain, scrambled, out bool scramble);
+
+            Assert.False(scramble, $"{choice} with a scramble");
+        }
+
+        [Fact]
+        public void TheMeasuredWaitDecidesOnTheScramble()
+        {
+            // At 1300 people an hour per crosswalk the scramble is ahead on
+            // paper, by little. The junction measured every layout with a
+            // scramble at three times the model's wait, and without at the
+            // model's.
+            JunctionModel m = ChordModel.Build(Cross, false);
+            float[] v = Volumes(m, 150f, 150f, 250f, 1300f);
+            int split = System.Array.IndexOf(JunctionAdvisor.Strategies, PlanStrategy.Split);
+            PlanEstimate[] plain = JunctionAdvisor.EvaluateAll(m, v, P);
+            PlanEstimate[] scrambled = JunctionAdvisor.EvaluateAll(m, v, P, scramble: true);
+            JunctionAdvisor.Choose(PlanStrategy.Split, false, plain, scrambled, out bool onPaper);
+            Assert.True(onPaper, "the scramble is not ahead on paper");
+            var memory = new LayoutMemory();
+            for (int i = 0; i < JunctionAdvisor.Strategies.Length; i++)
+            {
+                float model = plain[i].VehicleDelay / plain[i].Vehicles;
+                memory.Record(i, false, false, model, model, false);
+                float withScramble = scrambled[i].VehicleDelay / scrambled[i].Vehicles;
+                memory.Record(i, false, true, 3f * withScramble, withScramble, false);
+            }
+
+            PlanEstimate[] plainNow = JunctionAdvisor.Correct(plain, memory, split, false, false, true);
+            PlanEstimate[] scrambledNow = JunctionAdvisor.Correct(scrambled, memory, split, false, true, true);
+            JunctionAdvisor.Choose(PlanStrategy.Split, true, plainNow, scrambledNow, out bool scramble);
+
+            string table = string.Join("; ", plainNow.Select((x, i) => $"{JunctionAdvisor.Strategies[i]}: {x.TotalDelay:0} ({x.VehicleDelay:0} veh) X {x.WorstSaturation:0.00}"
+                + $" / scramble {scrambledNow[i].TotalDelay:0} ({scrambledNow[i].VehicleDelay:0} veh) X {scrambledNow[i].WorstSaturation:0.00}"));
+            Assert.False(scramble, table);
         }
 
         [Fact]

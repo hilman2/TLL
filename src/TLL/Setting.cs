@@ -164,11 +164,19 @@ namespace TLL
                     return PlanStrategy.ProtectedTurns;
                 case AutoLayout.Split:
                     return PlanStrategy.Split;
-                case AutoLayout.ExclusivePedestrian:
-                    return PlanStrategy.ExclusivePedestrian;
                 default:
                     return PlanStrategy.Permissive;
             }
+        }
+
+        /// <summary>
+        /// Whether that layout has a scramble: only with the choice
+        /// "pedestrian scramble", which is the permissive layout with one.
+        /// With the automatic layout the autopilot decides later.
+        /// </summary>
+        public bool InitialScramble()
+        {
+            return AutoLayout == AutoLayout.ExclusivePedestrian;
         }
 
         public override void SetDefaults()

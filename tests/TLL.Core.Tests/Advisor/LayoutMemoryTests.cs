@@ -92,7 +92,6 @@ namespace TLL.Core.Tests.Advisor
             e[Index(PlanStrategy.Permissive)] = Estimate(38.7f, 1.09f);
             e[Index(PlanStrategy.ProtectedTurns)] = Estimate(39.7f, 1.2f);
             e[Index(PlanStrategy.Split)] = Estimate(36.9f, 1.03f);
-            e[Index(PlanStrategy.ExclusivePedestrian)] = Estimate(50.7f, 1.1f);
             var memory = new LayoutMemory();
             int split = Index(PlanStrategy.Split);
             memory.Record(split, false, 36.9f * 1.28f, 36.9f, false);

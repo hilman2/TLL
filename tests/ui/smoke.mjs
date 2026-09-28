@@ -103,9 +103,8 @@ const managed = {
     { kind: 0, source: 7, target: 9 },
   ],
   walk: true,
-  scrambleOnDemand: true,
+  scramble: false,
   turnOnRed: true,
-  scrambleActive: false,
   conflicts: 3,
   reviewMinutes: 44.6,
   phases: [phase([0, 1, 3], [1]), { ...phase([2, 4]), walkGreen: 19 }],
@@ -138,23 +137,35 @@ const scenarios = {
     "tll.selected": {
       ...managed,
       movements: managed.movements.map((m, i) => ({ ...m, volume: i === 0 ? -1 : 120 * i })),
-      scrambleActive: true,
       autopilot: {
-        majorVolume: 840, minorVolume: 210, signalAdvice: 2, pending: 1,
+        majorVolume: 840, minorVolume: 210, signalAdvice: 2, pending: 1, pendingScramble: true,
         measuredWait: 12.4, modelledWait: 9.1, waveBanMinutes: 700,
         estimates: [
-          { strategy: 0, delay: 18.4, saturation: 0.92, measured: true, jammed: false },
-          { strategy: 1, delay: 14.2, saturation: 0.71, measured: false, jammed: false },
-          { strategy: 2, delay: 31.0, saturation: 0.95, measured: true, jammed: true },
-          { strategy: 3, delay: 42.5, saturation: 1.05, measured: false, jammed: false },
+          { strategy: 0, delay: 18.4, saturation: 0.92, measured: true, jammed: false, scrambleDelay: 25.1, scrambleSaturation: 0.8, scrambleMeasured: false, scrambleJammed: false },
+          { strategy: 1, delay: 14.2, saturation: 0.71, measured: false, jammed: false, scrambleDelay: 19.9, scrambleSaturation: 0.7, scrambleMeasured: true, scrambleJammed: false },
+          { strategy: 2, delay: 31.0, saturation: 0.95, measured: true, jammed: true, scrambleDelay: -1, scrambleSaturation: -1, scrambleMeasured: false, scrambleJammed: false },
         ],
       },
     },
     // Texts the open panel must show; the stand-in translation gives the fallbacks.
     expect: [
-      ">Next review in 45 min<", "active (3/8)<",
+      ">Next review in 45 min<", "Pedestrian scramble · turns waited 3/8<",
       "Measured wait Ø 12 s · model Ø 9 s", "Kept out of green waves for 12 h", " •<",
+      ">ProtectedTurns + scramble •<", ">Next review changes to: ProtectedTurns + scramble<",
     ],
+  },
+  "junction with a scramble": {
+    "tll.selected": { ...managed, scramble: true },
+    expect: [">Pedestrian scramble<"],
+  },
+  "estimates from an older C# side": {
+    "tll.selected": {
+      ...managed,
+      autopilot: {
+        majorVolume: 840, minorVolume: 210, signalAdvice: 0, pending: -1,
+        estimates: [{ strategy: 0, delay: 18.4, saturation: 0.92, measured: true, jammed: false }],
+      },
+    },
   },
   "managed junction with turns": {
     "tll.selected": {

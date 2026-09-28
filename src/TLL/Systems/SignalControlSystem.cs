@@ -278,17 +278,18 @@ namespace TLL.Systems
                         continue;
 
                     DynamicBuffer<DetectorLane> detectors = hasDetectors ? detectorBuffers[i] : default;
-                    bool scramble = (junction.Options & JunctionOptions.ScrambleOnDemand) != 0;
-                    bool divert = scramble && (runtime.Conflicts.Divert || (junction.Options & JunctionOptions.PedestriansDiverted) != 0);
-                    Sense(phases, lanes, detectors, hasDetectors, counters, statistics, movements, runtime.State, divert, out bool conflict);
+                    bool scramble = (junction.Options & JunctionOptions.Scramble) != 0;
+                    Sense(phases, lanes, detectors, hasDetectors, counters, statistics, movements, runtime.State, scramble, out bool conflict);
 
                     ControllerConfig config = junction.ToConfig();
-                    config.DivertPedestrians = divert;
+                    config.DivertPedestrians = scramble;
                     var access = new PhaseBufferAccess(phases);
                     Stage stageBefore = runtime.State.Stage;
                     byte phaseBefore = runtime.State.Phase;
                     SignalController.Step(ref runtime.State, in config, ref access, GlobalStep);
-                    if (scramble)
+                    // How often turning vehicles wait for people, for the
+                    // panel: with a scramble they never meet.
+                    if (!scramble)
                         CountConflicts(ref runtime, phases, movements, stageBefore, phaseBefore, conflict);
 
                     Show(runtime.State, phases, lanes, movements, (junction.Options & JunctionOptions.TurnOnRed) != 0, ref light);

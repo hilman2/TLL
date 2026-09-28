@@ -13,27 +13,9 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
-        public void DivertsAfterFiveConflictsInTheLastEightGreens()
+        public void CountsTheConflictsOfTheLastEightGreens()
         {
-            Assert.False(After("xx.x..x.").Divert);
-            Assert.True(After("xx.x..xx").Divert);
-        }
-
-        [Fact]
-        public void OnceDivertedItStays()
-        {
-            // With pedestrians in the scramble, turning vehicles no longer
-            // meet them: the quiet greens that follow say nothing about
-            // whether the scramble is still needed.
-            PedestrianConflicts diverted = After(".....................", After("xxxxx"));
-            Assert.Equal(0, diverted.Count);
-            Assert.True(diverted.Divert);
-        }
-
-        [Fact]
-        public void FourConflictsDoNotStartIt()
-        {
-            Assert.False(After("x.x.x.x.").Divert);
+            Assert.Equal(4, After("xx.x..x.").Count);
         }
 
         [Fact]

@@ -184,7 +184,7 @@ namespace TLL.Systems
             {
                 // One structural change for all nodes, then plain data writes.
                 EntityManager.AddComponent<ManagedJunction>(m_UnmanagedQuery);
-                ManagedJunction auto = ManagedJunction.Create(JunctionOrigin.Auto, settings.AutoControl(), settings.InitialStrategy());
+                ManagedJunction auto = ManagedJunction.Create(JunctionOrigin.Auto, settings.AutoControl(), settings.InitialStrategy(), settings.InitialScramble());
                 foreach (Entity node in nodes)
                     EntityManager.SetComponentData(node, auto);
                 // A full rebuild, not just JunctionDirty: the signal poles get
@@ -236,7 +236,7 @@ namespace TLL.Systems
                         continue;
                     if (EntityManager.GetComponentData<ManagedJunction>(node).Origin == JunctionOrigin.Auto)
                         continue;
-                    EntityManager.SetComponentData(node, ManagedJunction.Create(JunctionOrigin.Auto, settings.AutoControl(), settings.InitialStrategy()));
+                    EntityManager.SetComponentData(node, ManagedJunction.Create(JunctionOrigin.Auto, settings.AutoControl(), settings.InitialStrategy(), settings.InitialScramble()));
                     if (EntityManager.HasBuffer<JunctionPhase>(node))
                         EntityManager.GetBuffer<JunctionPhase>(node).Clear();
                     EntityManager.RemoveComponent<AutopilotState>(node);

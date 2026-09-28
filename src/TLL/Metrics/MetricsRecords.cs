@@ -59,8 +59,8 @@ namespace TLL.Metrics
             }
             MetricsLog.Write(Junction(row, node, junction, round, frame)
                 .Add("turn_on_red", (junction.Options & JunctionOptions.TurnOnRed) != 0)
-                .Add("scramble_on_demand", (junction.Options & JunctionOptions.ScrambleOnDemand) != 0)
-                .Add("diverting", runtime.Conflicts.Divert || (junction.Options & JunctionOptions.PedestriansDiverted) != 0)
+                .Add("scramble", (junction.Options & JunctionOptions.Scramble) != 0)
+                .Add("pedestrian_conflicts", runtime.Conflicts.Count)
                 .Add("elapsed_s", seconds)
                 .Add("vehicles", vehicles)
                 .Add("vehicles_per_h", vehicles / seconds * 3600f)

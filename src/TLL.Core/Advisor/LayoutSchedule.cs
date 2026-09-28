@@ -23,6 +23,10 @@ namespace TLL.Core.Advisor
         public const int DwellReviews = 3;
 
         public PlanStrategy Pending;
+
+        /// <summary>The layout recommended is to have a scramble.</summary>
+        public bool PendingScramble;
+
         public byte PendingReviews;
 
         /// <summary>Reviews since the last change.</summary>
@@ -37,14 +41,22 @@ namespace TLL.Core.Advisor
         /// <param name="jammed">The running layout's queues did not clear.</param>
         public bool Review(PlanStrategy current, PlanStrategy choice, bool jammed)
         {
+            return Review(current, false, choice, false, jammed);
+        }
+
+        /// <summary>Called at every review. Returns whether to change to <paramref name="choice"/> with <paramref name="choiceScramble"/> now.</summary>
+        /// <param name="currentScramble">The running layout has a scramble.</param>
+        /// <param name="choiceScramble">The layout recommended is to have one.</param>
+        public bool Review(PlanStrategy current, bool currentScramble, PlanStrategy choice, bool choiceScramble, bool jammed)
+        {
             if (Age < byte.MaxValue)
                 Age++;
-            if (choice == current)
+            if (choice == current && choiceScramble == currentScramble)
             {
                 PendingReviews = 0;
                 return false;
             }
-            if (Pending == choice && PendingReviews > 0)
+            if (Pending == choice && PendingScramble == choiceScramble && PendingReviews > 0)
             {
                 if (PendingReviews < byte.MaxValue)
                     PendingReviews++;
@@ -52,6 +64,7 @@ namespace TLL.Core.Advisor
             else
             {
                 Pending = choice;
+                PendingScramble = choiceScramble;
                 PendingReviews = 1;
             }
             if (Age < DwellReviews || PendingReviews < (jammed ? 1 : ConfirmReviews))

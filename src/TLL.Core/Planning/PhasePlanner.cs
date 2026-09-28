@@ -14,7 +14,11 @@ namespace TLL.Core.Planning
         /// <summary>Each approach runs alone.</summary>
         Split,
 
-        /// <summary>Like <see cref="Permissive"/>, plus one phase in which only pedestrians walk, in all directions.</summary>
+        /// <summary>
+        /// Saves from before the scramble became a switch of every layout:
+        /// <see cref="Permissive"/> with a scramble. <see cref="PhasePlanner.Build"/>
+        /// plans it as such; the mod turns it into that when it loads a save.
+        /// </summary>
         ExclusivePedestrian,
     }
 
@@ -40,10 +44,25 @@ namespace TLL.Core.Planning
         /// than the fewest possible. Without it, the phases follow the
         /// conflicts alone.
         /// </param>
-        public static PhasePlan Build(JunctionModel junction, PlanStrategy strategy, float[] weights = null)
+        /// <param name="scramble">
+        /// Pedestrians get a phase of their own, in all directions, and walk
+        /// in no other: the vehicle phases are planned as if there were no
+        /// crosswalks. No effect at a junction without crosswalks.
+        /// </param>
+        public static PhasePlan Build(JunctionModel junction, PlanStrategy strategy, float[] weights = null, bool scramble = false)
         {
             if (junction.Movements.Count > 64)
                 throw new ArgumentException("A junction can have at most 64 movements.", nameof(junction));
+            // The pedestrian scramble layout of old saves is the permissive
+            // layout with a scramble.
+            if (strategy == PlanStrategy.ExclusivePedestrian)
+            {
+                strategy = PlanStrategy.Permissive;
+                scramble = true;
+            }
+            ulong crosswalks = scramble ? Crosswalks(junction) : 0UL;
+            if (crosswalks != 0UL)
+                return BuildScramble(junction, strategy, weights, crosswalks);
 
             ConflictMatrix conflicts = Adjust(junction, strategy);
             int n = junction.Movements.Count;
@@ -78,7 +97,7 @@ namespace TLL.Core.Planning
             for (int p = 0; p < phases.Count; p++)
             {
                 Phase widened = Widen(phases[p], conflicts, n);
-                widened.Green = AddFreeOverlaps(widened.Green, junction, physical, strategy);
+                widened.Green = AddFreeOverlaps(widened.Green, junction, physical);
                 phases[p] = widened;
             }
 
@@ -178,6 +197,49 @@ namespace TLL.Core.Planning
             }
         }
 
+        /// <summary>The junction's crosswalks, as a mask over its movements.</summary>
+        public static ulong Crosswalks(JunctionModel junction)
+        {
+            ulong crosswalks = 0UL;
+            for (int i = 0; i < junction.Movements.Count; i++)
+            {
+                if (junction.Movements[i].IsPedestrian)
+                    crosswalks |= 1UL << i;
+            }
+            return crosswalks;
+        }
+
+        /// <summary>
+        /// A plan with a scramble: the vehicle phases of
+        /// <paramref name="strategy"/> for the junction without its
+        /// crosswalks, since vehicles and people never have green together,
+        /// and one phase of all crosswalks at the end.
+        /// </summary>
+        private static PhasePlan BuildScramble(JunctionModel junction, PlanStrategy strategy, float[] weights, ulong crosswalks)
+        {
+            JunctionModel vehicles = junction.Without(crosswalks, out int[] kept);
+            PhasePlan inner = Build(vehicles, strategy, JunctionModel.Select(weights, kept));
+            var plan = new PhasePlan();
+            foreach (Phase phase in inner.Phases)
+                plan.Phases.Add(new Phase { Green = Expand(phase.Green, kept), Permitted = Expand(phase.Permitted, kept) });
+            plan.Phases.Add(new Phase { Green = crosswalks });
+            if (plan.Phases.Count > MaxPhases)
+                throw new InvalidOperationException($"Junction needs {plan.Phases.Count} phases, the game supports {MaxPhases}.");
+            return plan;
+        }
+
+        /// <summary>A mask over the movements of a reduced model (JunctionModel.Without), as a mask over the full model's.</summary>
+        private static ulong Expand(ulong mask, int[] kept)
+        {
+            ulong result = 0UL;
+            for (int i = 0; i < kept.Length; i++)
+            {
+                if ((mask & (1UL << i)) != 0UL)
+                    result |= 1UL << kept[i];
+            }
+            return result;
+        }
+
         /// <summary>
         /// The movements of <paramref name="green"/> that give way within it,
         /// by the junction's own relations: what a kept plan shows as a
@@ -257,8 +319,6 @@ namespace TLL.Core.Planning
         /// keeps apart movements that would have to give way to each other;
         /// it has no reason to hold a movement at red that crosses nobody,
         /// such as a right turn into its own lane while the cross street runs.
-        /// With an exclusive pedestrian phase, crosswalks stay out of the
-        /// vehicle phases, since keeping them there is the point of it.
         /// </summary>
         /// <param name="physical">
         /// The junction's relations with the hard conflicts passed on along
@@ -266,14 +326,12 @@ namespace TLL.Core.Planning
         /// partner cannot run in the phase is not free either, since the
         /// partner at the front of the lane would block it.
         /// </param>
-        private static ulong AddFreeOverlaps(ulong green, JunctionModel junction, ConflictMatrix physical, PlanStrategy strategy)
+        private static ulong AddFreeOverlaps(ulong green, JunctionModel junction, ConflictMatrix physical)
         {
             int n = junction.Movements.Count;
             for (int candidate = 0; candidate < n; candidate++)
             {
                 if ((green & (1UL << candidate)) != 0)
-                    continue;
-                if (strategy == PlanStrategy.ExclusivePedestrian && junction.Movements[candidate].IsPedestrian)
                     continue;
                 bool free = true;
                 for (int member = 0; member < n && free; member++)

@@ -28,7 +28,6 @@ export enum PlanStrategy {
   Permissive = 0,
   ProtectedTurns = 1,
   Split = 2,
-  ExclusivePedestrian = 3,
 }
 
 /** Numbers as in TLL.Core.Planning.MovementKind. */
@@ -116,6 +115,11 @@ export interface Estimate {
   measured: boolean;
   /** When it ran, queues built up that did not clear. */
   jammed: boolean;
+  /** The same for the layout with a pedestrian scramble; a delay of -1 where the junction has no crosswalks. */
+  scrambleDelay: number;
+  scrambleSaturation: number;
+  scrambleMeasured: boolean;
+  scrambleJammed: boolean;
 }
 
 export interface AutopilotInfo {
@@ -126,6 +130,8 @@ export interface AutopilotInfo {
   tooQuiet: boolean;
   /** Layout the autopilot wants to change to at the next review, -1 for none. */
   pending: number;
+  /** That layout is to have a pedestrian scramble. */
+  pendingScramble: boolean;
   /** Vehicles' mean wait over the last measurement period, and what the model expected, seconds; 0 until measured. */
   measuredWait: number;
   modelledWait: number;
@@ -192,15 +198,13 @@ export interface JunctionInfo extends EntityRef {
   next: number;
   /** The crosswalks of the green phase show walk (someone pressed the button, or fixed time). */
   walk: boolean;
-  /** The plan has a scramble phase that runs while turning traffic keeps meeting pedestrians. */
-  scrambleOnDemand: boolean;
+  /** Pedestrians have a phase of their own, in all directions, and walk in no other. */
+  scramble: boolean;
   /** Short turns may go on red where they only meet traffic they give way to. */
   turnOnRed: boolean;
-  /** Pedestrians are diverted into the scramble right now. */
-  scrambleActive: boolean;
-  /** Vehicle greens with such a clash among the last eight. */
+  /** Of the last eight vehicle greens with turns across a crosswalk, those in which a turning vehicle waited for people. */
   conflicts: number;
-  /** Game minutes until the next review, which decides the layout and whether the scramble stays. */
+  /** Game minutes until the next review, which decides the layout and the scramble. */
   reviewMinutes: number;
   stageSeconds: number;
   cycleSeconds: number;

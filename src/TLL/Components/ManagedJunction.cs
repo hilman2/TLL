@@ -27,13 +27,10 @@ namespace TLL.Components
         AutoTiming = 1,
 
         // Value 2 was a per-junction flashing switch that nothing read; the
-        // setting AutoFlash decides. Left free so old saves stay readable.
-
-        /// <summary>
-        /// The plan gets a scramble phase, which runs only while turning
-        /// vehicles keep being held up by pedestrians (see PedestrianConflicts).
-        /// </summary>
-        ScrambleOnDemand = 4,
+        // setting AutoFlash decides. Value 4 was "scramble on demand", a
+        // scramble phase switched on by a count of turning vehicles held up
+        // by people; the scramble is a switch of its own now (Scramble), and
+        // loading clears 4. Both are left free so old saves stay readable.
 
         /// <summary>
         /// Short turns may go on red where they meet only traffic they give
@@ -43,12 +40,14 @@ namespace TLL.Components
         TurnOnRed = 8,
 
         /// <summary>
-        /// The scramble on demand has been found needed, and pedestrians
-        /// cross only in it from now on (PedestrianConflicts). Saved with the
-        /// junction, so a reload does not have to find it again; switching
-        /// the scramble off and on starts over.
+        /// Pedestrians get a phase of their own, in all directions, and walk
+        /// in no other; the vehicle phases are planned without crosswalks
+        /// (PhasePlanner.Build). At automatic junctions the autopilot sets it
+        /// where its estimate and the junction's measurements say it saves
+        /// time. The bit meant "pedestrians diverted into the scramble on
+        /// demand" before, which is the same.
         /// </summary>
-        PedestriansDiverted = 16,
+        Scramble = 16,
     }
 
     /// <summary>
@@ -82,13 +81,15 @@ namespace TLL.Components
         /// <summary>The approach whose traffic keeps going while the signals flash. Null lets TLL choose.</summary>
         public Entity MajorApproach;
 
-        public static ManagedJunction Create(JunctionOrigin origin, ControlMode mode, PlanStrategy strategy)
+        /// <param name="scramble">Pedestrians get a phase of their own (JunctionOptions.Scramble).</param>
+        public static ManagedJunction Create(JunctionOrigin origin, ControlMode mode, PlanStrategy strategy, bool scramble = false)
         {
             ControllerConfig defaults = ControllerConfig.Default(mode);
             return new ManagedJunction
             {
                 Origin = origin,
-                Options = origin == JunctionOrigin.Auto ? JunctionOptions.AutoTiming | JunctionOptions.ScrambleOnDemand : JunctionOptions.None,
+                Options = (origin == JunctionOrigin.Auto ? JunctionOptions.AutoTiming : JunctionOptions.None)
+                    | (scramble ? JunctionOptions.Scramble : JunctionOptions.None),
                 Mode = mode,
                 Strategy = strategy,
                 Yellow = defaults.Yellow,
@@ -146,9 +147,16 @@ namespace TLL.Components
             reader.Read(out Group);
             reader.Read(out MajorApproach);
             Origin = (JunctionOrigin)origin;
-            Options = (JunctionOptions)options;
+            // "Scramble on demand" (4) is gone; see JunctionOptions.
+            Options = (JunctionOptions)(options & ~4);
             Mode = (ControlMode)mode;
             Strategy = (PlanStrategy)strategy;
+            // The pedestrian scramble layout is the permissive one with a scramble.
+            if (Strategy == PlanStrategy.ExclusivePedestrian)
+            {
+                Strategy = PlanStrategy.Permissive;
+                Options |= JunctionOptions.Scramble;
+            }
         }
     }
 }

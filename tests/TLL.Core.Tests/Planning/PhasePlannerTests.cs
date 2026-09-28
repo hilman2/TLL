@@ -310,6 +310,58 @@ namespace TLL.Core.Tests.Planning
             return -1;
         }
 
+        [Theory]
+        [InlineData(PlanStrategy.Permissive)]
+        [InlineData(PlanStrategy.ProtectedTurns)]
+        [InlineData(PlanStrategy.Split)]
+        public void WithAScramblePedestriansWalkOnlyInTheirOwnPhase(PlanStrategy strategy)
+        {
+            JunctionModel m = ChordModel.Build(Cross, false);
+            ulong crosswalks = PhasePlanner.Crosswalks(m);
+
+            PhasePlan scramble = PhasePlanner.Build(m, strategy, scramble: true);
+
+            Assert.Equal(crosswalks, scramble.Phases[scramble.Phases.Count - 1].Green);
+            for (int p = 0; p < scramble.Phases.Count - 1; p++)
+                Assert.Equal(0UL, scramble.Phases[p].Green & crosswalks);
+            Assert.Equal(0UL, scramble.Uncovered(m.Movements.Count));
+        }
+
+        [Fact]
+        public void AScrambleFreesTheVehiclePhasesFromTheCrosswalks()
+        {
+            // Straight traffic crosses the crosswalks of the road it comes
+            // from; with the crosswalks in the vehicle phases, oncoming
+            // straight traffic may not run with the other road's crosswalks.
+            // Without them, the vehicle phases are those of the junction
+            // without crosswalks.
+            JunctionModel m = ChordModel.Build(Cross, false);
+            JunctionModel bare = ChordModel.Build(Cross, false, crosswalks: false);
+
+            PhasePlan scramble = PhasePlanner.Build(m, PlanStrategy.Permissive, scramble: true);
+
+            Assert.Equal(PhasePlanner.Build(bare, PlanStrategy.Permissive).Phases.Count + 1, scramble.Phases.Count);
+        }
+
+        [Fact]
+        public void AJunctionWithoutCrosswalksGetsNoScramble()
+        {
+            JunctionModel bare = ChordModel.Build(Cross, false, crosswalks: false);
+
+            Assert.Equal(PhasePlanner.Build(bare, PlanStrategy.Split).Phases.Count, PhasePlanner.Build(bare, PlanStrategy.Split, scramble: true).Phases.Count);
+        }
+
+        [Fact]
+        public void ThePedestrianScrambleLayoutIsPermissiveWithAScramble()
+        {
+            JunctionModel m = ChordModel.Build(Cross, false);
+
+            PhasePlan old = PhasePlanner.Build(m, PlanStrategy.ExclusivePedestrian);
+            PhasePlan now = PhasePlanner.Build(m, PlanStrategy.Permissive, scramble: true);
+
+            Assert.Equal(now.Phases.Select(p => p.Green), old.Phases.Select(p => p.Green));
+        }
+
         [Fact]
         public void TheBusiestFlowsShareAPhase()
         {

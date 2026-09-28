@@ -5,7 +5,9 @@ namespace TLL.Core.Advisor
 {
     /// <summary>
     /// Chooses the phase layout of a junction from its traffic, by comparing
-    /// the expected delay of every layout (see <see cref="DelayModel"/>).
+    /// the expected delay of every layout (see <see cref="DelayModel"/>), and
+    /// whether pedestrians get a scramble: a phase of their own, in which
+    /// alone they walk.
     /// </summary>
     public static class JunctionAdvisor
     {
@@ -14,7 +16,6 @@ namespace TLL.Core.Advisor
             PlanStrategy.Permissive,
             PlanStrategy.ProtectedTurns,
             PlanStrategy.Split,
-            PlanStrategy.ExclusivePedestrian,
         };
 
         /// <summary>A change must save at least this share of the total delay.</summary>
@@ -25,15 +26,32 @@ namespace TLL.Core.Advisor
 
         /// <summary>Estimates every layout. Index i belongs to <see cref="Strategies"/>[i].</summary>
         /// <param name="weights">Per movement, the traffic the phases are laid out by (PhasePlanner.Build); null for none.</param>
-        public static PlanEstimate[] EvaluateAll(JunctionModel junction, float[] volumes, DelayParameters p, float[] weights = null)
+        /// <param name="scramble">
+        /// Estimate each layout with a scramble (PhasePlanner.Build). At a
+        /// junction without crosswalks every layout is then <see cref="Unavailable"/>.
+        /// </param>
+        public static PlanEstimate[] EvaluateAll(JunctionModel junction, float[] volumes, DelayParameters p, float[] weights = null, bool scramble = false)
         {
             var result = new PlanEstimate[Strategies.Length];
+            bool none = scramble && PhasePlanner.Crosswalks(junction) == 0UL;
             for (int i = 0; i < Strategies.Length; i++)
             {
-                PhasePlan plan = PhasePlanner.Build(junction, Strategies[i], weights);
-                result[i] = DelayModel.Estimate(junction, plan, volumes, p);
+                result[i] = none ? Unavailable
+                    : DelayModel.Estimate(junction, PhasePlanner.Build(junction, Strategies[i], weights, scramble), volumes, p);
             }
             return result;
+        }
+
+        /// <summary>The estimate of a layout that cannot run: never chosen.</summary>
+        public static PlanEstimate Unavailable => new PlanEstimate
+        {
+            TotalDelay = float.PositiveInfinity, AverageDelay = float.PositiveInfinity, VehicleDelay = float.PositiveInfinity,
+            WorstSaturation = float.PositiveInfinity,
+        };
+
+        public static bool IsAvailable(PlanEstimate e)
+        {
+            return !float.IsInfinity(e.TotalDelay) && !float.IsNaN(e.TotalDelay);
         }
 
         /// <summary>A layout counts as coping when no movement exceeds this volume-to-capacity ratio.</summary>
@@ -65,13 +83,45 @@ namespace TLL.Core.Advisor
         /// <summary>Index of the best of <paramref name="estimates"/> by the rules of <see cref="Choose"/>, without its margin.</summary>
         public static int Best(PlanEstimate[] estimates)
         {
-            int best = 0;
-            for (int i = 1; i < estimates.Length; i++)
+            int best = -1;
+            for (int i = 0; i < estimates.Length; i++)
             {
-                if (Better(estimates[i], estimates[best]))
+                if (IsAvailable(estimates[i]) && (best < 0 || Better(estimates[i], estimates[best])))
                     best = i;
             }
-            return best;
+            return Math.Max(0, best);
+        }
+
+        /// <summary>
+        /// The layout to run and whether it has a scramble, chosen together
+        /// by the rules of <see cref="Choose"/>. A scramble costs a phase of
+        /// its own whenever someone crosses; without it, turning vehicles
+        /// wait for the people on their crosswalk. Which costs more, the
+        /// delay decides, as the model estimates it and the junction measured
+        /// it.
+        /// </summary>
+        /// <param name="currentScramble">The running layout has a scramble.</param>
+        /// <param name="plain">Per layout, without a scramble.</param>
+        /// <param name="scrambled">Per layout, with one (EvaluateAll with scramble); null to choose among the plain ones only.</param>
+        /// <param name="scramble">Whether the layout returned is to have a scramble.</param>
+        public static PlanStrategy Choose(PlanStrategy current, bool currentScramble, PlanEstimate[] plain, PlanEstimate[] scrambled, out bool scramble)
+        {
+            int n = Strategies.Length;
+            int count = scrambled != null ? 2 * n : n;
+            PlanEstimate At(int k) => k < n ? plain[k] : scrambled[k - n];
+            int best = -1;
+            for (int k = 0; k < count; k++)
+            {
+                if (IsAvailable(At(k)) && (best < 0 || Better(At(k), At(best))))
+                    best = k;
+            }
+            int now = Array.IndexOf(Strategies, current);
+            if (now >= 0 && currentScramble && scrambled != null && IsAvailable(scrambled[now]))
+                now += n;
+            int pick = best < 0 ? Math.Max(0, now)
+                : now < 0 || !IsAvailable(At(now)) || ClearlyBetter(At(best), At(now)) ? best : now;
+            scramble = pick >= n;
+            return Strategies[pick % n];
         }
 
         /// <summary>Worst saturation given to a measured layout whose queues did not clear, whatever the model says.</summary>
@@ -88,15 +138,23 @@ namespace TLL.Core.Advisor
         /// </summary>
         /// <param name="running">Index in <see cref="Strategies"/> of the layout running now, or -1.</param>
         /// <param name="wave">The junction runs in a green wave; its layouts are judged by what they did there.</param>
-        public static PlanEstimate[] Correct(PlanEstimate[] estimates, LayoutMemory memory, int running, bool wave)
+        /// <param name="scramble">The estimates are of the layouts with a scramble (EvaluateAll).</param>
+        /// <param name="runningScramble">The running layout has a scramble; its factor stands in for layouts never measured.</param>
+        public static PlanEstimate[] Correct(PlanEstimate[] estimates, LayoutMemory memory, int running, bool wave,
+            bool scramble = false, bool runningScramble = false)
         {
-            Calibration here = running >= 0 ? memory.Get(running, wave) : default;
+            Calibration here = running >= 0 ? memory.Get(running, wave, runningScramble) : default;
             float fallback = here.Measured ? here.Factor : 1f;
             var result = new PlanEstimate[estimates.Length];
             for (int i = 0; i < estimates.Length; i++)
             {
                 PlanEstimate e = estimates[i];
-                Calibration c = memory.Get(i, wave);
+                if (!IsAvailable(e))
+                {
+                    result[i] = e;
+                    continue;
+                }
+                Calibration c = memory.Get(i, wave, scramble);
                 float pedestrians = e.TotalDelay - e.VehicleDelay;
                 e.VehicleDelay *= c.Measured ? c.Factor : fallback;
                 e.TotalDelay = e.VehicleDelay + pedestrians;
