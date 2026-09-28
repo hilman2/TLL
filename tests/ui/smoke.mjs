@@ -324,6 +324,25 @@ const scenarios = {
     "tll.planner": { ...plannerInfo, owner: 0, coordinated: true, refusal: null },
     expect: [">The autopilot plans this junction. Click an arrow or pick a template to take it over.<"],
   },
+  "junction type, unsignalled": {
+    "tll.selected": {
+      index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, approaches: managed.approaches,
+      junctionType: 0, canChangeType: true, typeCosts: [1250, 400], typeAvailable: [true, true],
+      roundabouts: [{ size: 24.5, cost: 3000 }, { size: 40, cost: 6000 }], typePending: 2,
+    },
+    expect: [">Junction<", ">Right of way<", ">All-way stop ¢400<", ">Traffic lights ¢1250<", ">Roundabout<", ">Click the junction on the map. The game shows the price and builds it.<"],
+  },
+  "signals taken away, plan kept": {
+    "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, dormant: true, junctionType: 0, canChangeType: true },
+    expect: [">Your signal plan is kept. It runs again when the junction gets traffic lights.<"],
+  },
+  "junction type, lights recommended off": {
+    "tll.selected": {
+      ...managed, junctionType: 2, canChangeType: true, typeCosts: [1250, 400], typeAvailable: [true, true], roundabouts: [], typePending: -1,
+      autopilot: { majorVolume: 90, minorVolume: 20, signalAdvice: 2, pending: -1, estimates: [] },
+    },
+    expect: [">Right of way · recommended<", ">Traffic lights<"],
+  },
   "vanilla junction": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: true } },
   "junction without signals": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false } },
   "roundabout": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, roundabout: true } },

@@ -22,6 +22,7 @@ namespace TLL.Systems
     {
         private EntityQuery m_UnmanagedQuery;
         private EntityQuery m_ManagedQuery;
+        private EntityQuery m_DormantQuery;
         private EntityQuery m_AllSignalsQuery;
         private EntityQuery m_SignalsRemovedQuery;
         private EntityQuery m_LaneRulesQuery;
@@ -68,9 +69,15 @@ namespace TLL.Systems
                 None = new[]
                 {
                     ComponentType.ReadOnly<TrafficLights>(),
+                    ComponentType.ReadOnly<JunctionDormant>(),
                     ComponentType.ReadOnly<Deleted>(),
                     ComponentType.ReadOnly<Temp>(),
                 },
+            });
+            m_DormantQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<JunctionDormant>() },
+                None = skip,
             });
             m_LaneRulesQuery = GetEntityQuery(new EntityQueryDesc
             {
@@ -129,16 +136,32 @@ namespace TLL.Systems
                 return;
 
             // The player removed the signals (the game takes TrafficLights
-            // off the node): nothing is left to control, and stale data would
-            // come back if signals are added again later.
+            // off the node): nothing is left to control. An automatic
+            // junction is released; its data would be stale if signals came
+            // back. A plan of the player's waits for them instead.
             if (!m_SignalsRemovedQuery.IsEmptyIgnoreFilter)
             {
+                int released = 0;
+                int kept = 0;
                 using (NativeArray<Entity> nodes = m_SignalsRemovedQuery.ToEntityArray(Allocator.Temp))
                 {
                     foreach (Entity node in nodes)
-                        JunctionInitSystem.Release(EntityManager, node, exclude: false);
-                    Mod.Log.Info($"Released {nodes.Length} junction(s) whose signals were removed.");
+                    {
+                        bool manual = EntityManager.GetComponentData<ManagedJunction>(node).Origin == JunctionOrigin.Manual
+                            && EntityManager.HasBuffer<JunctionPhase>(node) && EntityManager.GetBuffer<JunctionPhase>(node, true).Length > 0;
+                        if (manual)
+                        {
+                            JunctionInitSystem.Sleep(EntityManager, node);
+                            kept++;
+                        }
+                        else
+                        {
+                            JunctionInitSystem.Release(EntityManager, node, exclude: false);
+                            released++;
+                        }
+                    }
                 }
+                Mod.Log.Info($"Signals removed: released {released} junction(s), kept the plans of {kept} of the player's for when their signals come back.");
             }
 
             if (Requests.ReleaseAll)
@@ -242,6 +265,17 @@ namespace TLL.Systems
                     EntityManager.RemoveComponent<AutopilotState>(node);
                     EntityManager.AddComponent<RebuildRequest>(node);
                     reset++;
+                }
+            }
+            // Plans kept for signals that may come back are the player's
+            // settings too.
+            if (!m_DormantQuery.IsEmptyIgnoreFilter)
+            {
+                using (NativeArray<Entity> nodes = m_DormantQuery.ToEntityArray(Allocator.Temp))
+                {
+                    foreach (Entity node in nodes)
+                        JunctionInitSystem.Release(EntityManager, node, exclude: false);
+                    reset += nodes.Length;
                 }
             }
             Requests.RebuildGreenWaves = true;

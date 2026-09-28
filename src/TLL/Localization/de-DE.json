@@ -432,5 +432,20 @@
   "Planner.OwnLane": "Eigene Spur geben",
   "Planner.Fix.Lanes": "Spuren ändern",
   "Planner.WithLanes": "Spuren mit speichern",
-  "Planner.WithLanesHint": "Speichert Spurpfeile und Sperrlinien mit den Phasen, für Straßen mit so vielen Spuren wie hier."
+  "Planner.WithLanesHint": "Speichert Spurpfeile und Sperrlinien mit den Phasen, für Straßen mit so vielen Spuren wie hier.",
+
+  "Panel.JunctionType": "Kreuzung",
+  "Panel.JunctionTypeHint": "Was diese Kreuzung regelt. Ein Klick öffnet das Werkzeug des Spiels dafür; klick die Kreuzung auf der Karte an, und das Spiel baut es zum Preis seines Straßenmenüs.",
+  "Panel.Recommended": "empfohlen",
+  "Panel.RoundaboutStays": "Einen Kreisel entfernt der Bulldozer.",
+  "Panel.ClickJunction": "Klick die Kreuzung auf der Karte an. Das Spiel zeigt den Preis und baut es.",
+  "Panel.PlanKept": "Dein Ampelplan bleibt erhalten. Er läuft wieder, sobald die Kreuzung eine Ampel bekommt.",
+  "JunctionType.RightOfWay": "Vorfahrt",
+  "JunctionType.AllWayStop": "Allweg-Stopp",
+  "JunctionType.TrafficLights": "Ampel",
+  "JunctionType.Roundabout": "Kreisel",
+  "JunctionTypeHint.RightOfWay": "Keine Ampel, keine Stoppschilder: Die Nebenstraße wartet, oder es gelten die Schilder, die du setzt.",
+  "JunctionTypeHint.AllWayStop": "Alle halten an und fahren in der Reihenfolge, in der sie kamen. Gerecht und langsam; für ruhige Kreuzungen mit gleichmäßigem Verkehr.",
+  "JunctionTypeHint.TrafficLights": "Eine Ampel, die TLL steuern kann und die du im Planer planst.",
+  "JunctionTypeHint.Roundabout": "Der Verkehr im Kreisel hat Vorfahrt. Wähle eine Größe; das Spiel prüft, ob sie passt."
 }

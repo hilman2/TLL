@@ -119,6 +119,9 @@ namespace TLL.Systems
             }
 
             ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
+            // The signals are back: the plan kept for them runs again.
+            if (EntityManager.HasComponent<JunctionDormant>(node))
+                EntityManager.RemoveComponent<JunctionDormant>(node);
             JunctionLayout layout = JunctionAnalysis.Analyse(EntityManager, node, m_CityConfiguration.leftHandTraffic);
             if (layout == null)
             {
@@ -269,9 +272,30 @@ namespace TLL.Systems
             entityManager.RemoveComponent<JunctionHealth>(node);
             entityManager.RemoveComponent<JunctionArm>(node);
             entityManager.RemoveComponent<PlanNotice>(node);
+            entityManager.RemoveComponent<JunctionDormant>(node);
             if (exclude)
                 entityManager.AddComponent<JunctionExcluded>(node);
             entityManager.AddComponent<RebuildRequest>(node);
+        }
+
+        /// <summary>
+        /// Keeps the player's plan of a junction whose signals were taken
+        /// away, for when they come back: the settings, movements, phases,
+        /// roads and statistics stay on the node, everything that runs the
+        /// signals goes (<see cref="JunctionDormant"/>). Once the node has
+        /// signals again, the set-up builds it from the kept plan, carried
+        /// over to the roads as they are then.
+        /// </summary>
+        public static void Sleep(EntityManager entityManager, Entity node)
+        {
+            entityManager.RemoveComponent<JunctionLane>(node);
+            entityManager.RemoveComponent<JunctionRuntime>(node);
+            entityManager.RemoveComponent<JunctionDirty>(node);
+            entityManager.RemoveComponent<MovementCounter>(node);
+            entityManager.RemoveComponent<DetectorLane>(node);
+            entityManager.RemoveComponent<JunctionHealth>(node);
+            entityManager.RemoveComponent<AutopilotState>(node);
+            entityManager.AddComponent<JunctionDormant>(node);
         }
 
         /// <summary>

@@ -8,6 +8,7 @@ import {
   ControlMode,
   Estimate,
   JunctionInfo,
+  JunctionType,
   MovementKind,
   Notice,
   NoticeKind,
@@ -231,9 +232,11 @@ const UnmanagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate
             </Button>
           </div>
         </>
-      ) : (
+      ) : junction.junctionType === undefined ? (
         <div className={styles.muted}>{t("Panel.NoSignals", "This junction has no traffic lights. Add them with the game's intersection upgrade.")}</div>
-      )}
+      ) : null}
+      {junction.dormant && <div className={styles.note}>{t("Panel.PlanKept", "Your signal plan is kept. It runs again when the junction gets traffic lights.")}</div>}
+      <JunctionTypeRow junction={junction} t={t} />
     </div>
     <SignsCard junction={junction} t={t} />
     <TurnsCard junction={junction} t={t} />
@@ -406,6 +409,84 @@ const TurnRow = ({ turn, junction, t }: { turn: Turn; junction: JunctionInfo; t:
 const modeTone = (mode: ControlMode): "green" | "amber" | "blue" | "grey" =>
   mode === ControlMode.Coordinated ? "blue" : mode === ControlMode.Flashing ? "amber" : mode === ControlMode.FixedTime ? "grey" : "green";
 
+const typeText: Record<JunctionType, string> = {
+  [JunctionType.RightOfWay]: "Right of way",
+  [JunctionType.AllWayStop]: "All-way stop",
+  [JunctionType.TrafficLights]: "Traffic lights",
+  [JunctionType.Roundabout]: "Roundabout",
+};
+
+const price = (cost: number) => (cost > 0 ? ` ¢${cost}` : "");
+
+/**
+ * What regulates the junction, and a click to change it: the panel opens
+ * the game's own tool with the right upgrade, and the player clicks the
+ * junction. The game shows the price, checks the placement and charges it,
+ * as from its road menu. The autopilot's advice marks the recommended type.
+ */
+const JunctionTypeRow = ({ junction, t }: { junction: JunctionInfo; t: Translate }) => {
+  const [sizes, setSizes] = useState(false);
+  if (junction.junctionType === undefined || !junction.canChangeType) return null;
+  const now = junction.junctionType;
+  const advice = junction.autopilot?.signalAdvice;
+  const recommended = advice === SignalAdvice.AddSignals ? JunctionType.TrafficLights : advice === SignalAdvice.RemoveSignals ? JunctionType.RightOfWay : -1;
+  const costs = junction.typeCosts ?? [0, 0];
+  const available = junction.typeAvailable ?? [true, true];
+  const roundabouts = junction.roundabouts ?? [];
+  const options: [JunctionType, string, boolean][] = [
+    [JunctionType.RightOfWay, "", now !== JunctionType.Roundabout],
+    [JunctionType.AllWayStop, price(costs[1]), available[1] && now !== JunctionType.Roundabout],
+    [JunctionType.TrafficLights, price(costs[0]), available[0] && now !== JunctionType.Roundabout],
+    [JunctionType.Roundabout, "", roundabouts.length > 0 && now !== JunctionType.Roundabout],
+  ];
+  const label = (type: JunctionType) => {
+    const name = t("JunctionType." + JunctionType[type], typeText[type]);
+    return type === recommended && type !== now ? `${name} · ${t("Panel.Recommended", "recommended")}` : name;
+  };
+  const hint = (type: JunctionType, enabled: boolean) =>
+    now === JunctionType.Roundabout && type !== now ? t("Panel.RoundaboutStays", "A roundabout goes with the bulldozer.") : enabled ? t("JunctionTypeHint." + JunctionType[type], "") : null;
+  return (
+    <>
+      <Hint text={t("Panel.JunctionTypeHint", "")}>
+        <div className={styles.label}>{t("Panel.JunctionType", "Junction")}</div>
+      </Hint>
+      {pairs(options).map((row, i) => (
+        <div key={i} className={styles.segments}>
+          {row.map(([type, cost, enabled]) => (
+            <Hint key={type} text={hint(type, enabled)}>
+              <Button
+                variant="flat"
+                className={classNames(styles.segment, now === type && styles.segmentOn, type === recommended && now !== type && styles.segmentRecommended)}
+                disabled={!enabled && now !== type}
+                selected={now === type}
+                onSelect={() => {
+                  if (type === now) return;
+                  if (type === JunctionType.Roundabout) setSizes(!sizes);
+                  else actions.setJunctionType(type, -1);
+                }}
+              >
+                {`${label(type)}${type !== now ? cost : ""}`}
+              </Button>
+            </Hint>
+          ))}
+        </div>
+      ))}
+      {sizes && now !== JunctionType.Roundabout && (
+        <div className={styles.segments}>
+          {roundabouts.map((r, i) => (
+            <Button key={i} variant="flat" className={styles.segment} onSelect={() => { setSizes(false); actions.setJunctionType(JunctionType.Roundabout, i); }}>
+              {`${Math.round(r.size)} m${price(r.cost)}`}
+            </Button>
+          ))}
+        </div>
+      )}
+      {junction.typePending !== undefined && junction.typePending >= 0 && (
+        <div className={styles.note}>{t("Panel.ClickJunction", "Click the junction on the map. The game shows the price and builds it.")}</div>
+      )}
+    </>
+  );
+};
+
 /** How many movements a notice counts, as "2 added, 1 moved", leaving out the zeros. */
 function noticeCounts(notice: Notice, t: Translate): string {
   const parts: string[] = [];
@@ -477,6 +558,7 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
           </Hint>
         </div>
       )}
+      <JunctionTypeRow junction={junction} t={t} />
     </div>
 
     {junction.autopilot && <AutopilotCard autopilot={junction.autopilot} junction={junction} t={t} />}

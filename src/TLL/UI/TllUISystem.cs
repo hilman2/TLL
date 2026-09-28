@@ -42,6 +42,12 @@ namespace TLL.UI
 
         private EntityQuery m_ManagedQuery;
         private EntityQuery m_NoticeQuery;
+        private ToolSystem m_ToolSystem;
+        private JunctionTypes m_Types;
+
+        /// <summary>The prefab of the game's tool the panel opened to change a junction's type, and the type it builds.</summary>
+        private Entity m_TypeTool;
+        private JunctionType m_TypeWanted;
         private NameSystem m_NameSystem;
         private CameraUpdateSystem m_CameraSystem;
         private SignalControlSystem m_Control;
@@ -125,6 +131,13 @@ namespace TLL.UI
             public readonly List<SignRow> Signs = new List<SignRow>();
 
             /// <summary>What TLL did to the player's plan after the roads changed, if the player has not looked yet.</summary>
+            /// <summary>The player's plan waits for the signals, which were taken away (JunctionDormant).</summary>
+            public bool Dormant;
+
+            /// <summary>What regulates the junction, and whether it is one the panel can change (three roads or more).</summary>
+            public JunctionType Type;
+            public bool CanChangeType;
+
             public bool HasNotice;
             public PlanNotice Notice;
         }
@@ -201,6 +214,8 @@ namespace TLL.UI
             m_Coordination = World.GetOrCreateSystemManaged<CoordinationSystem>();
             m_CityConfiguration = World.GetOrCreateSystemManaged<Game.City.CityConfigurationSystem>();
             m_Simulation = World.GetOrCreateSystemManaged<Game.Simulation.SimulationSystem>();
+            m_ToolSystem = World.GetOrCreateSystemManaged<ToolSystem>();
+            m_Types = new JunctionTypes(EntityManager, World.GetOrCreateSystemManaged<Game.Prefabs.PrefabSystem>(), m_ToolSystem);
             if (Mod.Settings != null)
             {
                 m_ToggleAction = Mod.Settings.GetAction(Setting.kTogglePanel);
@@ -209,7 +224,7 @@ namespace TLL.UI
             m_ManagedQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[] { ComponentType.ReadOnly<ManagedJunction>(), ComponentType.ReadOnly<JunctionPhase>() },
-                None = new[] { ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
+                None = new[] { ComponentType.ReadOnly<JunctionDormant>(), ComponentType.ReadOnly<Deleted>(), ComponentType.ReadOnly<Temp>() },
             });
             m_NoticeQuery = GetEntityQuery(new EntityQueryDesc
             {
@@ -249,6 +264,29 @@ namespace TLL.UI
             AddBinding(new TriggerBinding(kGroup, "toggleLaneTool", () => m_LaneTool.Toggle(m_Selected)));
             AddUpdateBinding(new GetterValueBinding<bool>(kGroup, "laneToolActive", () => m_LaneTool.IsActive));
             AddBinding(new TriggerBinding(kGroup, "dismissNotice", OnDismissNotice));
+            AddBinding(new TriggerBinding<int, int>(kGroup, "setJunctionType", OnSetJunctionType));
+        }
+
+        /// <summary>
+        /// Opens the game's tool that turns the selected junction into
+        /// <paramref name="type"/> (JunctionTypes), with the camera on the
+        /// junction; the player clicks it to build. For a roundabout,
+        /// <paramref name="roundabout"/> picks the size.
+        /// </summary>
+        private void OnSetJunctionType(int type, int roundabout)
+        {
+            Entity node = m_Selected;
+            if (node == Entity.Null || !EntityManager.Exists(node) || type < 0 || type > (int)JunctionType.Roundabout)
+                return;
+            m_Types.Find();
+            JunctionType now = m_Types.TypeOf(node, IsRoundabout(node));
+            Entity prefab = m_Types.ToolFor(now, (JunctionType)type, roundabout);
+            if (!m_Types.Activate(prefab))
+                return;
+            m_TypeTool = prefab;
+            m_TypeWanted = (JunctionType)type;
+            WriteUser("junction_type", ((JunctionType)type).ToString());
+            Select(node, true);
         }
 
         /// <summary>The player has seen what TLL did to the selected junction's plan.</summary>
@@ -510,6 +548,9 @@ namespace TLL.UI
             }
             writer.ArrayEnd();
             WriteAutopilot(writer, d);
+            WriteJunctionType(writer, d);
+            writer.PropertyName("dormant");
+            writer.Write(d.Dormant);
             writer.PropertyName("notice");
             if (d.HasNotice)
             {
@@ -559,6 +600,43 @@ namespace TLL.UI
             }
             writer.ArrayEnd();
             writer.TypeEnd();
+        }
+
+        /// <summary>
+        /// What regulates the junction, what the panel can turn it into and
+        /// at what price, and which change waits for the player's click on
+        /// the map.
+        /// </summary>
+        private void WriteJunctionType(IJsonWriter writer, Detail d)
+        {
+            writer.PropertyName("junctionType");
+            writer.Write((int)d.Type);
+            writer.PropertyName("canChangeType");
+            writer.Write(d.CanChangeType);
+            writer.PropertyName("typeCosts");
+            writer.ArrayBegin(2u);
+            writer.Write((int)m_Types.Cost(m_Types.Lights));
+            writer.Write((int)m_Types.Cost(m_Types.Stop));
+            writer.ArrayEnd();
+            writer.PropertyName("typeAvailable");
+            writer.ArrayBegin(2u);
+            writer.Write(m_Types.Lights != Entity.Null);
+            writer.Write(m_Types.Stop != Entity.Null);
+            writer.ArrayEnd();
+            writer.PropertyName("roundabouts");
+            writer.ArrayBegin((uint)m_Types.Roundabouts.Count);
+            foreach (JunctionTypes.Roundabout r in m_Types.Roundabouts)
+            {
+                writer.TypeBegin("tll.Roundabout");
+                writer.PropertyName("size");
+                writer.Write(r.Size);
+                writer.PropertyName("cost");
+                writer.Write((int)r.Cost);
+                writer.TypeEnd();
+            }
+            writer.ArrayEnd();
+            writer.PropertyName("typePending");
+            writer.Write(m_Types.IsActive(m_TypeTool) ? (int)m_TypeWanted : -1);
         }
 
         /// <summary>What the autopilot measured and decided at the junction, or null where it does not run.</summary>
@@ -634,12 +712,16 @@ namespace TLL.UI
                 Node = node,
                 Name = JunctionName(node),
                 HasSignals = EntityManager.HasComponent<TrafficLights>(node),
-                Managed = EntityManager.HasComponent<ManagedJunction>(node) && EntityManager.HasBuffer<JunctionPhase>(node),
+                Managed = EntityManager.HasComponent<ManagedJunction>(node) && EntityManager.HasBuffer<JunctionPhase>(node) && !EntityManager.HasComponent<JunctionDormant>(node),
+                Dormant = EntityManager.HasComponent<JunctionDormant>(node),
                 Roundabout = IsRoundabout(node),
             };
             List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
             foreach (Entity edge in edges)
                 detail.Approaches.Add(new ApproachRow { Direction = NetGeometry.Outward(EntityManager, node, edge), Name = RoadName(edge) });
+            m_Types.Find();
+            detail.Type = m_Types.TypeOf(node, detail.Roundabout);
+            detail.CanChangeType = edges.Count >= 3;
             if (edges.Count >= 3 && !detail.Roundabout)
             {
                 CollectTurns(node, edges, detail);

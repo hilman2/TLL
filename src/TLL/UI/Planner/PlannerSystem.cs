@@ -247,7 +247,7 @@ namespace TLL.UI.Planner
         {
             return node != Entity.Null && EntityManager.Exists(node) && EntityManager.HasComponent<ManagedJunction>(node)
                 && EntityManager.HasBuffer<JunctionPhase>(node) && EntityManager.HasBuffer<JunctionMovement>(node)
-                && !EntityManager.HasComponent<Deleted>(node);
+                && !EntityManager.HasComponent<JunctionDormant>(node) && !EntityManager.HasComponent<Deleted>(node);
         }
 
         /// <summary>

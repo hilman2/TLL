@@ -316,6 +316,12 @@ $line: rgba(255, 255, 255, 0.12);
   font-weight: bold;
 }
 
+// The type the autopilot recommends for a junction.
+.segmentRecommended {
+  opacity: 1;
+  color: #bdf0cf;
+}
+
 .switchButton {
   flex-shrink: 0;
   padding: 2rem;

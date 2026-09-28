@@ -249,6 +249,33 @@ export interface JunctionInfo extends EntityRef {
   autopilot: AutopilotInfo | null;
   /** What TLL did to the player's plan after the roads changed, until dismissed; null or missing otherwise. */
   notice?: Notice | null;
+  /** The signals were taken away, and the player's plan waits on the junction for them to come back. */
+  dormant?: boolean;
+  /** What regulates the junction; missing from a C# side older than the panel. */
+  junctionType?: JunctionType;
+  /** The panel can change the type: a junction of three roads or more. */
+  canChangeType?: boolean;
+  /** The road menu's price of the traffic lights and the stop signs upgrade, and whether the game has them. */
+  typeCosts?: number[];
+  typeAvailable?: boolean[];
+  /** The game's roundabouts, smallest first. */
+  roundabouts?: RoundaboutOption[];
+  /** The type the game's tool is open to build, waiting for a click on the junction; -1 for none. */
+  typePending?: number;
+}
+
+/** Numbers as in TLL.UI.JunctionType. */
+export enum JunctionType {
+  RightOfWay = 0,
+  AllWayStop = 1,
+  TrafficLights = 2,
+  Roundabout = 3,
+}
+
+export interface RoundaboutOption {
+  /** Diameter in metres. */
+  size: number;
+  cost: number;
 }
 
 const emptySummary: Summary = { available: true, conflict: "", automation: false, showProblems: false, showCongestion: false, managed: 0, greenWaves: 0, coordinated: 0, byMode: [], problems: [] };
@@ -299,4 +326,6 @@ export const actions = {
   toggleShowProblems: () => trigger(group, "toggleShowProblems"),
   toggleShowCongestion: () => trigger(group, "toggleShowCongestion"),
   dismissNotice: () => trigger(group, "dismissNotice"),
+  /** Opens the game's tool that turns the selected junction into <type>; for a roundabout, <roundabout> picks the size. */
+  setJunctionType: (type: JunctionType, roundabout: number) => trigger(group, "setJunctionType", type, roundabout),
 };

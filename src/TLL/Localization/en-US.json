@@ -432,5 +432,20 @@
   "Planner.OwnLane": "Give it its own lane",
   "Planner.Fix.Lanes": "Change the lanes",
   "Planner.WithLanes": "Keep the lanes with it",
-  "Planner.WithLanesHint": "Saves the lane arrows and solid lines along with the phases, for roads with as many lanes as here."
+  "Planner.WithLanesHint": "Saves the lane arrows and solid lines along with the phases, for roads with as many lanes as here.",
+
+  "Panel.JunctionType": "Junction",
+  "Panel.JunctionTypeHint": "What regulates this junction. A click opens the game's own tool for it; click the junction on the map, and the game builds it at the price of its road menu.",
+  "Panel.Recommended": "recommended",
+  "Panel.RoundaboutStays": "A roundabout goes with the bulldozer.",
+  "Panel.ClickJunction": "Click the junction on the map. The game shows the price and builds it.",
+  "Panel.PlanKept": "Your signal plan is kept. It runs again when the junction gets traffic lights.",
+  "JunctionType.RightOfWay": "Right of way",
+  "JunctionType.AllWayStop": "All-way stop",
+  "JunctionType.TrafficLights": "Traffic lights",
+  "JunctionType.Roundabout": "Roundabout",
+  "JunctionTypeHint.RightOfWay": "No lights, no stop signs: the side road gives way, or the signs you set.",
+  "JunctionTypeHint.AllWayStop": "Everyone stops, then goes in the order they came. Fair and slow; for quiet junctions with even traffic.",
+  "JunctionTypeHint.TrafficLights": "Signals, which TLL can run and you can plan in the planner.",
+  "JunctionTypeHint.Roundabout": "Traffic in the ring has right of way. Pick a size; the game checks whether it fits."
 }
