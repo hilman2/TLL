@@ -349,7 +349,7 @@ namespace TLL.Systems
 
             if (running && Hurts(path, nodes, runningGroup))
             {
-                WriteWave("end", path, nodes, runningGroup, default, running);
+                WriteWave("end", path, nodes, runningGroup, null, running);
                 return false;
             }
 
@@ -809,6 +809,7 @@ namespace TLL.Systems
         /// at its first junction: start, keep, replan, reject or end, with its
         /// members, cycle and bands.
         /// </summary>
+        /// <param name="plan">The plan the wave runs with, or null where it has none: a wave that ends.</param>
         private void WriteWave(string action, CorridorPath path, List<Entity> nodes, int group, CoordinationPlan plan, bool running)
         {
             MetricsRow row = MetricsRecords.Decision(m_Simulation.frameIndex, nodes[path.Junctions[0]], "wave");
@@ -817,14 +818,18 @@ namespace TLL.Systems
             var members = new System.Text.StringBuilder();
             foreach (int j in path.Junctions)
                 members.Append(members.Length > 0 ? "," : "").Append(nodes[j].Index);
-            MetricsLog.Write(row.Add("action", action)
+            row.Add("action", action)
                 .Add("group", group)
                 .Add("running", running)
                 .Add("members", members.ToString())
-                .Add("junctions", path.Junctions.Count)
-                .Add("cycle_s", Core.SimTime.ToSeconds(plan.Cycle))
-                .Add("band_a_s", Core.SimTime.ToSeconds(plan.BandwidthA))
-                .Add("band_b_s", Core.SimTime.ToSeconds(plan.BandwidthB)));
+                .Add("junctions", path.Junctions.Count);
+            if (plan != null)
+            {
+                row.Add("cycle_s", Core.SimTime.ToSeconds(plan.Cycle))
+                    .Add("band_a_s", Core.SimTime.ToSeconds(plan.BandwidthA))
+                    .Add("band_b_s", Core.SimTime.ToSeconds(plan.BandwidthB));
+            }
+            MetricsLog.Write(row);
         }
 
         private static Entity EdgeAt(List<Entity> edges, int approach)
