@@ -79,6 +79,26 @@ export interface Turn {
   volume: number;
 }
 
+/** Numbers as in TLL.Components.PrioritySign. */
+export enum PrioritySign {
+  /** The game's rule: side roads give way to bigger roads, otherwise right before left. */
+  Game = 0,
+  Priority = 1,
+  Yield = 2,
+  Stop = 3,
+}
+
+/** The sign on one approach of a junction without signals. */
+export interface Sign {
+  approach: number;
+  /** The sign the player chose; Game where the game's rule applies. */
+  sign: PrioritySign;
+  /** The sign the approach's lanes carry now; Game where they carry none (right before left). */
+  showing: PrioritySign;
+  /** The autopilot chose the junction's signs from its traffic. */
+  auto: boolean;
+}
+
 /** Numbers as in TLL.Core.Advisor.SignalAdvice. */
 export enum SignalAdvice {
   Keep = 0,
@@ -195,6 +215,8 @@ export interface JunctionInfo extends EntityRef {
   movements: Movement[];
   /** The ways through the junction and their rules, also where TLL does not run the signals; empty elsewhere. */
   turns: Turn[];
+  /** The sign on each approach of a junction without signals; empty elsewhere. */
+  signs: Sign[];
   phases: PhaseInfo[];
   /** Null where the autopilot does not run: manual junctions, or automation off. */
   autopilot: AutopilotInfo | null;
@@ -237,6 +259,7 @@ export const actions = {
   toggleTurnOnRed: () => trigger(group, "toggleTurnOnRed"),
   /** Next rule for a turn: the autopilot's, forbidden by the player, allowed by the player. */
   cycleTurn: (source: number, target: number) => trigger(group, "cycleTurn", source, target),
+  setSign: (approach: number, sign: PrioritySign) => trigger(group, "setSign", approach, sign),
   makeAutomatic: () => trigger(group, "makeAutomatic"),
   hover: (e: EntityRef) => trigger(group, "hover", e.index, e.version),
   unhover: () => trigger(group, "unhover"),

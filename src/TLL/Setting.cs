@@ -72,6 +72,10 @@ namespace TLL
         [SettingsUISection(kSection, kAutomation)]
         public bool AutoTurnBans { get; set; }
 
+        /// <summary>The autopilot puts priority signs on junctions without signals (PriorityAutopilotSystem).</summary>
+        [SettingsUISection(kSection, kAutomation)]
+        public bool AutoPrioritySigns { get; set; }
+
         [SettingsUISection(kSection, kRules)]
         public bool TurnOnRed { get; set; }
 
@@ -163,6 +167,7 @@ namespace TLL
             AutoGreenWaves = true;
             AutoFlash = true;
             AutoTurnBans = true;
+            AutoPrioritySigns = true;
             TurnOnRed = false;
             KeepClear = true;
             ShowProblems = false;

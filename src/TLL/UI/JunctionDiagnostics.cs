@@ -27,6 +27,7 @@ namespace TLL.UI
             if (!em.HasComponent<ManagedJunction>(node))
             {
                 text.Append("  not managed by TLL\n");
+                DescribeRules(em, node, text);
                 return text.ToString();
             }
             ManagedJunction junction = em.GetComponentData<ManagedJunction>(node);
@@ -127,6 +128,50 @@ namespace TLL.UI
                     text.Append($"    exit {lane.Exit}: {Fill(em, lane.Exit)}\n");
             }
             return text.ToString();
+        }
+
+        /// <summary>
+        /// For a junction without TLL's signals: TLL's rules, and per car
+        /// lane the flags that decide who may go and who gives way.
+        /// </summary>
+        private static void DescribeRules(EntityManager em, Entity node, StringBuilder text)
+        {
+            if (!em.HasBuffer<ConnectedEdge>(node) || !em.HasBuffer<SubLane>(node))
+                return;
+            var edges = Systems.NetGeometry.ConnectedEdges(em, node);
+            if (em.HasBuffer<TurnRule>(node))
+            {
+                DynamicBuffer<TurnRule> rules = em.GetBuffer<TurnRule>(node, true);
+                for (int i = 0; i < rules.Length; i++)
+                    text.Append($"  turn rule {edges.IndexOf(rules[i].From)}->{edges.IndexOf(rules[i].To)}: {rules[i].Flags}, {rules[i].Volume:0}/h before\n");
+            }
+            if (em.HasBuffer<PriorityRule>(node))
+            {
+                DynamicBuffer<PriorityRule> rules = em.GetBuffer<PriorityRule>(node, true);
+                for (int i = 0; i < rules.Length; i++)
+                    text.Append($"  sign rule approach {edges.IndexOf(rules[i].Edge)}: {rules[i].Sign}, {rules[i].Flags}\n");
+            }
+            const CarLaneFlags shown = CarLaneFlags.Yield | CarLaneFlags.Stop | CarLaneFlags.RightOfWay | CarLaneFlags.Forbidden
+                | CarLaneFlags.Unsafe | CarLaneFlags.UTurnLeft | CarLaneFlags.UTurnRight | CarLaneFlags.TurnLeft | CarLaneFlags.TurnRight;
+            DynamicBuffer<SubLane> lanes = em.GetBuffer<SubLane>(node, true);
+            for (int i = 0; i < lanes.Length; i++)
+            {
+                Entity lane = lanes[i].m_SubLane;
+                if (!em.HasComponent<CarLane>(lane))
+                    continue;
+                Lane path = em.GetComponentData<Lane>(lane);
+                int from = -1;
+                int to = -1;
+                for (int e = 0; e < edges.Count; e++)
+                {
+                    if (path.m_StartNode.OwnerEquals(new Game.Pathfind.PathNode(edges[e], 0)))
+                        from = e;
+                    if (path.m_EndNode.OwnerEquals(new Game.Pathfind.PathNode(edges[e], 0)))
+                        to = e;
+                }
+                string flow = em.HasComponent<LaneFlow>(lane) ? $", flow {math.cmax(em.GetComponentData<LaneFlow>(lane).m_Distance):0.#}" : "";
+                text.Append($"  lane {lane} {from}->{to}{(em.HasComponent<MasterLane>(lane) ? " master" : "")}: {em.GetComponentData<CarLane>(lane).m_Flags & shown}{flow}\n");
+            }
         }
 
         /// <summary>

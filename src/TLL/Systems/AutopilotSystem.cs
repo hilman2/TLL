@@ -401,7 +401,7 @@ namespace TLL.Systems
                 buffer.Clear();
                 foreach (TurnRule rule in turnRules)
                     buffer.Add(rule);
-                // The game builds the junction's lanes anew, TurnRuleSystem
+                // The game builds the junction's lanes anew, LaneRuleSystem
                 // flags them, and the set-up plans the signals without them.
                 rebuild = true;
             }

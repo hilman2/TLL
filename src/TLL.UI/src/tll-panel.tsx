@@ -11,8 +11,10 @@ import {
   panelOpen$,
   PhaseInfo,
   PlanStrategy,
+  PrioritySign,
   Problem,
   selected$,
+  Sign,
   setPanelOpen,
   SignalAdvice,
   Stage,
@@ -224,9 +226,74 @@ const UnmanagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate
         <div className={styles.muted}>{t("Panel.NoSignals", "This junction has no traffic lights. Add them with the game's intersection upgrade.")}</div>
       )}
     </div>
+    <SignsCard junction={junction} t={t} />
     <TurnsCard junction={junction} t={t} />
+    <div className={styles.footer}>
+      <Hint text={t("Panel.DiagnoseHint", "")}>
+        <Button variant="flat" className={styles.footerButton} onSelect={actions.diagnose}>
+          {t("Panel.Diagnose", "Write diagnostics to the log")}
+        </Button>
+      </Hint>
+    </div>
   </>
 );
+
+const signChoices = [PrioritySign.Game, PrioritySign.Priority, PrioritySign.Yield, PrioritySign.Stop];
+
+const signText: Record<PrioritySign, string> = {
+  [PrioritySign.Game]: "Automatic",
+  [PrioritySign.Priority]: "Priority road",
+  [PrioritySign.Yield]: "Give way",
+  [PrioritySign.Stop]: "Stop",
+};
+
+/** The sign on each approach of a junction without signals, and a choice of sign. */
+const SignsCard = ({ junction, t }: { junction: JunctionInfo; t: Translate }) =>
+  !junction.signs || junction.signs.length === 0 ? null : (
+    <div className={styles.card}>
+      <Hint text={t("Panel.SignsHint", "")}>
+        <div className={styles.label}>{t("Panel.Signs", "Right of way")}</div>
+      </Hint>
+      {junction.signs.map((sign) => (
+        <SignRow key={sign.approach} sign={sign} junction={junction} t={t} />
+      ))}
+    </div>
+  );
+
+const SignRow = ({ sign, junction, t }: { sign: Sign; junction: JunctionInfo; t: Translate }) => {
+  const road = junction.approaches[sign.approach]?.name || `${sign.approach + 1}`;
+  const label = (s: PrioritySign) => t("Sign." + PrioritySign[s], signText[s]);
+  const now = sign.showing === PrioritySign.Game ? t("Panel.RightBeforeLeft", "right before left") : label(sign.showing);
+  const showing = sign.auto ? `${now} · ${t("Panel.ByAutopilot", "autopilot")}` : now;
+  // The approach's turns, to show on the plan which road it is.
+  const turns = (junction.turns ?? []).filter((turn) => turn.source === sign.approach);
+  return (
+    <>
+      <div className={styles.turn}>
+        <JunctionDiagram
+          approaches={junction.approaches}
+          movements={turns.map((turn) => ({ kind: turn.kind, source: turn.source, target: turn.target, volume: turn.volume }))}
+          green={turns.map((_, i) => i)}
+          permitted={[]}
+          leftHandTraffic={junction.leftHandTraffic}
+          cameraYaw={junction.cameraYaw}
+          className={styles.turnDiagram}
+        />
+        <div className={styles.turnInfo}>
+          <div className={styles.phaseLine}>{road}</div>
+          <div className={styles.phaseLine}>{`${t("Panel.SignNow", "Now")}: ${showing}`}</div>
+        </div>
+      </div>
+      <Segments
+        items={signChoices}
+        value={sign.sign}
+        label={label}
+        hint={(s) => t("SignHint." + PrioritySign[s], "")}
+        onSelect={(s) => actions.setSign(sign.approach, s)}
+      />
+    </>
+  );
+};
 
 const turnStateText: Record<TurnState, string> = {
   [TurnState.Allowed]: "allowed",

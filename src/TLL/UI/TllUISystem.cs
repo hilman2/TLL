@@ -4,6 +4,7 @@ using Colossal.UI.Binding;
 using Game;
 using Game.Common;
 using Game.Net;
+using Game.Pathfind;
 using Game.Rendering;
 using Game.Tools;
 using Game.UI;
@@ -114,6 +115,23 @@ namespace TLL.UI
 
             /// <summary>The ways through the junction and their rules; empty where there is no junction.</summary>
             public readonly List<TurnRow> Turns = new List<TurnRow>();
+
+            /// <summary>The sign on each approach; empty where signals decide.</summary>
+            public readonly List<SignRow> Signs = new List<SignRow>();
+        }
+
+        private struct SignRow
+        {
+            public int Approach;
+
+            /// <summary>The sign the player chose, or Game.</summary>
+            public PrioritySign Sign;
+
+            /// <summary>The autopilot chose the sign (PriorityAutopilotSystem).</summary>
+            public bool Auto;
+
+            /// <summary>The sign the approach's lanes carry now, the game's own or TLL's.</summary>
+            public PrioritySign Showing;
         }
 
         /// <summary>Who allowed or forbade a turn. Numbers as in the panel's TurnState.</summary>
@@ -194,6 +212,7 @@ namespace TLL.UI
             AddBinding(new TriggerBinding(kGroup, "toggleScramble", OnToggleScramble));
             AddBinding(new TriggerBinding(kGroup, "toggleTurnOnRed", OnToggleTurnOnRed));
             AddBinding(new TriggerBinding<int, int>(kGroup, "cycleTurn", OnCycleTurn));
+            AddBinding(new TriggerBinding<int, int>(kGroup, "setSign", OnSetSign));
             AddBinding(new TriggerBinding(kGroup, "makeAutomatic", OnMakeAutomatic));
             AddBinding(new TriggerBinding(kGroup, "release", OnRelease));
             AddBinding(new TriggerBinding(kGroup, "manage", OnManage));
@@ -430,6 +449,22 @@ namespace TLL.UI
                 writer.TypeEnd();
             }
             writer.ArrayEnd();
+            writer.PropertyName("signs");
+            writer.ArrayBegin((uint)d.Signs.Count);
+            foreach (SignRow s in d.Signs)
+            {
+                writer.TypeBegin("tll.Sign");
+                writer.PropertyName("approach");
+                writer.Write(s.Approach);
+                writer.PropertyName("sign");
+                writer.Write((int)s.Sign);
+                writer.PropertyName("showing");
+                writer.Write((int)s.Showing);
+                writer.PropertyName("auto");
+                writer.Write(s.Auto);
+                writer.TypeEnd();
+            }
+            writer.ArrayEnd();
             WriteAutopilot(writer, d);
             writer.PropertyName("phases");
             writer.ArrayBegin((uint)d.Phases.Count);
@@ -533,7 +568,11 @@ namespace TLL.UI
             foreach (Entity edge in edges)
                 detail.Approaches.Add(new ApproachRow { Direction = NetGeometry.Outward(EntityManager, node, edge), Name = RoadName(edge) });
             if (edges.Count >= 3 && !detail.Roundabout)
+            {
                 CollectTurns(node, edges, detail);
+                if (!detail.HasSignals)
+                    CollectSigns(node, edges, detail);
+            }
             if (!detail.Managed)
                 return detail;
             detail.Junction = EntityManager.GetComponentData<ManagedJunction>(node);
@@ -627,13 +666,83 @@ namespace TLL.UI
             }
         }
 
+        /// <summary>The sign on each approach, as chosen and as the lanes carry it.</summary>
+        private void CollectSigns(Entity node, List<Entity> edges, Detail detail)
+        {
+            bool hasRules = EntityManager.HasBuffer<PriorityRule>(node);
+            DynamicBuffer<PriorityRule> rules = hasRules ? EntityManager.GetBuffer<PriorityRule>(node, true) : default;
+            var showing = new CarLaneFlags[edges.Count];
+            DynamicBuffer<SubLane> lanes = EntityManager.GetBuffer<SubLane>(node, true);
+            for (int i = 0; i < lanes.Length; i++)
+            {
+                Entity lane = lanes[i].m_SubLane;
+                if (!EntityManager.HasComponent<CarLane>(lane))
+                    continue;
+                PathNode start = EntityManager.GetComponentData<Lane>(lane).m_StartNode;
+                for (int e = 0; e < edges.Count; e++)
+                {
+                    if (start.OwnerEquals(new PathNode(edges[e], 0)))
+                        showing[e] |= EntityManager.GetComponentData<CarLane>(lane).m_Flags;
+                }
+            }
+            for (int e = 0; e < edges.Count; e++)
+            {
+                var row = new SignRow { Approach = e, Sign = PrioritySign.Game };
+                for (int i = 0; hasRules && i < rules.Length; i++)
+                {
+                    if (rules[i].Edge != edges[e])
+                        continue;
+                    if (rules[i].ByPlayer)
+                        row.Sign = rules[i].Sign;
+                    else
+                        row.Auto = true;
+                }
+                CarLaneFlags flags = showing[e];
+                row.Showing = (flags & CarLaneFlags.Stop) != 0 ? PrioritySign.Stop
+                    : (flags & CarLaneFlags.Yield) != 0 ? PrioritySign.Yield
+                    : (flags & CarLaneFlags.RightOfWay) != 0 ? PrioritySign.Priority
+                    : PrioritySign.Game;
+                detail.Signs.Add(row);
+            }
+        }
+
         // ---- Triggers ----
+
+        /// <summary>
+        /// Puts a sign on an approach, or with Game hands it back to the
+        /// game's rule. A sign of the player's takes the junction from the
+        /// autopilot: its signs go. The junction and its roads are rebuilt:
+        /// the roads' lanes carry the stop line and its marking.
+        /// </summary>
+        private void OnSetSign(int approach, int sign)
+        {
+            Entity node = m_Selected;
+            if (node == Entity.Null || !EntityManager.Exists(node) || sign < 0 || sign > (int)PrioritySign.Stop)
+                return;
+            List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
+            if (approach < 0 || approach >= edges.Count)
+                return;
+            DynamicBuffer<PriorityRule> rules = EntityManager.HasBuffer<PriorityRule>(node)
+                ? EntityManager.GetBuffer<PriorityRule>(node)
+                : EntityManager.AddBuffer<PriorityRule>(node);
+            for (int i = rules.Length - 1; i >= 0; i--)
+            {
+                if (rules[i].Edge == edges[approach] || !rules[i].ByPlayer)
+                    rules.RemoveAt(i);
+            }
+            if ((PrioritySign)sign != PrioritySign.Game)
+                rules.Add(new PriorityRule { Edge = edges[approach], Sign = (PrioritySign)sign, Flags = PriorityRuleFlags.Player });
+            EntityManager.AddComponent<RebuildRequest>(node);
+            foreach (Entity edge in edges)
+                EntityManager.AddComponent<RebuildRequest>(edge);
+            m_DetailTime = DateTime.MinValue;
+        }
 
         /// <summary>
         /// The next rule for a turn, as the panel's button goes round:
         /// the autopilot's choice, then forbidden by the player, then allowed
         /// by the player, then the autopilot's choice again. The junction is
-        /// rebuilt, which applies it (TurnRuleSystem).
+        /// rebuilt, which applies it (LaneRuleSystem).
         /// </summary>
         private void OnCycleTurn(int source, int target)
         {

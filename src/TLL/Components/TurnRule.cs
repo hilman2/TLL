@@ -22,7 +22,7 @@ namespace TLL.Components
     /// A rule for one way through a junction: from one road into another,
     /// the same road for a U-turn. On the node entity. The game builds the
     /// junction's lanes anew whenever something about it changes, and
-    /// TurnRuleSystem applies the rules to them every time.
+    /// LaneRuleSystem applies the rules to them every time.
     /// </summary>
     /// <remarks>
     /// A forbidden turn keeps its lanes, flagged the way the game flags the

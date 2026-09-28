@@ -33,8 +33,8 @@ namespace TLL
 
             updateSystem.UpdateBefore<RebuildRequestSystem>(SystemUpdatePhase.Modification1);
             // On the lanes the game has just built, before anything reads
-            // them. See TurnRuleSystem.
-            updateSystem.UpdateBefore<TurnRuleSystem, LaneReferencesSystem>(SystemUpdatePhase.Modification4B);
+            // them. See LaneRuleSystem.
+            updateSystem.UpdateBefore<LaneRuleSystem, LaneReferencesSystem>(SystemUpdatePhase.Modification4B);
             // Right after the game has written its own signal groups, before
             // the signal poles are derived from them. See JunctionInitSystem.
             updateSystem.UpdateAfter<JunctionInitSystem, TrafficLightInitializationSystem>(SystemUpdatePhase.Modification4B);
@@ -43,6 +43,7 @@ namespace TLL
             updateSystem.UpdateAt<OptimizerSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAfter<AutopilotSystem, OptimizerSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAfter<CoordinationSystem, AutopilotSystem>(SystemUpdatePhase.GameSimulation);
+            updateSystem.UpdateAt<PriorityAutopilotSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<UI.TllUISystem>(SystemUpdatePhase.UIUpdate);
             updateSystem.UpdateAt<UI.JunctionToolSystem>(SystemUpdatePhase.ToolUpdate);
             updateSystem.UpdateAt<UI.MapOverlaySystem>(SystemUpdatePhase.ToolUpdate);

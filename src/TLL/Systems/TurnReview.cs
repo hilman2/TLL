@@ -43,7 +43,7 @@ namespace TLL.Systems
 
             JunctionModel model = full.Model;
             int n = model.Movements.Count;
-            // Lanes a tram shares keep their flags (TurnRuleSystem), so their
+            // Lanes a tram shares keep their flags (LaneRuleSystem), so their
             // turns cannot be forbidden.
             ulong tram = 0UL;
             foreach (LaneInfo lane in full.Lanes)
