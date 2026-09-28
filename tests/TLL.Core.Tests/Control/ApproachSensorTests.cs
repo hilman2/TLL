@@ -54,6 +54,17 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
+        public void AQueueTornApartWhileMovingOffStillWaits()
+        {
+            // The first car pulled away; the gap behind it is more than a
+            // queue's. The ones behind are still moving off, slowly, some
+            // seconds from the line: they are the rest of the queue, not
+            // traffic arriving.
+            ApproachReading r = Read((3f, 9f), (40f, 3f), (48f, 2.5f), (56f, 2f), (64f, 1.6f));
+            Assert.Equal(5f, r.Waiting);
+        }
+
+        [Fact]
         public void QueueEndsAtTheFirstGap()
         {
             ApproachReading r = Read((3f, 0f), (10f, 0f), (17f, 0f), (80f, 12f));

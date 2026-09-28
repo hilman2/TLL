@@ -15,7 +15,10 @@ namespace TLL.Core.Control
     /// <summary>What the detectors of one approach report, in vehicles.</summary>
     public struct ApproachReading
     {
-        /// <summary>The queue: vehicles standing, or in the queue that starts at the stop line.</summary>
+        /// <summary>
+        /// The queue: vehicles in the queue that starts at the stop line, and
+        /// behind it every vehicle slower than <see cref="ApproachSensor.QueueSpeed"/>.
+        /// </summary>
         public float Waiting;
 
         /// <summary>Moving vehicles, not in the queue, that reach the line within the passage time.</summary>
@@ -41,9 +44,6 @@ namespace TLL.Core.Control
     /// </summary>
     public static class ApproachSensor
     {
-        /// <summary>Below this speed in m/s a vehicle counts as standing.</summary>
-        public const float StandingSpeed = 1.5f;
-
         /// <summary>
         /// Passage time in seconds: a vehicle this close to the line keeps
         /// the green, as the gap setting of an actuated controller.
@@ -104,10 +104,14 @@ namespace TLL.Core.Control
                     continue;
                 }
                 inQueue = false;
-                if (speed < StandingSpeed)
+                if (speed < QueueSpeed)
                 {
-                    // Standing further back, behind a gap: held up by
-                    // something else, but waiting all the same.
+                    // Behind a gap, but slow: the rest of a queue that tore
+                    // apart as its first cars pulled away, one slowing down to
+                    // join it, or one held up by something else. Waiting all
+                    // the same. Counted as arriving, a queue moving off
+                    // dropped out of the count, and its green ended with most
+                    // of it still to come.
                     reading.Waiting += 1f;
                     continue;
                 }
