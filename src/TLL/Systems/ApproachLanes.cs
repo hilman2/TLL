@@ -65,7 +65,8 @@ namespace TLL.Systems
             return result;
         }
 
-        private static ApproachLanes ReadOne(List<Entity> edges, int approach, List<LaneEnd> ends, HashSet<Link> current, bool leftHandTraffic)
+        /// <summary>The lanes of one road leading into the junction, or null if the arrows cannot describe them (see <see cref="Read"/>).</summary>
+        public static ApproachLanes ReadOne(List<Entity> edges, int approach, List<LaneEnd> ends, HashSet<Link> current, bool leftHandTraffic)
         {
             Entity edge = edges[approach];
             List<int> lanes = Sorted(ends, i => ends[i].Incoming && ends[i].Edge == edge, leftHandTraffic);
