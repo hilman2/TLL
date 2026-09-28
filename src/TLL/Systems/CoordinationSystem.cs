@@ -150,7 +150,13 @@ namespace TLL.Systems
                 foreach (Entity node in all)
                 {
                     ManagedJunction j = EntityManager.GetComponentData<ManagedJunction>(node);
-                    if (j.Origin != JunctionOrigin.Auto || j.Mode == ControlMode.Flashing)
+                    // A junction whose phases are the player's but whose
+                    // times TLL fits ("You: layout" in the planner) may run
+                    // in a wave: the wave sets only times. Its layout stays,
+                    // since only automatic junctions get layouts for a wave
+                    // (AddAffordable).
+                    bool timedByTll = j.Origin == JunctionOrigin.Auto || (j.Options & JunctionOptions.AutoTiming) != 0;
+                    if (!timedByTll || j.Mode == ControlMode.Flashing)
                         continue;
                     if (EntityManager.HasComponent<AutopilotState>(node) && EntityManager.GetComponentData<AutopilotState>(node).WaveBan > 0)
                         banned.Add(node);

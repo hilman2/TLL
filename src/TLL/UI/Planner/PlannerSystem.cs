@@ -171,6 +171,48 @@ namespace TLL.UI.Planner
             m_Simulation = World.GetOrCreateSystemManaged<Game.Simulation.SimulationSystem>();
             AddBinding(m_Binding = new RawValueBinding(kGroup, "planner", Write));
             CreateTriggers();
+            if (Mod.Settings != null)
+            {
+                m_Keys = new[]
+                {
+                    Mod.Settings.GetAction(Setting.kPlannerUndo),
+                    Mod.Settings.GetAction(Setting.kPlannerRedo),
+                    Mod.Settings.GetAction(Setting.kPlannerCopy),
+                    Mod.Settings.GetAction(Setting.kPlannerPaste),
+                    Mod.Settings.GetAction(Setting.kPlannerApply),
+                };
+            }
+        }
+
+        /// <summary>The planner's keys: undo, redo, copy, paste, apply (Setting). Null without settings.</summary>
+        private Game.Input.ProxyAction[] m_Keys;
+
+        /// <summary>
+        /// The keys act only while the planner is open, and are switched off
+        /// otherwise, so Ctrl+Z and the others stay free for the game and
+        /// other mods.
+        /// </summary>
+        private void HandleKeys()
+        {
+            if (m_Keys == null)
+                return;
+            foreach (Game.Input.ProxyAction key in m_Keys)
+                key.shouldBeEnabled = m_Open;
+            if (!m_Open)
+                return;
+            if (m_Keys[0].WasPerformedThisFrame())
+                Undo();
+            else if (m_Keys[1].WasPerformedThisFrame())
+                Redo();
+            else if (m_Keys[2].WasPerformedThisFrame())
+                Copy();
+            else if (m_Keys[3].WasPerformedThisFrame())
+                Edit(Paste);
+            else if (m_Keys[4].WasPerformedThisFrame() && !Live)
+            {
+                Apply();
+                Changed();
+            }
         }
 
         protected override void OnUpdate()
@@ -178,6 +220,7 @@ namespace TLL.UI.Planner
             try
             {
                 base.OnUpdate();
+                HandleKeys();
                 if (!m_Open)
                     return;
                 if (DateTime.UtcNow - m_RefreshTime < kRefresh)
@@ -475,9 +518,23 @@ namespace TLL.UI.Planner
             }
 
             ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(m_Node);
-            TllUISystem.TakeOverByPlayer(ref junction);
-            if (m_Draft.Mode != ControlMode.Coordinated)
-                junction.Mode = m_Draft.Mode;
+            // In a green wave the wave sets the times. With the times left to
+            // TLL ("You: layout") and the mode not changed, the junction stays
+            // in it, and the next round of the waves plans it with its new
+            // phases; otherwise it leaves.
+            bool inWave = junction.Mode == ControlMode.Coordinated || junction.Group != 0;
+            bool staysInWave = inWave && m_Draft.Owner == PlannerOwner.Layout && m_Draft.Mode == ControlMode.Coordinated;
+            if (staysInWave)
+            {
+                junction.Origin = JunctionOrigin.Manual;
+                Requests.RebuildGreenWaves = true;
+            }
+            else
+            {
+                TllUISystem.TakeOverByPlayer(ref junction);
+                if (m_Draft.Mode != ControlMode.Coordinated)
+                    junction.Mode = m_Draft.Mode;
+            }
             junction.Options = Set(junction.Options, JunctionOptions.AutoTiming, m_Draft.Owner == PlannerOwner.Layout);
             junction.Options = Set(junction.Options, JunctionOptions.TurnOnRed, m_Draft.TurnOnRed);
             bool scramble = m_Draft.Scramble && CrosswalkPhases(m_Draft.Phases) != 0U;
@@ -505,6 +562,14 @@ namespace TLL.UI.Planner
             }
             uint crosswalkPhases = CrosswalkPhases(m_Draft.Phases);
             DynamicBuffer<JunctionPhase> phases = EntityManager.GetBuffer<JunctionPhase>(m_Node);
+            // A phase that carried the wave keeps doing so until the wave's
+            // next round has planned the new phases.
+            var carried = new HashSet<ulong>();
+            for (int p = 0; staysInWave && p < phases.Length; p++)
+            {
+                if (phases[p].Data.HasFlag(PhaseFlags.Coordinated))
+                    carried.Add(phases[p].Movements);
+            }
             phases.Clear();
             for (int p = 0; p < m_Draft.Phases.Count; p++)
             {
@@ -513,6 +578,8 @@ namespace TLL.UI.Planner
                 PhaseFlags flags = HasCrosswalk(green) ? PhaseFlags.Pedestrian : PhaseFlags.None;
                 if (scramble && (crosswalkPhases & (1U << p)) != 0U)
                     flags |= PhaseFlags.Scramble;
+                if (carried.Contains(green))
+                    flags |= PhaseFlags.Coordinated;
                 phases.Add(new JunctionPhase
                 {
                     Movements = green,

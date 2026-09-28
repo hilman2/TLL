@@ -320,6 +320,10 @@ const scenarios = {
     "tll.planner": { ...plannerInfo, tourSeen: false },
     expect: [">1/3  Three steps<", ">Next<"],
   },
+  "planner, layout in a green wave": {
+    "tll.planner": { ...plannerInfo, owner: 1, mode: 3, coordinated: true, refusal: null },
+    expect: [">The junction stays in its green wave, which sets its times, as long as a phase carries the wave&#x27;s traffic.<"],
+  },
   "planner, autopilot": {
     "tll.planner": { ...plannerInfo, owner: 0, coordinated: true, refusal: null },
     expect: [">The autopilot plans this junction. Click an arrow or pick a template to take it over.<"],

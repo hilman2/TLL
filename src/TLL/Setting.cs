@@ -35,6 +35,11 @@ namespace TLL
     [SettingsUIGroupOrder(kAutomation, kRules, kMap, kKeys, kMaintenance, kDebug)]
     [SettingsUIShowGroupName(kAutomation, kRules, kMap, kKeys, kMaintenance, kDebug)]
     [SettingsUIKeyboardAction(kTogglePanel, Usages.kDefaultUsage, Usages.kToolUsage)]
+    [SettingsUIKeyboardAction(kPlannerUndo, Usages.kDefaultUsage, Usages.kToolUsage)]
+    [SettingsUIKeyboardAction(kPlannerRedo, Usages.kDefaultUsage, Usages.kToolUsage)]
+    [SettingsUIKeyboardAction(kPlannerCopy, Usages.kDefaultUsage, Usages.kToolUsage)]
+    [SettingsUIKeyboardAction(kPlannerPaste, Usages.kDefaultUsage, Usages.kToolUsage)]
+    [SettingsUIKeyboardAction(kPlannerApply, Usages.kDefaultUsage, Usages.kToolUsage)]
     public class Setting : ModSetting
     {
         public const string kSection = "Main";
@@ -45,6 +50,13 @@ namespace TLL
 
         /// <summary>Input action that opens and closes the TLL panel.</summary>
         public const string kTogglePanel = "TogglePanel";
+
+        /// <summary>Input actions of the planner; they act only while it is open (PlannerSystem).</summary>
+        public const string kPlannerUndo = "PlannerUndo";
+        public const string kPlannerRedo = "PlannerRedo";
+        public const string kPlannerCopy = "PlannerCopy";
+        public const string kPlannerPaste = "PlannerPaste";
+        public const string kPlannerApply = "PlannerApply";
         public const string kMaintenance = "Maintenance";
         public const string kDebug = "Debug";
 
@@ -99,6 +111,26 @@ namespace TLL
         [SettingsUIKeyboardBinding(BindingKeyboard.T, kTogglePanel, alt: true)]
         [SettingsUISection(kSection, kKeys)]
         public ProxyBinding TogglePanelBinding { get; set; }
+
+        [SettingsUIKeyboardBinding(BindingKeyboard.Z, kPlannerUndo, ctrl: true)]
+        [SettingsUISection(kSection, kKeys)]
+        public ProxyBinding PlannerUndoBinding { get; set; }
+
+        [SettingsUIKeyboardBinding(BindingKeyboard.Y, kPlannerRedo, ctrl: true)]
+        [SettingsUISection(kSection, kKeys)]
+        public ProxyBinding PlannerRedoBinding { get; set; }
+
+        [SettingsUIKeyboardBinding(BindingKeyboard.C, kPlannerCopy, ctrl: true)]
+        [SettingsUISection(kSection, kKeys)]
+        public ProxyBinding PlannerCopyBinding { get; set; }
+
+        [SettingsUIKeyboardBinding(BindingKeyboard.V, kPlannerPaste, ctrl: true)]
+        [SettingsUISection(kSection, kKeys)]
+        public ProxyBinding PlannerPasteBinding { get; set; }
+
+        [SettingsUIKeyboardBinding(BindingKeyboard.Enter, kPlannerApply, ctrl: true)]
+        [SettingsUISection(kSection, kKeys)]
+        public ProxyBinding PlannerApplyBinding { get; set; }
 
         [SettingsUIButton]
         [SettingsUIConfirmation]

@@ -105,8 +105,8 @@ export const Planner = () => {
         <Tool label={t("Planner.Copy", "Copy")} hint={t("Planner.CopyHint", "")} onSelect={planner.copy} />
         <Tool label={t("Planner.Paste", "Paste")} hint={t("Planner.PasteHint", "")} onSelect={planner.paste} />
         <div className={styles.spacer} />
-        <Tool label={t("Planner.Undo", "Undo")} disabled={!info.canUndo} onSelect={planner.undo} />
-        <Tool label={t("Planner.Redo", "Redo")} disabled={!info.canRedo} onSelect={planner.redo} />
+        <Tool label={t("Planner.Undo", "Undo")} hint={t("Planner.UndoHint", "")} disabled={!info.canUndo} onSelect={planner.undo} />
+        <Tool label={t("Planner.Redo", "Redo")} hint={t("Planner.RedoHint", "")} disabled={!info.canRedo} onSelect={planner.redo} />
         <Tool label="?" hint={t("Planner.TourHint", "")} onSelect={() => setTour(0)} />
       </div>
 
@@ -119,7 +119,12 @@ export const Planner = () => {
         onSelect={planner.setOwner}
       />
       {info.owner === Owner.Autopilot && <div className={styles.muted}>{t("Planner.AutopilotNote", "The autopilot plans this junction. Click an arrow or pick a template to take it over.")}</div>}
-      {info.owner !== Owner.Autopilot && info.coordinated && <div className={styles.muted}>{t("Planner.WaveNote", "Applying takes this junction out of its green wave.")}</div>}
+      {info.owner === Owner.Layout && info.coordinated && info.mode === ControlMode.Coordinated && (
+        <div className={styles.muted}>{t("Planner.WaveStays", "The junction stays in its green wave, which sets its times, as long as a phase carries the wave's traffic.")}</div>
+      )}
+      {info.coordinated && (info.owner === Owner.Everything || info.mode !== ControlMode.Coordinated) && (
+        <div className={styles.muted}>{t("Planner.WaveNote", "Applying takes this junction out of its green wave.")}</div>
+      )}
 
       {tourStep >= 0 && <Tour step={tourStep} t={t} onNext={() => setTour(tourStep + 1)} onDone={() => { setTour(-1); planner.tourSeen(); }} />}
 
