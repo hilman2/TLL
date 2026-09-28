@@ -273,7 +273,7 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
         <Switch
           label={
             junction.scrambleOnDemand
-              ? `${t("Panel.ScrambleOnDemand", "Scramble on demand")}: ${junction.scrambleActive ? t("Panel.ScrambleActive", "active") : t("Panel.ScrambleWaiting", "standby")} (${junction.conflicts}/8)${junction.scrambleActive ? ` · ${nextReview(junction, t)}` : ""}`
+              ? `${t("Panel.ScrambleOnDemand", "Scramble on demand")}: ${junction.scrambleActive ? t("Panel.ScrambleActive", "active") : t("Panel.ScrambleWaiting", "standby")} (${junction.conflicts}/8)`
               : t("Panel.ScrambleOnDemand", "Scramble on demand")
           }
           hint={t("Panel.ScrambleHint", "")}

@@ -154,10 +154,16 @@ namespace TLL.Systems
                     }
                     runtime.CountsSince = now;
                     bool layoutRound = (round + (uint)node.Index) % kLayoutEvery == 0;
-                    // Manual junctions have scrambles on demand too, so this
-                    // part of the review comes before the autopilot's.
-                    if (layoutRound)
-                        runtime.Conflicts.Review();
+                    // A scramble found needed is kept with the junction, so it
+                    // outlasts a reload; the runtime is not saved. Manual
+                    // junctions have scrambles on demand too.
+                    if (runtime.Conflicts.Divert && (junction.Options & JunctionOptions.ScrambleOnDemand) != 0
+                        && (junction.Options & JunctionOptions.PedestriansDiverted) == 0)
+                    {
+                        junction.Options |= JunctionOptions.PedestriansDiverted;
+                        EntityManager.SetComponentData(node, junction);
+                        MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "scramble")?.Add("to", true).Add("conflicts", runtime.Conflicts.Count));
+                    }
                     EntityManager.SetComponentData(node, runtime);
                     UpdateHealth(node);
                     if (settings != null && settings.AutoManageAll && junction.Origin == JunctionOrigin.Auto)

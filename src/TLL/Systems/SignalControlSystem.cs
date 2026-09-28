@@ -281,7 +281,7 @@ namespace TLL.Systems
 
                     DynamicBuffer<DetectorLane> detectors = hasDetectors ? detectorBuffers[i] : default;
                     bool scramble = (junction.Options & JunctionOptions.ScrambleOnDemand) != 0;
-                    bool divert = scramble && runtime.Conflicts.Divert;
+                    bool divert = scramble && (runtime.Conflicts.Divert || (junction.Options & JunctionOptions.PedestriansDiverted) != 0);
                     Sense(phases, lanes, detectors, hasDetectors, counters, statistics, movements, runtime.State, divert, out bool conflict);
 
                     ControllerConfig config = junction.ToConfig();

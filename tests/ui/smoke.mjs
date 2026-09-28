@@ -152,7 +152,7 @@ const scenarios = {
     },
     // Texts the open panel must show; the stand-in translation gives the fallbacks.
     expect: [
-      ">Next review in 45 min<", "active (3/8) · Next review in 45 min",
+      ">Next review in 45 min<", "active (3/8)<",
       "Measured wait Ø 12 s · model Ø 9 s", "Kept out of green waves for 12 h", " •<",
     ],
   },

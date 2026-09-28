@@ -5,17 +5,12 @@ namespace TLL.Core.Control
     /// crossing alongside the vehicles, from what happened in the last
     /// vehicle greens.
     ///
-    /// A green counts as a conflict when turning vehicles and pedestrians
-    /// wanted the same crosswalk in it. While pedestrians cross with the
-    /// vehicles, that is a turning vehicle held at the line with people on
-    /// its crosswalk. While they are diverted into the scramble, the two no
-    /// longer meet, so it is people waiting to cross while turning vehicles
-    /// use their crosswalk: without that, the scramble would switch itself
-    /// off as soon as it worked.
-    ///
-    /// The scramble starts as soon as the conflicts pile up and then stays
-    /// until a <see cref="Review"/> finds they have almost stopped, so the
-    /// junction does not flip between the two with every few greens.
+    /// A green counts as a conflict when a turning vehicle was held at the
+    /// line with people on its crosswalk. Once the conflicts pile up,
+    /// pedestrians are diverted into the scramble for good: from then on the
+    /// two no longer meet, so the conflicts cannot tell whether the scramble
+    /// is still needed, and a scramble on demand costs nothing while nobody
+    /// presses the button.
     /// </summary>
     public struct PedestrianConflicts
     {
@@ -24,9 +19,6 @@ namespace TLL.Core.Control
 
         /// <summary>Conflicts within the window from which pedestrians are diverted.</summary>
         public const int DivertAt = 5;
-
-        /// <summary>Conflicts within the window at or below which a review lets them cross with the vehicles again.</summary>
-        public const int ReturnAt = 1;
 
         /// <summary>One bit per recorded green, newest in bit 0; set for a conflict.</summary>
         public byte History;
@@ -50,16 +42,6 @@ namespace TLL.Core.Control
             History = (byte)((History << 1) | (conflict ? 1 : 0));
             if (Count >= DivertAt)
                 Divert = true;
-        }
-
-        /// <summary>
-        /// The regular review, on the autopilot's schedule: ends the
-        /// diversion if the conflicts have almost stopped.
-        /// </summary>
-        public void Review()
-        {
-            if (Count <= ReturnAt)
-                Divert = false;
         }
     }
 }

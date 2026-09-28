@@ -41,6 +41,14 @@ namespace TLL.Components
         /// estimate says it saves time, if the setting TurnOnRed allows it.
         /// </summary>
         TurnOnRed = 8,
+
+        /// <summary>
+        /// The scramble on demand has been found needed, and pedestrians
+        /// cross only in it from now on (PedestrianConflicts). Saved with the
+        /// junction, so a reload does not have to find it again; switching
+        /// the scramble off and on starts over.
+        /// </summary>
+        PedestriansDiverted = 16,
     }
 
     /// <summary>

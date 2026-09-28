@@ -136,6 +136,7 @@ One record per change at a junction. `kind` says which, and the fields vary with
 | `layout` | `from`, `to`, `jammed`, `tried` (measured before), `expected_delay_s`, `current_delay_s`, `window` |
 | `flash` | `to` (flashing or not), `reason` (`traffic`, `backlog`, `setting`), `major_per_h`, `minor_per_h`, `minor_total_per_h`, `side_load`, `worst_free_queue` |
 | `turn_on_red` | `to`, `layout` |
+| `scramble` | `to` (pedestrians diverted into the scramble, for good), `conflicts` in the last 8 greens |
 | `wave` | `action`: `start`, `replan`, `keep` or `reject` a corridor, `end` one that did not help (all at the corridor's first junction, with `group`, `members`, `junctions`, `cycle_s`, `band_a_s`, `band_b_s`); `leave` for a junction taken out of a wave. For `keep`, the figures are those of the plan it was compared with. |
 | `rebuild` | `trigger` (`game` or `mod`), `carries_on` (same plan, the controller went on), `layout`, `mode`, `approaches`, `movements`, `phases` |
 | `user` | `action` in the panel (`mode`, `layout`, `scramble_on_demand`, `turn_on_red`, `make_automatic`, `manage`, `release`, `reset_all`) and its `value` |

@@ -338,7 +338,7 @@ namespace TLL.UI
             writer.PropertyName("turnOnRed");
             writer.Write((d.Junction.Options & JunctionOptions.TurnOnRed) != 0);
             writer.PropertyName("scrambleActive");
-            writer.Write(d.Conflicts.Divert);
+            writer.Write(d.Conflicts.Divert || (d.Junction.Options & JunctionOptions.PedestriansDiverted) != 0);
             writer.PropertyName("conflicts");
             writer.Write(d.Conflicts.Count);
             writer.PropertyName("reviewMinutes");
@@ -662,6 +662,15 @@ namespace TLL.UI
             junction.Options ^= JunctionOptions.ScrambleOnDemand;
             WriteUser("scramble_on_demand", ((junction.Options & JunctionOptions.ScrambleOnDemand) != 0).ToString());
             TakeOverByPlayer(ref junction);
+            // Switched by hand, the scramble starts over: pedestrians cross
+            // with the vehicles until the conflicts pile up again.
+            junction.Options &= ~JunctionOptions.PedestriansDiverted;
+            if (EntityManager.HasComponent<JunctionRuntime>(m_Selected))
+            {
+                JunctionRuntime runtime = EntityManager.GetComponentData<JunctionRuntime>(m_Selected);
+                runtime.Conflicts = default;
+                EntityManager.SetComponentData(m_Selected, runtime);
+            }
             EntityManager.SetComponentData(m_Selected, junction);
             EntityManager.GetBuffer<JunctionPhase>(m_Selected).Clear();
             EntityManager.AddComponent<RebuildRequest>(m_Selected);

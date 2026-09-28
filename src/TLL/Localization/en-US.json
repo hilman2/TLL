@@ -130,7 +130,7 @@
   "Panel.ScrambleOnDemand": "Scramble on demand",
   "Panel.ScrambleActive": "active",
   "Panel.ScrambleWaiting": "standby",
-  "Panel.ScrambleHint": "A phase only for pedestrians. It starts once turning vehicles had to stop for pedestrians in 5 of the last 8 vehicle greens, and stays until the next review. While it runs, pedestrians no longer cross alongside the vehicles; whoever presses the button gets it once per cycle. The review ends it if, in the last 8 greens, pedestrians had to wait at most once while turning vehicles used their crosswalk. The number shows where it stands.",
+  "Panel.ScrambleHint": "A phase only for pedestrians. It starts once turning vehicles had to stop for pedestrians in 5 of the last 8 vehicle greens, and then stays. Pedestrians no longer cross alongside the vehicles; whoever presses the button gets it once per cycle, and without a press it costs nothing. Switching it off and on starts over. The number shows the conflicts in the last 8 greens.",
   "Panel.NextReview": "Next review in",
   "Panel.TurnOnRed": "Turn on red",
   "Panel.TurnOnRedHint": "Right turns (left turns in left-hand traffic) stop at red and go when the way is clear. Only where they meet nothing but traffic they give way to, and never during a pedestrian scramble. At automatic junctions the autopilot decides, if the setting allows it.",

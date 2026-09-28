@@ -41,7 +41,7 @@ namespace TLL.UI
                 string history = "";
                 for (int b = 0; b < PedestrianConflicts.Window; b++)
                     history += (runtime.Conflicts.History & (1 << b)) != 0 ? 'x' : '.';
-                text.Append($"  scramble on demand {(junction.Options & JunctionOptions.ScrambleOnDemand) != 0}, diverting {runtime.Conflicts.Divert}, conflicts {runtime.Conflicts.Count}/{PedestrianConflicts.Window} [{history}], this green {runtime.ConflictThisGreen}\n");
+                text.Append($"  scramble on demand {(junction.Options & JunctionOptions.ScrambleOnDemand) != 0}, diverting {runtime.Conflicts.Divert} (kept {(junction.Options & JunctionOptions.PedestriansDiverted) != 0}),conflicts {runtime.Conflicts.Count}/{PedestrianConflicts.Window} [{history}], this green {runtime.ConflictThisGreen}\n");
             }
             text.Append($"  turn on red {(junction.Options & JunctionOptions.TurnOnRed) != 0}\n");
             if (em.HasComponent<AutopilotState>(node))

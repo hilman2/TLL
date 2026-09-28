@@ -20,38 +20,20 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
-        public void QuietGreensAloneDoNotEndIt()
+        public void OnceDivertedItStays()
         {
-            Assert.True(After("........", After("xxxxx")).Divert);
+            // With pedestrians in the scramble, turning vehicles no longer
+            // meet them: the quiet greens that follow say nothing about
+            // whether the scramble is still needed.
+            PedestrianConflicts diverted = After(".....................", After("xxxxx"));
+            Assert.Equal(0, diverted.Count);
+            Assert.True(diverted.Divert);
         }
 
         [Fact]
-        public void TheReviewEndsItOnceConflictsAlmostStopped()
-        {
-            PedestrianConflicts diverted = After("xxxxx");
-            PedestrianConflicts two = After("......", diverted);
-            two.Review();
-            Assert.True(two.Divert, "6 quiet greens leave 2 conflicts in the window");
-            PedestrianConflicts one = After(".......", diverted);
-            one.Review();
-            Assert.False(one.Divert, "7 quiet greens leave 1");
-        }
-
-        [Fact]
-        public void TheReviewDoesNotStartIt()
-        {
-            PedestrianConflicts four = After("x.x.x.x.");
-            four.Review();
-            Assert.False(four.Divert);
-        }
-
-        [Fact]
-        public void FourConflictsNeitherStartNorEndIt()
+        public void FourConflictsDoNotStartIt()
         {
             Assert.False(After("x.x.x.x.").Divert);
-            PedestrianConflicts diverted = After("x.x.x.x.", After("xxxxx"));
-            diverted.Review();
-            Assert.True(diverted.Divert);
         }
 
         [Fact]
