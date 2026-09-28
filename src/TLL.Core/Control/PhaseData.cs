@@ -84,6 +84,13 @@ namespace TLL.Core.Control
         public float Queue;
 
         /// <summary>
+        /// Vehicles that entered the junction on this phase's movements since
+        /// its green began; counted by the caller, cleared by the controller
+        /// when the green begins.
+        /// </summary>
+        public uint ServedThisGreen;
+
+        /// <summary>
         /// Demand minus the congestion downstream. A phase whose exits are
         /// jammed has low pressure even with a long queue, because green would
         /// move nobody. Used by the adaptive mode.
@@ -117,6 +124,19 @@ namespace TLL.Core.Control
 
         /// <summary>Steps this phase has had demand without green. Reset when it gets green.</summary>
         public ushort WaitSteps;
+
+        /// <summary>
+        /// <see cref="Queue"/> when the green began: the vehicles standing
+        /// then, which the green is to get through (see SignalController).
+        /// </summary>
+        public float QueueAtStart;
+
+        /// <summary>
+        /// <see cref="ServedThisGreen"/> as the controller last saw it, and
+        /// the steps since it last grew: how long no vehicle has entered.
+        /// </summary>
+        public uint ServedSeen;
+        public ushort StepsSinceServed;
 
         /// <summary>Length in steps of this phase's last green, and why it ended.</summary>
         public ushort LastGreen;

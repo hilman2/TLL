@@ -517,6 +517,63 @@ namespace TLL.Core.Tests.Control
         }
 
         [Fact]
+        public void AQueueTheSensorLosesWhileItLeavesStillGetsThrough()
+        {
+            // Twelve vehicles stand at phase 0 when its green starts. Moving
+            // off, they are soon too fast to count as queue, and the sensor
+            // reads nothing standing after 3 s, while one crosses the line
+            // every 2 s. Phase 1 has far more pressure. The green lasts until
+            // the queue it started with has crossed, not until the sensor
+            // lost sight of it.
+            var config = ControllerConfig.Default(ControlMode.Adaptive);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 60, 20), ControllerHarness.Phase(5, 60, 20));
+            int green0 = 0;
+            h.Run(0, 800, (s, p) =>
+            {
+                bool green = h.State.Stage == Stage.Green && h.State.Phase == 0;
+                green0 = green ? green0 + 1 : 0;
+                bool standing = !green || green0 < SimTime.ToSteps(3f);
+                p[0].Queue = standing ? 12f : 0f;
+                p[0].Demand = standing ? 12f : 2f;
+                p[0].Pressure = p[0].Demand;
+                if (green && green0 > 1 && green0 % SimTime.ToSteps(2f) == 0)
+                    p[0].ServedThisGreen++;
+                bool later = h.GreenStarts().Any(g => g.phase == 0);
+                p[1].Queue = later ? 20f : 0f;
+                p[1].Demand = later ? 20f : 0f;
+                p[1].Pressure = later ? 20f : 0f;
+            });
+            var first = h.GreenLengths().First(g => g.phase == 0);
+            Assert.True(first.length >= SimTime.ToSteps(20f), $"phase 0 green ended after {SimTime.ToSeconds(first.length):0} s with its queue still crossing");
+        }
+
+        [Fact]
+        public void AQueueCountedTooHighDoesNotHoldTheGreen()
+        {
+            // The sensor saw twelve at the start, but nobody crosses: they
+            // were not this phase's, or were never there. The green does not
+            // wait for them.
+            var config = ControllerConfig.Default(ControlMode.Adaptive);
+            var h = new ControllerHarness(config, ControllerHarness.Phase(5, 60, 20), ControllerHarness.Phase(5, 60, 20));
+            int green0 = 0;
+            h.Run(0, 800, (s, p) =>
+            {
+                bool green = h.State.Stage == Stage.Green && h.State.Phase == 0;
+                green0 = green ? green0 + 1 : 0;
+                bool standing = !green || green0 < SimTime.ToSteps(3f);
+                p[0].Queue = standing ? 12f : 0f;
+                p[0].Demand = standing ? 12f : 2f;
+                p[0].Pressure = p[0].Demand;
+                bool later = h.GreenStarts().Any(g => g.phase == 0);
+                p[1].Queue = later ? 20f : 0f;
+                p[1].Demand = later ? 20f : 0f;
+                p[1].Pressure = later ? 20f : 0f;
+            });
+            var first = h.GreenLengths().First(g => g.phase == 0);
+            Assert.True(first.length <= SimTime.ToSteps(10f), $"phase 0 held {SimTime.ToSeconds(first.length):0} s for vehicles that never came");
+        }
+
+        [Fact]
         public void AStarvedPhaseWaitsForALeavingQueue()
         {
             // Phase 1 has waited past the maximum wait. Phase 0 still has a

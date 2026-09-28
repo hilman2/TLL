@@ -264,6 +264,15 @@ namespace TLL.Core.Control
             ref PhaseData current = ref phases[s.Phase];
             current.Stats.GreenSteps++;
             current.Metrics.GreenSteps++;
+            if (current.ServedThisGreen != current.ServedSeen)
+            {
+                current.ServedSeen = current.ServedThisGreen;
+                current.StepsSinceServed = 0;
+            }
+            else if (current.StepsSinceServed < ushort.MaxValue)
+            {
+                current.StepsSinceServed++;
+            }
             if (current.Busy)
                 current.Stats.BusySteps++;
             if (s.GreenLeft > 0)
@@ -377,6 +386,14 @@ namespace TLL.Core.Control
             return -1;
         }
 
+        /// <summary>
+        /// Steps without a vehicle entering after which the queue counted
+        /// when the green began is taken to have crossed, even if fewer came
+        /// than counted: 5 s, more than the start-up of the first vehicle and
+        /// twice the headway of a leaving queue.
+        /// </summary>
+        private static readonly int CrossingGap = SimTime.ToSteps(5f);
+
         private static int AdaptiveDecision<TPhases>(ref ControllerState s, in ControllerConfig c, ref TPhases phases, bool pastMin)
             where TPhases : struct, IPhaseAccess
         {
@@ -424,7 +441,14 @@ namespace TLL.Core.Control
             // only its own limit does.
             bool drain = c.Mode == ControlMode.Drain;
             bool maxedOut = s.StageSteps >= (drain ? c.DrainMax : current.MaxGreen);
-            bool gappedOut = drain ? current.Queue < 1f || current.Blocked : current.Demand <= 0f;
+            // The queue is still there while the sensor sees it standing, or
+            // while fewer vehicles have crossed than stood when the green
+            // began and they keep crossing. Moving off, a queue pulls apart
+            // and speeds up, and the sensor loses sight of it long before it
+            // has crossed, as a loop at the stop line would not.
+            bool crossing = current.ServedThisGreen + 1 < current.QueueAtStart && current.StepsSinceServed < CrossingGap;
+            bool queueLeft = current.Queue >= 1f || crossing;
+            bool gappedOut = drain ? !queueLeft || current.Blocked : current.Demand <= 0f && !crossing;
             // Neither a heavier queue elsewhere nor a phase that has waited
             // too long cuts into a queue that is still leaving: that costs the
             // change and the start-up again, and the rest of the queue waits
@@ -434,7 +458,7 @@ namespace TLL.Core.Control
             // the phase opposite a tram line got hardly more than its minimum
             // green, and at junctions of five phases the ones rarely chosen
             // cut in at the maximum wait all the time.
-            bool leaving = current.Queue >= 1f && !current.Blocked;
+            bool leaving = queueLeft && !current.Blocked;
             bool starvedCut = bestStarved && !drain && !leaving;
             bool outweighed = !drain && !bestStarved && !leaving
                 && phases[best].Pressure > current.Pressure * c.SwitchRatio && phases[best].Pressure > current.Pressure + 1f;
@@ -604,6 +628,10 @@ namespace TLL.Core.Control
             p.Metrics.Greens++;
             p.Metrics.WaitAtStart += p.WaitSteps;
             p.WaitSteps = 0;
+            p.QueueAtStart = p.Queue;
+            p.ServedThisGreen = 0;
+            p.ServedSeen = 0;
+            p.StepsSinceServed = 0;
             s.Preempting = p.Preempt;
             // Push button: pedestrians walk only when someone asked, except
             // in fixed-time mode, which serves them in every cycle, in the

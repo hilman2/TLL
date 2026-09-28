@@ -639,6 +639,10 @@ namespace TLL.Systems
                     phase.Data.LastGreen = old.LastGreen;
                     phase.Data.LastEnd = old.LastEnd;
                     phase.Data.Stats = old.Stats;
+                    phase.Data.QueueAtStart = old.QueueAtStart;
+                    phase.Data.ServedThisGreen = old.ServedThisGreen;
+                    phase.Data.ServedSeen = old.ServedSeen;
+                    phase.Data.StepsSinceServed = old.StepsSinceServed;
                     phases[phaseMap[p]] = phase;
                 }
             }

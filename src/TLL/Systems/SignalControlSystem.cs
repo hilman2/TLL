@@ -393,7 +393,11 @@ namespace TLL.Systems
                                 if (Movings.TryGetComponent(entrant, out Game.Objects.Moving entering) && math.length(entering.m_Velocity) > kFlowingSpeed)
                                     counter.Flowing++;
                                 if (state.Stage == Stage.Green && state.Phase < phases.Length && (phases[state.Phase].Movements & (1UL << m)) != 0)
-                                    phases.ElementAt(state.Phase).Data.Metrics.Served++;
+                                {
+                                    ref PhaseData green = ref phases.ElementAt(state.Phase).Data;
+                                    green.Metrics.Served++;
+                                    green.ServedThisGreen++;
+                                }
                                 lane.LastEntrant = entrant;
                                 lanes[l] = lane;
                             }
