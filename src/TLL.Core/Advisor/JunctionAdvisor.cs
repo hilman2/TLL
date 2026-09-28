@@ -39,9 +39,6 @@ namespace TLL.Core.Advisor
         /// <summary>A layout counts as coping when no movement exceeds this volume-to-capacity ratio.</summary>
         public const float Capacity = 1f;
 
-        /// <summary>Among layouts that all overload, a switch must lower the worst ratio by this much.</summary>
-        public const float SaturationMargin = 0.05f;
-
         /// <summary>
         /// The layout to run: the current one, unless another is better by a
         /// clear margin. The margin keeps a junction from switching back and
@@ -53,6 +50,8 @@ namespace TLL.Core.Advisor
         /// movements that flow. So a layout in which every movement copes
         /// beats any in which one does not; among layouts that cope the delay
         /// decides; among layouts that all overload, the lowest overload.
+        /// Between two layouts the junction has measured, the measured delay
+        /// decides, with the backlog weighed in (see Weighed).
         /// </summary>
         public static PlanStrategy Choose(PlanStrategy current, PlanEstimate[] estimates)
         {
@@ -107,6 +106,8 @@ namespace TLL.Core.Advisor
                     e.WorstSaturation = c.Backlog >= LayoutMemory.BacklogShare
                         ? Math.Max(e.WorstSaturation, MeasuredOverload)
                         : Math.Min(e.WorstSaturation, Capacity);
+                    e.Measured = true;
+                    e.Backlog = c.Backlog;
                 }
                 result[i] = e;
             }
@@ -162,13 +163,38 @@ namespace TLL.Core.Advisor
             return with.TotalDelay < without.TotalDelay * (1f - TurnOnRedMargin);
         }
 
+        /// <summary>Among layouts that all overload, a switch must lower the worst ratio by this much.</summary>
+        public const float SaturationMargin = 0.05f;
+
         private static bool Copes(PlanEstimate e)
         {
             return e.WorstSaturation <= Capacity;
         }
 
+        /// <summary>
+        /// A measured layout's delay with its backlog counted on top: one
+        /// that always jammed counts double. Its delay comes from the
+        /// measurement, which the waiting in queues is part of.
+        /// </summary>
+        /// <remarks>
+        /// Between two measured layouts the backlog is weighed, not a verdict
+        /// of its own. At a junction near capacity every layout jams now and
+        /// then. With "copes first" a layout that jammed in half its periods
+        /// lost to one that waited twice as long without jamming, and won
+        /// again once its backlog had faded, round and round (junction
+        /// 894465, 28 Sep 2026). A layout never measured still has to cope on
+        /// paper: the model's delay stays finite beyond capacity and is
+        /// diluted by the movements that flow.
+        /// </remarks>
+        private static float Weighed(PlanEstimate e, float delay)
+        {
+            return delay * (1f + Math.Max(0f, e.Backlog));
+        }
+
         private static bool Better(PlanEstimate a, PlanEstimate b)
         {
+            if (a.Measured && b.Measured)
+                return Weighed(a, a.TotalDelay) < Weighed(b, b.TotalDelay);
             if (Copes(a) != Copes(b))
                 return Copes(a);
             return Copes(a) ? a.TotalDelay < b.TotalDelay : a.WorstSaturation < b.WorstSaturation;
@@ -176,6 +202,11 @@ namespace TLL.Core.Advisor
 
         private static bool ClearlyBetter(PlanEstimate candidate, PlanEstimate now)
         {
+            if (candidate.Measured && now.Measured)
+            {
+                return Weighed(candidate, candidate.TotalDelay) < Weighed(now, now.TotalDelay) * (1f - SwitchMargin)
+                    && Weighed(now, now.AverageDelay) - Weighed(candidate, candidate.AverageDelay) >= SwitchSeconds;
+            }
             if (Copes(candidate) != Copes(now))
                 return Copes(candidate);
             if (!Copes(now))

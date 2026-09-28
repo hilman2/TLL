@@ -72,6 +72,60 @@ namespace TLL.Core.Tests.Advisor
             Assert.NotEqual(PlanStrategy.Permissive, JunctionAdvisor.Choose(PlanStrategy.Permissive, corrected));
         }
 
+        private static PlanEstimate Estimate(float average, float saturation)
+        {
+            return new PlanEstimate
+            {
+                TotalDelay = average * 1000f, VehicleDelay = average * 1000f, Vehicles = 1000f, People = 1000f,
+                AverageDelay = average, WorstSaturation = saturation,
+            };
+        }
+
+        [Fact]
+        public void AMeasuredLayoutThatJammedOnceBeatsAMeasuredOneTwiceAsSlow()
+        {
+            // Junction 894465 on 28 Sep 2026: near capacity by the model.
+            // Split waited 1.28 times the model and jammed in one of three
+            // periods; Permissive waited 2.74 times the model without
+            // jamming, about twice as long as Split.
+            var e = new PlanEstimate[JunctionAdvisor.Strategies.Length];
+            e[Index(PlanStrategy.Permissive)] = Estimate(38.7f, 1.09f);
+            e[Index(PlanStrategy.ProtectedTurns)] = Estimate(39.7f, 1.2f);
+            e[Index(PlanStrategy.Split)] = Estimate(36.9f, 1.03f);
+            e[Index(PlanStrategy.ExclusivePedestrian)] = Estimate(50.7f, 1.1f);
+            var memory = new LayoutMemory();
+            int split = Index(PlanStrategy.Split);
+            memory.Record(split, false, 36.9f * 1.28f, 36.9f, false);
+            memory.Record(split, false, 36.9f * 1.28f, 36.9f, false);
+            memory.Record(split, false, 36.9f * 1.28f, 36.9f, true);
+            memory.Record(Index(PlanStrategy.Permissive), false, 38.7f * 2.74f, 38.7f, false);
+            memory.Record(Index(PlanStrategy.Permissive), false, 38.7f * 2.74f, 38.7f, false);
+            Assert.True(memory.Get(split, false).Backlog >= LayoutMemory.BacklogShare);
+
+            PlanEstimate[] corrected = JunctionAdvisor.Correct(e, memory, split, false);
+
+            Assert.Equal(PlanStrategy.Split, JunctionAdvisor.Choose(PlanStrategy.Split, corrected));
+        }
+
+        [Fact]
+        public void AMeasuredLayoutThatAlwaysJamsLosesToOneALittleSlower()
+        {
+            var e = new PlanEstimate[JunctionAdvisor.Strategies.Length];
+            for (int i = 0; i < e.Length; i++)
+                e[i] = Estimate(60f, 0.9f);
+            e[Index(PlanStrategy.Permissive)] = Estimate(30f, 0.9f);
+            e[Index(PlanStrategy.Split)] = Estimate(30f, 0.9f);
+            var memory = new LayoutMemory();
+            int split = Index(PlanStrategy.Split);
+            for (int period = 0; period < 3; period++)
+                memory.Record(split, false, 47f, 30f, true);
+            memory.Record(Index(PlanStrategy.Permissive), false, 60f, 30f, false);
+
+            PlanEstimate[] corrected = JunctionAdvisor.Correct(e, memory, split, false);
+
+            Assert.Equal(PlanStrategy.Permissive, JunctionAdvisor.Choose(PlanStrategy.Split, corrected));
+        }
+
         [Fact]
         public void AMeasuredLayoutThatFlowedCopesWhateverTheModel()
         {

@@ -65,6 +65,14 @@ namespace TLL.Core.Advisor
         /// <summary>Highest volume-to-capacity ratio of any movement; above 1 the junction cannot keep up.</summary>
         public float WorstSaturation;
 
+        /// <summary>
+        /// The junction has run this layout, and the delay is corrected by
+        /// what it measured (JunctionAdvisor.Correct); <see cref="Backlog"/>
+        /// then says how often its queues did not clear, from 0 to 1.
+        /// </summary>
+        public bool Measured;
+        public float Backlog;
+
         public int Phases;
 
         /// <summary>Volume-to-capacity ratio per movement; 0 for movements without traffic and for crosswalks.</summary>
