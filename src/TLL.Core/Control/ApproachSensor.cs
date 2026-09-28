@@ -44,6 +44,9 @@ namespace TLL.Core.Control
     /// </summary>
     public static class ApproachSensor
     {
+        /// <summary>Below this speed in m/s a vehicle counts as standing.</summary>
+        public const float StandingSpeed = 1.5f;
+
         /// <summary>
         /// Passage time in seconds: a vehicle this close to the line keeps
         /// the green, as the gap setting of an actuated controller.
