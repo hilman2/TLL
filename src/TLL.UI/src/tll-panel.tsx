@@ -7,6 +7,7 @@ import {
   AutopilotInfo,
   ControlMode,
   JunctionInfo,
+  MovementKind,
   panelOpen$,
   PhaseInfo,
   PlanStrategy,
@@ -20,6 +21,8 @@ import {
   Tab,
   tab$,
   toolActive$,
+  Turn,
+  TurnState,
 } from "bindings";
 import { JunctionDiagram } from "junction-diagram";
 import { useTranslate } from "localization";
@@ -203,24 +206,90 @@ const JunctionTab = ({ junction, t }: { junction: JunctionInfo | null; t: Transl
 };
 
 const UnmanagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }) => (
-  <div className={styles.card}>
-    <div className={styles.cardTitle}>{junction.name}</div>
-    {junction.roundabout ? (
-      <div className={styles.muted}>{t("Panel.Roundabout", "A roundabout: traffic entering gives way to traffic in the ring. Traffic lights are not used here.")}</div>
-    ) : junction.hasSignals ? (
-      <>
-        <div className={styles.muted}>{t("Panel.VanillaSignals", "The game controls these traffic lights.")}</div>
-        <div className={styles.row}>
-          <Button variant="flat" className={styles.wide} onSelect={actions.manage}>
-            {t("Panel.Manage", "Control with TLL")}
-          </Button>
-        </div>
-      </>
-    ) : (
-      <div className={styles.muted}>{t("Panel.NoSignals", "This junction has no traffic lights. Add them with the game's intersection upgrade.")}</div>
-    )}
-  </div>
+  <>
+    <div className={styles.card}>
+      <div className={styles.cardTitle}>{junction.name}</div>
+      {junction.roundabout ? (
+        <div className={styles.muted}>{t("Panel.Roundabout", "A roundabout: traffic entering gives way to traffic in the ring. Traffic lights are not used here.")}</div>
+      ) : junction.hasSignals ? (
+        <>
+          <div className={styles.muted}>{t("Panel.VanillaSignals", "The game controls these traffic lights.")}</div>
+          <div className={styles.row}>
+            <Button variant="flat" className={styles.wide} onSelect={actions.manage}>
+              {t("Panel.Manage", "Control with TLL")}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <div className={styles.muted}>{t("Panel.NoSignals", "This junction has no traffic lights. Add them with the game's intersection upgrade.")}</div>
+      )}
+    </div>
+    <TurnsCard junction={junction} t={t} />
+  </>
 );
+
+const turnStateText: Record<TurnState, string> = {
+  [TurnState.Allowed]: "allowed",
+  [TurnState.ForbiddenByAutopilot]: "forbidden · autopilot",
+  [TurnState.ForbiddenByPlayer]: "forbidden · you",
+  [TurnState.AllowedByPlayer]: "allowed · you",
+  [TurnState.ForbiddenByGame]: "forbidden · road",
+};
+
+const turnTone = (state: TurnState): "green" | "red" | "grey" =>
+  state === TurnState.Allowed || state === TurnState.AllowedByPlayer ? "green" : state === TurnState.ForbiddenByGame ? "grey" : "red";
+
+/**
+ * The ways through the junction, one row each: a small plan with the turn,
+ * the roads, and its rule. A click on the rule goes round: the autopilot's
+ * choice, forbidden by the player, allowed by the player.
+ */
+const TurnsCard = ({ junction, t }: { junction: JunctionInfo; t: Translate }) =>
+  // A C# side older than the panel sends no turns.
+  !junction.turns || junction.turns.length === 0 ? null : (
+    <div className={styles.card}>
+      <Hint text={t("Panel.TurnsHint", "")}>
+        <div className={styles.label}>{t("Panel.Turns", "Turns")}</div>
+      </Hint>
+      {junction.turns.map((turn) => (
+        <TurnRow key={`${turn.source}-${turn.target}`} turn={turn} junction={junction} t={t} />
+      ))}
+    </div>
+  );
+
+const TurnRow = ({ turn, junction, t }: { turn: Turn; junction: JunctionInfo; t: Translate }) => {
+  const road = (i: number) => junction.approaches[i]?.name || `${i + 1}`;
+  const kind = t("Movement." + MovementKind[turn.kind], MovementKind[turn.kind]);
+  const line = turn.volume >= 0 ? `${kind} · ${perHour(turn.volume)}` : kind;
+  const state = TurnState[turn.state];
+  return (
+    <div className={styles.turn}>
+      <JunctionDiagram
+        approaches={junction.approaches}
+        movements={[{ kind: turn.kind, source: turn.source, target: turn.target, volume: turn.volume }]}
+        green={[0]}
+        permitted={[]}
+        leftHandTraffic={junction.leftHandTraffic}
+        cameraYaw={junction.cameraYaw}
+        className={styles.turnDiagram}
+      />
+      <div className={styles.turnInfo}>
+        <div className={styles.phaseLine}>{`${road(turn.source)} → ${road(turn.target)}`}</div>
+        <div className={styles.phaseLine}>{line}</div>
+      </div>
+      <Hint text={t("TurnStateHint." + state, "")}>
+        <Button
+          variant="flat"
+          className={styles.switchButton}
+          disabled={turn.state === TurnState.ForbiddenByGame}
+          onSelect={() => actions.cycleTurn(turn.source, turn.target)}
+        >
+          <Chip text={t("TurnState." + state, turnStateText[turn.state] ?? state)} tone={turnTone(turn.state)} />
+        </Button>
+      </Hint>
+    </div>
+  );
+};
 
 const modeTone = (mode: ControlMode): "green" | "amber" | "blue" | "grey" =>
   mode === ControlMode.Coordinated ? "blue" : mode === ControlMode.Flashing ? "amber" : mode === ControlMode.FixedTime ? "grey" : "green";
@@ -295,6 +364,8 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
         <PhaseRow key={i} index={i} phase={phase} junction={junction} t={t} />
       ))}
     </div>
+
+    <TurnsCard junction={junction} t={t} />
 
     <div className={styles.footer}>
       <Hint text={t("Panel.DiagnoseHint", "")}>

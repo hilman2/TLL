@@ -65,5 +65,54 @@ namespace TLL.Core.Planning
         {
             return IndexOf(approach, -1, MovementKind.Pedestrian);
         }
+
+        /// <summary>
+        /// The junction as it is once the movements in <paramref name="removed"/>
+        /// are forbidden: without them, their conflicts and their share in
+        /// the approach lanes. Lanes they shared with other movements no
+        /// longer tie those together through them.
+        /// </summary>
+        /// <param name="kept">For each movement of the result, its index here.</param>
+        public JunctionModel Without(ulong removed, out int[] kept)
+        {
+            var indices = new List<int>();
+            for (int i = 0; i < Movements.Count; i++)
+            {
+                if ((removed & (1UL << i)) == 0)
+                    indices.Add(i);
+            }
+            kept = indices.ToArray();
+            var result = new JunctionModel
+            {
+                ApproachCount = ApproachCount,
+                OppositeOf = OppositeOf,
+                LeftHandTraffic = LeftHandTraffic,
+                Conflicts = new ConflictMatrix(kept.Length),
+            };
+            foreach (int i in kept)
+                result.Movements.Add(Movements[i]);
+            for (int a = 0; a < kept.Length; a++)
+            {
+                for (int b = a + 1; b < kept.Length; b++)
+                {
+                    if (Conflicts != null)
+                        result.Conflicts.Set(a, b, Conflicts.Get(kept[a], kept[b]));
+                    if ((SharesLaneWith(kept[a]) & (1UL << kept[b])) != 0)
+                        result.ShareLane(a, b);
+                }
+            }
+            return result;
+        }
+
+        /// <summary>The values of the movements a <see cref="Without"/> kept, in its order.</summary>
+        public static float[] Select(float[] values, int[] kept)
+        {
+            if (values == null)
+                return null;
+            var result = new float[kept.Length];
+            for (int i = 0; i < kept.Length; i++)
+                result[i] = kept[i] < values.Length ? values[kept[i]] : 0f;
+            return result;
+        }
     }
 }

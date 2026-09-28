@@ -58,6 +58,27 @@ export interface Movement {
   volume: number;
 }
 
+/** Numbers as in TllUISystem.TurnState. */
+export enum TurnState {
+  Allowed = 0,
+  ForbiddenByAutopilot = 1,
+  ForbiddenByPlayer = 2,
+  AllowedByPlayer = 3,
+  /** A road upgrade of the game forbids it; TLL does not change that. */
+  ForbiddenByGame = 4,
+}
+
+/** One way through a junction, from one road into another, with its rule. */
+export interface Turn {
+  /** Approach indices, as in JunctionInfo.approaches. */
+  source: number;
+  target: number;
+  kind: MovementKind;
+  state: TurnState;
+  /** Peak vehicles per hour; for a forbidden turn, what it carried before; negative if not known. */
+  volume: number;
+}
+
 /** Numbers as in TLL.Core.Advisor.SignalAdvice. */
 export enum SignalAdvice {
   Keep = 0,
@@ -172,6 +193,8 @@ export interface JunctionInfo extends EntityRef {
   cameraYaw: number;
   approaches: Approach[];
   movements: Movement[];
+  /** The ways through the junction and their rules, also where TLL does not run the signals; empty elsewhere. */
+  turns: Turn[];
   phases: PhaseInfo[];
   /** Null where the autopilot does not run: manual junctions, or automation off. */
   autopilot: AutopilotInfo | null;
@@ -212,6 +235,8 @@ export const actions = {
   diagnose: () => trigger(group, "diagnose"),
   toggleScramble: () => trigger(group, "toggleScramble"),
   toggleTurnOnRed: () => trigger(group, "toggleTurnOnRed"),
+  /** Next rule for a turn: the autopilot's, forbidden by the player, allowed by the player. */
+  cycleTurn: (source: number, target: number) => trigger(group, "cycleTurn", source, target),
   makeAutomatic: () => trigger(group, "makeAutomatic"),
   hover: (e: EntityRef) => trigger(group, "hover", e.index, e.version),
   unhover: () => trigger(group, "unhover"),

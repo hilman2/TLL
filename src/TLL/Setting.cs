@@ -68,6 +68,10 @@ namespace TLL
         [SettingsUISection(kSection, kAutomation)]
         public bool AutoFlash { get; set; }
 
+        /// <summary>The autopilot forbids turns that cost a junction more than their detour (TurnReview).</summary>
+        [SettingsUISection(kSection, kAutomation)]
+        public bool AutoTurnBans { get; set; }
+
         [SettingsUISection(kSection, kRules)]
         public bool TurnOnRed { get; set; }
 
@@ -158,6 +162,7 @@ namespace TLL
             AutoLayout = AutoLayout.Automatic;
             AutoGreenWaves = true;
             AutoFlash = true;
+            AutoTurnBans = true;
             TurnOnRed = false;
             KeepClear = true;
             ShowProblems = false;

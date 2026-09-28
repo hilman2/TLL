@@ -36,6 +36,9 @@ namespace TLL.Systems
         /// groups, so it joins movements that share no real lane.
         /// </summary>
         public bool Master;
+
+        /// <summary>The lane's turn is forbidden, by TLL or a road upgrade of the game (CarLaneFlags.Forbidden).</summary>
+        public bool Forbidden;
     }
 
     /// <summary>What <see cref="JunctionAnalysis.Analyse"/> finds at a junction.</summary>
@@ -52,10 +55,17 @@ namespace TLL.Systems
 
         /// <summary>
         /// Signalled vehicle lanes that belong to no movement, such as side
-        /// connections with one end in the node. They are set to give way
-        /// once; nobody else updates their signal while TLL runs the node.
+        /// connections with one end in the node, and lanes of forbidden turns.
+        /// They are set to give way once; nobody else updates their signal
+        /// while TLL runs the node.
         /// </summary>
         public List<Entity> Unassigned;
+
+        /// <summary>
+        /// With forbidden turns analysed as movements, those movements, as a
+        /// mask over <see cref="Keys"/>; 0 otherwise.
+        /// </summary>
+        public ulong Forbidden;
     }
 
     /// <summary>
@@ -65,13 +75,19 @@ namespace TLL.Systems
     /// </summary>
     internal static class JunctionAnalysis
     {
+        /// <param name="includeForbidden">
+        /// Analyse the lanes of forbidden turns as movements too, as the
+        /// junction would be with them allowed. Without it, as the signals
+        /// run it: a forbidden turn has no movement and gets no green of its
+        /// own; its lanes give way (see <see cref="JunctionLayout.Unassigned"/>).
+        /// </param>
         /// <returns>Null if the node has no signalled lanes.</returns>
-        public static JunctionLayout Analyse(EntityManager em, Entity node, bool leftHandTraffic)
+        public static JunctionLayout Analyse(EntityManager em, Entity node, bool leftHandTraffic, bool includeForbidden = false)
         {
             List<Entity> edges = NetGeometry.ConnectedEdges(em, node);
             float[] angles = NetGeometry.ApproachAngles(em, node, edges);
             var unassigned = new List<Entity>();
-            List<LaneInfo> lanes = CollectLanes(em, node, edges, unassigned);
+            List<LaneInfo> lanes = CollectLanes(em, node, edges, unassigned, includeForbidden);
             if (lanes.Count == 0)
                 return null;
 
@@ -135,7 +151,24 @@ namespace TLL.Systems
             if (ChordModel.SmallestGap(angles) >= 1f)
                 model.Conflicts.Tighten(ChordModel.Classify(model.Movements, angles, model.OppositeOf, model.LeftHandTraffic, includeMerges: false));
 
-            return new JunctionLayout { Edges = edges, Angles = angles, Lanes = lanes, Keys = keys, Model = model, Unassigned = unassigned };
+            // A movement counts as forbidden when all its lanes are.
+            ulong forbiddenLanes = 0;
+            ulong allowedLanes = 0;
+            foreach (LaneInfo lane in lanes)
+            {
+                if (lane.Master)
+                    continue;
+                ulong bit = 1UL << keys.IndexOf(lane.Key);
+                if (lane.Forbidden)
+                    forbiddenLanes |= bit;
+                else
+                    allowedLanes |= bit;
+            }
+            return new JunctionLayout
+            {
+                Edges = edges, Angles = angles, Lanes = lanes, Keys = keys, Model = model, Unassigned = unassigned,
+                Forbidden = forbiddenLanes & ~allowedLanes,
+            };
         }
 
         /// <summary>
@@ -235,7 +268,7 @@ namespace TLL.Systems
                 && (em.HasComponent<CarLane>(lane) || em.HasComponent<TrackLane>(lane));
         }
 
-        private static List<LaneInfo> CollectLanes(EntityManager em, Entity node, List<Entity> edges, List<Entity> unassigned)
+        private static List<LaneInfo> CollectLanes(EntityManager em, Entity node, List<Entity> edges, List<Entity> unassigned, bool includeForbidden)
         {
             var result = new List<LaneInfo>();
             DynamicBuffer<SubLane> subLanes = em.GetBuffer<SubLane>(node, true);
@@ -271,6 +304,12 @@ namespace TLL.Systems
                         continue;
                     }
                     bool track = !em.HasComponent<CarLane>(laneEntity) && em.HasComponent<TrackLane>(laneEntity);
+                    info.Forbidden = !track && (em.GetComponentData<CarLane>(laneEntity).m_Flags & CarLaneFlags.Forbidden) != 0;
+                    if (info.Forbidden && !includeForbidden)
+                    {
+                        unassigned.Add(laneEntity);
+                        continue;
+                    }
                     MovementKind kind = track ? MovementKind.Track : KindOf(em.GetComponentData<CarLane>(laneEntity).m_Flags);
                     info.Key = new MovementKey { Source = source, Target = target, Kind = kind };
                     info.Flags = track ? JunctionLaneFlags.Track : JunctionLaneFlags.None;
@@ -308,7 +347,7 @@ namespace TLL.Systems
             return best;
         }
 
-        private static MovementKind KindOf(CarLaneFlags flags)
+        internal static MovementKind KindOf(CarLaneFlags flags)
         {
             if ((flags & (CarLaneFlags.UTurnLeft | CarLaneFlags.UTurnRight)) != 0)
                 return MovementKind.UTurn;

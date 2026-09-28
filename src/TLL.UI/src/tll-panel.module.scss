@@ -402,6 +402,27 @@ $line: rgba(255, 255, 255, 0.12);
   background-color: rgba(61, 191, 107, 0.15);
 }
 
+.turn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 1rem 8rem;
+  padding: 2rem 6rem;
+}
+
+.turnDiagram {
+  width: 40rem;
+  height: 40rem;
+  flex-shrink: 0;
+  margin: 0 8rem 0 0;
+}
+
+.turnInfo {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
 .phaseDiagram {
   width: 64rem;
   height: 64rem;

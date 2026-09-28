@@ -156,6 +156,27 @@ const scenarios = {
       "Measured wait Ø 12 s · model Ø 9 s", "Kept out of green waves for 12 h", " •<",
     ],
   },
+  "managed junction with turns": {
+    "tll.selected": {
+      ...managed,
+      turns: [
+        { source: 0, target: 0, kind: 3, state: 1, volume: 0 },
+        { source: 0, target: 1, kind: 1, state: 0, volume: 312 },
+        { source: 1, target: 2, kind: 2, state: 2, volume: 12 },
+        { source: 2, target: 0, kind: 0, state: 3, volume: -1 },
+        { source: 2, target: 2, kind: 3, state: 4, volume: -1 },
+      ],
+    },
+    expect: [">Turns<", ">forbidden · autopilot<", ">Main Street → Oak Avenue<", ">Left · 312/h<", ">allowed · you<"],
+  },
+  "junction without signals, with turns": {
+    "tll.selected": {
+      index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false,
+      approaches: managed.approaches, leftHandTraffic: false, cameraYaw: 0,
+      turns: [{ source: 0, target: 2, kind: 0, state: 2, volume: -1 }],
+    },
+    expect: [">forbidden · you<"],
+  },
   "vanilla junction": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: true } },
   "junction without signals": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false } },
   "roundabout": { "tll.selected": { index: 9, version: 1, name: "Elm Road", managed: false, hasSignals: false, roundabout: true } },

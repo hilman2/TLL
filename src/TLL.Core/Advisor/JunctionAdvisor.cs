@@ -56,16 +56,23 @@ namespace TLL.Core.Advisor
         /// </summary>
         public static PlanStrategy Choose(PlanStrategy current, PlanEstimate[] estimates)
         {
+            int best = Best(estimates);
+            int currentIndex = Array.IndexOf(Strategies, current);
+            if (currentIndex < 0)
+                return Strategies[best];
+            return ClearlyBetter(estimates[best], estimates[currentIndex]) ? Strategies[best] : current;
+        }
+
+        /// <summary>Index of the best of <paramref name="estimates"/> by the rules of <see cref="Choose"/>, without its margin.</summary>
+        public static int Best(PlanEstimate[] estimates)
+        {
             int best = 0;
             for (int i = 1; i < estimates.Length; i++)
             {
                 if (Better(estimates[i], estimates[best]))
                     best = i;
             }
-            int currentIndex = Array.IndexOf(Strategies, current);
-            if (currentIndex < 0)
-                return Strategies[best];
-            return ClearlyBetter(estimates[best], estimates[currentIndex]) ? Strategies[best] : current;
+            return best;
         }
 
         /// <summary>Worst saturation given to a measured layout whose queues did not clear, whatever the model says.</summary>

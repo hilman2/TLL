@@ -32,6 +32,9 @@ namespace TLL
             AssetDatabase.global.LoadSettings("TLL", Settings, new Setting(this));
 
             updateSystem.UpdateBefore<RebuildRequestSystem>(SystemUpdatePhase.Modification1);
+            // On the lanes the game has just built, before anything reads
+            // them. See TurnRuleSystem.
+            updateSystem.UpdateBefore<TurnRuleSystem, LaneReferencesSystem>(SystemUpdatePhase.Modification4B);
             // Right after the game has written its own signal groups, before
             // the signal poles are derived from them. See JunctionInitSystem.
             updateSystem.UpdateAfter<JunctionInitSystem, TrafficLightInitializationSystem>(SystemUpdatePhase.Modification4B);

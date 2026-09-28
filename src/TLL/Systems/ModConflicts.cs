@@ -22,6 +22,34 @@ namespace TLL.Systems
             new Known { Namespace = "C2VM.TrafficLightsEnhancement", Name = "Traffic Lights Enhancement" },
         };
 
+        private static bool s_TrafficResolved;
+        private static System.Type s_TrafficConnections;
+
+        /// <summary>
+        /// The tag the Traffic mod (krzychu124) puts on junctions whose lane
+        /// connections the player has changed with it, or null without that
+        /// mod. The autopilot leaves the turns of such junctions to the
+        /// player. Looked up once, by name, since TLL does not reference the
+        /// mod.
+        /// </summary>
+        public static System.Type TrafficConnections
+        {
+            get
+            {
+                if (!s_TrafficResolved)
+                {
+                    s_TrafficResolved = true;
+                    foreach (System.Reflection.Assembly assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        s_TrafficConnections = assembly.GetType("Traffic.Components.ModifiedConnections", false);
+                        if (s_TrafficConnections != null)
+                            break;
+                    }
+                }
+                return s_TrafficConnections;
+            }
+        }
+
         /// <returns>The name of a loaded mod that also drives traffic lights, or null.</returns>
         public static string Find(World world)
         {

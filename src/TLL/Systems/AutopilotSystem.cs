@@ -355,6 +355,25 @@ namespace TLL.Systems
                 rebuild = true;
             }
 
+            // The turns to forbid, reviewed with the layout. New rules take
+            // effect with the rebuild below, and the layout waits for the
+            // next review: the junction it would be chosen for is about to
+            // change.
+            List<TurnRule> turnRules = null;
+            if (layoutRound && junction.Mode != ControlMode.Flashing)
+            {
+                m_ReviewTime.Start();
+                try
+                {
+                    turnRules = ReviewTurns(node, settings, statistics, movements);
+                }
+                catch (Exception e)
+                {
+                    Mod.Log.Error(e, $"Junction {node}: the autopilot could not review its turns.");
+                }
+                m_ReviewTime.Stop();
+            }
+
             // A junction without an estimate yet gets one at once, from the
             // saved statistics; only changing its layout waits for the
             // regular reviews.
@@ -364,7 +383,8 @@ namespace TLL.Systems
                 m_ReviewTime.Start();
                 try
                 {
-                    ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, layoutRound, round, period, ref changed, ref rebuild);
+                    ReviewLayout(node, ref junction, ref state, settings, statistics, peak, opposite, layoutRound, round, period,
+                        turnRules != null, ref changed, ref rebuild);
                 }
                 catch (Exception e)
                 {
@@ -373,6 +393,18 @@ namespace TLL.Systems
                 m_ReviewTime.Stop();
             }
 
+            if (turnRules != null)
+            {
+                DynamicBuffer<TurnRule> buffer = EntityManager.HasBuffer<TurnRule>(node)
+                    ? EntityManager.GetBuffer<TurnRule>(node)
+                    : EntityManager.AddBuffer<TurnRule>(node);
+                buffer.Clear();
+                foreach (TurnRule rule in turnRules)
+                    buffer.Add(rule);
+                // The game builds the junction's lanes anew, TurnRuleSystem
+                // flags them, and the set-up plans the signals without them.
+                rebuild = true;
+            }
             if (changed || rebuild)
                 EntityManager.SetComponentData(node, junction);
             if (rebuild)
@@ -397,14 +429,59 @@ namespace TLL.Systems
         }
 
         /// <summary>
+        /// The turn rules the junction should have from now on, or null to
+        /// keep its own (TurnReview). With the setting off, the autopilot's
+        /// rules go and the player's stay.
+        /// </summary>
+        private List<TurnRule> ReviewTurns(Entity node, Setting settings, DynamicBuffer<MovementStatistics> statistics, DynamicBuffer<JunctionMovement> movements)
+        {
+            if (!settings.AutoTurnBans)
+            {
+                if (!EntityManager.HasBuffer<TurnRule>(node))
+                    return null;
+                DynamicBuffer<TurnRule> stored = EntityManager.GetBuffer<TurnRule>(node, true);
+                var players = new List<TurnRule>();
+                for (int i = 0; i < stored.Length; i++)
+                {
+                    if (stored[i].ByPlayer)
+                        players.Add(stored[i]);
+                }
+                return players.Count != stored.Length ? players : null;
+            }
+
+            // By the day's peak, like the phases are laid out: a turn is not
+            // forbidden in the morning and allowed again at night.
+            var volumeOf = new Dictionary<(Entity, Entity, MovementKind), float>();
+            float total = 0f;
+            for (int m = 0; m < movements.Length && m < statistics.Length; m++)
+            {
+                if (movements[m].Kind == MovementKind.Pedestrian)
+                    continue;
+                volumeOf[(movements[m].Source, movements[m].Target, movements[m].Kind)] = statistics[m].Peak;
+                total += statistics[m].Peak;
+            }
+            if (total < kMinimumVolume)
+                return null;
+            DelayParameters parameters = DelayParameters.Default;
+            parameters.TurnOnRed = settings.TurnOnRed;
+            List<TurnRule> rules = TurnReview.Decide(EntityManager, node, m_CityConfiguration.leftHandTraffic, parameters, volumeOf, out string summary);
+            if (rules == null)
+                return null;
+            Mod.Log.Info($"Autopilot: junction {node}{summary}.");
+            MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "turns")?.Add("summary", summary).Add("rules", rules.Count));
+            return rules;
+        }
+
+        /// <summary>
         /// Estimates every layout from the peak traffic for the panel, and
         /// with <paramref name="decide"/> set, a regular review, changes the
         /// layout where the setting leaves it to the autopilot, and sets
         /// turning on red where it pays.
         /// </summary>
+        /// <param name="hold">Keep the layout this time: the junction's turns change with this review.</param>
         private void ReviewLayout(Entity node, ref ManagedJunction junction, ref AutopilotState state, Setting settings,
             DynamicBuffer<MovementStatistics> statistics, float[] peakByApproach, int[] opposite, bool decide, uint round, JunctionRuntime period,
-            ref bool changed, ref bool rebuild)
+            bool hold, ref bool changed, ref bool rebuild)
         {
             // The layout the measurement period ran with, before a setting
             // may change it below.
@@ -496,7 +573,7 @@ namespace TLL.Systems
             // take its timing out of the wave. Whether the wave helps, the
             // measurement decides (CoordinationSystem.Hurts), which then
             // frees the layout again.
-            bool held = state.LayoutHold > 0 || wave;
+            bool held = state.LayoutHold > 0 || wave || hold;
             bool change = settings.AutoLayout == AutoLayout.Automatic && !held && state.Layout.Review(junction.Strategy, choice, jammed);
             WriteReview(node, junction, round, state, estimates, corrected, wave, choice, jammed, change, recorded, period, held);
             if (!change)

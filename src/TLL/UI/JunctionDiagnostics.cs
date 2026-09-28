@@ -20,7 +20,7 @@ namespace TLL.UI
     /// </summary>
     internal static class JunctionDiagnostics
     {
-        public static string Describe(EntityManager em, Entity node)
+        public static string Describe(EntityManager em, Entity node, bool leftHandTraffic)
         {
             var text = new StringBuilder();
             text.Append($"Diagnostics for junction {node}\n");
@@ -82,6 +82,8 @@ namespace TLL.UI
                 }
             }
 
+            DescribeModel(em, node, leftHandTraffic, text);
+
             DynamicBuffer<JunctionMovement> movements = em.GetBuffer<JunctionMovement>(node, true);
             var edges = Systems.NetGeometry.ConnectedEdges(em, node);
             DynamicBuffer<JunctionPhase> phases = em.GetBuffer<JunctionPhase>(node, true);
@@ -125,6 +127,46 @@ namespace TLL.UI
                     text.Append($"    exit {lane.Exit}: {Fill(em, lane.Exit)}\n");
             }
             return text.ToString();
+        }
+
+        /// <summary>
+        /// The junction as the phase planner sees it: per movement, which
+        /// movements share an approach lane with it and which it may never
+        /// have green with. A movement tied by a shared lane to one that
+        /// conflicts keeps whole approaches apart; this shows where.
+        /// </summary>
+        private static void DescribeModel(EntityManager em, Entity node, bool leftHandTraffic, StringBuilder text)
+        {
+            Systems.JunctionLayout layout = Systems.JunctionAnalysis.Analyse(em, node, leftHandTraffic);
+            if (layout == null)
+                return;
+            if (em.HasBuffer<TurnRule>(node))
+            {
+                DynamicBuffer<TurnRule> rules = em.GetBuffer<TurnRule>(node, true);
+                for (int i = 0; i < rules.Length; i++)
+                    text.Append($"  turn rule {layout.Edges.IndexOf(rules[i].From)}->{layout.Edges.IndexOf(rules[i].To)}: {rules[i].Flags}, {rules[i].Volume:0}/h before\n");
+            }
+            Core.Planning.JunctionModel model = layout.Model;
+            int n = model.Movements.Count;
+            string Name(int m) => $"{model.Movements[m].Source}->{model.Movements[m].Target} {model.Movements[m].Kind}";
+            text.Append($"  model: {model.ApproachCount} approaches, opposite {string.Join(",", model.OppositeOf)}, {n} movements\n");
+            for (int a = 0; a < n; a++)
+            {
+                var shares = new StringBuilder();
+                var hard = new StringBuilder();
+                var yields = new StringBuilder();
+                for (int b = 0; b < n; b++)
+                {
+                    if ((model.SharesLaneWith(a) & (1UL << b)) != 0)
+                        shares.Append(shares.Length > 0 ? ", " : "").Append(Name(b));
+                    Core.Planning.Relation r = model.Conflicts.Get(a, b);
+                    if (r == Core.Planning.Relation.Hard)
+                        hard.Append(hard.Length > 0 ? ", " : "").Append(Name(b));
+                    else if (r == Core.Planning.Relation.Yields)
+                        yields.Append(yields.Length > 0 ? ", " : "").Append(Name(b));
+                }
+                text.Append($"  model {Name(a)}: shares a lane with [{shares}]; never with [{hard}]; gives way to [{yields}]\n");
+            }
         }
 
         private static bool SeenBefore(DynamicBuffer<JunctionLane> lanes, int index)

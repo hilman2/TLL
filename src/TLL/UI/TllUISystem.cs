@@ -111,6 +111,32 @@ namespace TLL.UI
             public float CameraYaw;
             public bool HasAutopilot;
             public AutopilotState Autopilot;
+
+            /// <summary>The ways through the junction and their rules; empty where there is no junction.</summary>
+            public readonly List<TurnRow> Turns = new List<TurnRow>();
+        }
+
+        /// <summary>Who allowed or forbade a turn. Numbers as in the panel's TurnState.</summary>
+        private enum TurnState
+        {
+            Allowed = 0,
+            ForbiddenByAutopilot = 1,
+            ForbiddenByPlayer = 2,
+            AllowedByPlayer = 3,
+
+            /// <summary>Forbidden by a road upgrade of the game, which TLL does not change.</summary>
+            ForbiddenByGame = 4,
+        }
+
+        private struct TurnRow
+        {
+            public int Source;
+            public int Target;
+            public MovementKind Kind;
+            public TurnState State;
+
+            /// <summary>Peak vehicles per hour: measured, or for a forbidden turn what it carried before; negative if not known.</summary>
+            public float Volume;
         }
 
         private struct MovementRow
@@ -167,6 +193,7 @@ namespace TLL.UI
             AddBinding(new TriggerBinding<int>(kGroup, "setStrategy", OnSetStrategy));
             AddBinding(new TriggerBinding(kGroup, "toggleScramble", OnToggleScramble));
             AddBinding(new TriggerBinding(kGroup, "toggleTurnOnRed", OnToggleTurnOnRed));
+            AddBinding(new TriggerBinding<int, int>(kGroup, "cycleTurn", OnCycleTurn));
             AddBinding(new TriggerBinding(kGroup, "makeAutomatic", OnMakeAutomatic));
             AddBinding(new TriggerBinding(kGroup, "release", OnRelease));
             AddBinding(new TriggerBinding(kGroup, "manage", OnManage));
@@ -385,6 +412,24 @@ namespace TLL.UI
                 writer.TypeEnd();
             }
             writer.ArrayEnd();
+            writer.PropertyName("turns");
+            writer.ArrayBegin((uint)d.Turns.Count);
+            foreach (TurnRow r in d.Turns)
+            {
+                writer.TypeBegin("tll.Turn");
+                writer.PropertyName("source");
+                writer.Write(r.Source);
+                writer.PropertyName("target");
+                writer.Write(r.Target);
+                writer.PropertyName("kind");
+                writer.Write((int)r.Kind);
+                writer.PropertyName("state");
+                writer.Write((int)r.State);
+                writer.PropertyName("volume");
+                writer.Write(r.Volume);
+                writer.TypeEnd();
+            }
+            writer.ArrayEnd();
             WriteAutopilot(writer, d);
             writer.PropertyName("phases");
             writer.ArrayBegin((uint)d.Phases.Count);
@@ -484,6 +529,11 @@ namespace TLL.UI
                 Managed = EntityManager.HasComponent<ManagedJunction>(node) && EntityManager.HasBuffer<JunctionPhase>(node),
                 Roundabout = IsRoundabout(node),
             };
+            List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
+            foreach (Entity edge in edges)
+                detail.Approaches.Add(new ApproachRow { Direction = NetGeometry.Outward(EntityManager, node, edge), Name = RoadName(edge) });
+            if (edges.Count >= 3 && !detail.Roundabout)
+                CollectTurns(node, edges, detail);
             if (!detail.Managed)
                 return detail;
             detail.Junction = EntityManager.GetComponentData<ManagedJunction>(node);
@@ -513,9 +563,6 @@ namespace TLL.UI
             IGameCameraController camera = m_CameraSystem.activeCameraController;
             detail.CameraYaw = camera != null ? camera.rotation.y : 0f;
 
-            List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
-            foreach (Entity edge in edges)
-                detail.Approaches.Add(new ApproachRow { Direction = NetGeometry.Outward(EntityManager, node, edge), Name = RoadName(edge) });
             if (EntityManager.HasBuffer<JunctionMovement>(node))
             {
                 DynamicBuffer<JunctionMovement> movements = EntityManager.GetBuffer<JunctionMovement>(node, true);
@@ -541,7 +588,88 @@ namespace TLL.UI
             return detail;
         }
 
+        /// <summary>The junction's turns with their rules, for the panel's list.</summary>
+        private void CollectTurns(Entity node, List<Entity> edges, Detail detail)
+        {
+            bool hasRules = EntityManager.HasBuffer<TurnRule>(node);
+            DynamicBuffer<TurnRule> rules = hasRules ? EntityManager.GetBuffer<TurnRule>(node, true) : default;
+            bool measured = EntityManager.HasBuffer<JunctionMovement>(node) && EntityManager.HasBuffer<MovementStatistics>(node);
+            DynamicBuffer<JunctionMovement> movements = measured ? EntityManager.GetBuffer<JunctionMovement>(node, true) : default;
+            DynamicBuffer<MovementStatistics> statistics = measured ? EntityManager.GetBuffer<MovementStatistics>(node, true) : default;
+            foreach (NodeTurn turn in NodeTurns.Collect(EntityManager, node, edges))
+            {
+                var row = new TurnRow { Source = turn.Source, Target = turn.Target, Kind = turn.Kind, Volume = -1f };
+                int rule = -1;
+                for (int i = 0; hasRules && i < rules.Length; i++)
+                {
+                    if (rules[i].From == turn.From && rules[i].To == turn.To)
+                        rule = i;
+                }
+                if (rule >= 0)
+                {
+                    TurnRule r = rules[rule];
+                    row.State = r.ByPlayer
+                        ? (r.Forbidden ? TurnState.ForbiddenByPlayer : TurnState.AllowedByPlayer)
+                        : (r.Forbidden ? TurnState.ForbiddenByAutopilot : TurnState.Allowed);
+                    if (r.Forbidden)
+                        row.Volume = r.Volume;
+                }
+                else
+                {
+                    row.State = turn.Forbidden ? TurnState.ForbiddenByGame : TurnState.Allowed;
+                }
+                for (int m = 0; measured && m < movements.Length && m < statistics.Length && row.Volume < 0f; m++)
+                {
+                    if (movements[m].Source == turn.From && movements[m].Target == turn.To && movements[m].Kind == turn.Kind)
+                        row.Volume = statistics[m].Peak;
+                }
+                detail.Turns.Add(row);
+            }
+        }
+
         // ---- Triggers ----
+
+        /// <summary>
+        /// The next rule for a turn, as the panel's button goes round:
+        /// the autopilot's choice, then forbidden by the player, then allowed
+        /// by the player, then the autopilot's choice again. The junction is
+        /// rebuilt, which applies it (TurnRuleSystem).
+        /// </summary>
+        private void OnCycleTurn(int source, int target)
+        {
+            Entity node = m_Selected;
+            if (node == Entity.Null || !EntityManager.Exists(node))
+                return;
+            List<Entity> edges = NetGeometry.ConnectedEdges(EntityManager, node);
+            if (source < 0 || target < 0 || source >= edges.Count || target >= edges.Count)
+                return;
+            DynamicBuffer<TurnRule> rules = EntityManager.HasBuffer<TurnRule>(node)
+                ? EntityManager.GetBuffer<TurnRule>(node)
+                : EntityManager.AddBuffer<TurnRule>(node);
+            int index = -1;
+            for (int i = 0; i < rules.Length; i++)
+            {
+                if (rules[i].From == edges[source] && rules[i].To == edges[target])
+                    index = i;
+            }
+            TurnRule rule = index >= 0 ? rules[index] : new TurnRule { From = edges[source], To = edges[target] };
+            if (rule.ByPlayer && !rule.Forbidden)
+            {
+                rules.RemoveAt(index);
+            }
+            else
+            {
+                // Forbidden by the autopilot: the player allows it. Allowed,
+                // by anyone: the player forbids it.
+                rule.Flags = rule.Forbidden && !rule.ByPlayer ? TurnRuleFlags.Player : TurnRuleFlags.Player | TurnRuleFlags.Forbidden;
+                if (index >= 0)
+                    rules[index] = rule;
+                else
+                    rules.Add(rule);
+            }
+            EntityManager.AddComponent<RebuildRequest>(node);
+            m_DetailTime = DateTime.MinValue;
+        }
 
         private void OnToggleAutomation()
         {
@@ -552,7 +680,7 @@ namespace TLL.UI
         {
             if (m_Selected == Entity.Null || !EntityManager.Exists(m_Selected))
                 return;
-            Mod.Log.Info(JunctionDiagnostics.Describe(EntityManager, m_Selected));
+            Mod.Log.Info(JunctionDiagnostics.Describe(EntityManager, m_Selected, m_CityConfiguration.leftHandTraffic));
         }
 
         /// <summary>Changes a setting from the panel, saves it, and refreshes the overview at once.</summary>
