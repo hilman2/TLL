@@ -22,6 +22,14 @@ namespace TLL.Core.Coordination
 
         /// <summary>Importance, e.g. lane count or traffic. Heavier links are coordinated first.</summary>
         public float Weight;
+
+        /// <summary>Car lanes arriving at junction A from the road; likewise <see cref="LanesToB"/>.</summary>
+        public int LanesToA;
+
+        public int LanesToB;
+
+        /// <summary>The road is too short for the queue of a red (<see cref="Clusters.Join"/>): its junctions run as a cluster.</summary>
+        public bool Tight;
     }
 
     /// <summary>The signalled junctions of a city and the roads between them.</summary>
@@ -57,7 +65,8 @@ namespace TLL.Core.Coordination
     /// Finds corridors worth coordinating: chains of signalled junctions
     /// along one road, where traffic goes straight through each junction.
     ///
-    /// Greedy by weight: the heaviest free link starts a corridor, which then
+    /// Greedy by weight, roads too short for a red (<see cref="SignalLink.Tight"/>)
+    /// before all others: the heaviest free link starts a corridor, which then
     /// grows at both ends as long as the road continues straight across the
     /// end junction to another free junction within reach. A junction ends
     /// up in at most one corridor; where two main roads cross, the heavier
@@ -73,7 +82,11 @@ namespace TLL.Core.Coordination
                 if (l.Length <= maxSpacing && l.A != l.B)
                     links.Add(l);
             }
-            links.Sort((x, y) => y.Weight.CompareTo(x.Weight));
+            // Roads too short for a red come first: where a cluster and a
+            // green wave across it want the same junction, the cluster gets
+            // it. Without it the short road backs up into its junctions; the
+            // wave only loses its band there.
+            links.Sort((x, y) => x.Tight != y.Tight ? y.Tight.CompareTo(x.Tight) : y.Weight.CompareTo(x.Weight));
 
             var used = new bool[network.JunctionCount];
             var result = new List<CorridorPath>();
@@ -161,6 +174,9 @@ namespace TLL.Core.Coordination
                 Length = l.Length,
                 Speed = l.Speed,
                 Weight = l.Weight,
+                LanesToA = l.LanesToB,
+                LanesToB = l.LanesToA,
+                Tight = l.Tight,
             };
         }
     }

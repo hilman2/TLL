@@ -199,7 +199,7 @@ const scenarios = {
   "problems tab, none": { tab: "problems" },
   "managed junction": { "tll.selected": managed },
   "manual junction": { "tll.selected": { ...managed, manual: true } },
-  "junction in a green wave": { "tll.selected": { ...managed, mode: 3, group: 2, cyclePosition: 41.5 } },
+  "junction in a green wave": { "tll.selected": { ...managed, mode: 3, group: 2, cluster: false, cyclePosition: 41.5 }, expect: [">Green wave #2<"] },
   "nothing selected": {},
   "junction in transition": { "tll.selected": { ...managed, stage: 1, phase: 0, next: 1 } },
   "flashing junction": { "tll.selected": { ...managed, mode: 4, stage: 4 } },
@@ -231,6 +231,10 @@ const scenarios = {
   "junction with a scramble": {
     "tll.selected": { ...managed, scramble: true },
     expect: [">Pedestrian scramble<"],
+  },
+  "junction in a cluster": {
+    "tll.selected": { ...managed, mode: 3, cluster: true },
+    expect: [">Cluster #3<"],
   },
   "estimates from an older C# side": {
     "tll.selected": {

@@ -117,6 +117,148 @@ namespace TLL.Core.Tests.Coordination
             Assert.True(Math.Abs(passing - plan.BandwidthA) <= 1, $"{passing} departures pass, the plan promised {plan.BandwidthA}");
         }
 
+        private const int SideAhead = 2;
+        private const int SideBack = 3;
+
+        /// <summary>
+        /// A main road of T-junctions whose side roads alternate between its
+        /// sides, <paramref name="spacing"/> metres apart. Phase 0 carries the
+        /// main road both ways, phase 1 the side road, whose traffic turns
+        /// both ways onto the main road: one turn into the road ahead, the
+        /// other into the road back.
+        /// </summary>
+        private static (CorridorPath path, List<CorridorMember> members) Tees(int count, float spacing, bool tight)
+        {
+            var path = new CorridorPath();
+            var members = new List<CorridorMember>();
+            for (int i = 0; i < count; i++)
+            {
+                path.Junctions.Add(i);
+                path.ApproachBack.Add(i == 0 ? -1 : 1);
+                path.ApproachAhead.Add(i == count - 1 ? -1 : 0);
+                if (i < count - 1)
+                    path.Links.Add(new SignalLink { A = i, ApproachA = 0, B = i + 1, ApproachB = 1, Length = spacing, Speed = 13.9f, LanesToA = 2, LanesToB = 2, Tight = tight });
+                members.Add(new CorridorMember
+                {
+                    Phases = new[]
+                    {
+                        new PhaseData { MinGreen = 20, MaxGreen = 400, Green = 100 },
+                        new PhaseData { MinGreen = 20, MaxGreen = 400, Green = 40 },
+                    },
+                    PhaseMovements = new[] { (1UL << ThroughA) | (1UL << ThroughB), (1UL << SideAhead) | (1UL << SideBack) },
+                    Intergreen = 16,
+                    MovementA = ThroughA,
+                    MovementB = ThroughB,
+                    Ratios = new[] { 0.6f, 0.2f },
+                    DesiredCycle = SimTime.ToSteps(60f),
+                    FeedsAhead = i < count - 1 ? new[] { ThroughA, SideAhead } : null,
+                    FeedsBack = i > 0 ? new[] { ThroughB, SideBack } : null,
+                    Volumes = new[] { 600f, 600f, 150f, 150f },
+                });
+            }
+            return (path, members);
+        }
+
+        /// <summary>
+        /// Runs one coordinated controller per junction with the plan, every
+        /// phase always asked for, and records per junction and step which
+        /// movements have green.
+        /// </summary>
+        private static bool[][][] Run(CoordinationPlan plan, List<CorridorMember> members, int steps)
+        {
+            var green = new bool[members.Count][][];
+            for (int i = 0; i < members.Count; i++)
+            {
+                var phases = members[i].Phases.Select((p, k) => new PhaseData
+                {
+                    MinGreen = p.MinGreen,
+                    MaxGreen = p.MaxGreen,
+                    Green = plan.Greens[i][k],
+                    Flags = plan.Coordinated[i][k] ? PhaseFlags.Coordinated : PhaseFlags.None,
+                    Demand = 1f,
+                }).ToArray();
+                var config = ControllerConfig.Default(ControlMode.Coordinated);
+                config.Yellow = 10;
+                config.AllRed = 5;
+                config.Prepare = 1;
+                config.Offset = plan.Offsets[i];
+                var state = new ControllerState();
+                var access = new PhaseArray(phases);
+                green[i] = new bool[4][];
+                for (int m = 0; m < 4; m++)
+                    green[i][m] = new bool[steps];
+                for (int step = 0; step < steps; step++)
+                {
+                    SignalController.Step(ref state, in config, ref access, step);
+                    for (int m = 0; m < 4; m++)
+                        green[i][m][step] = HasGreen(state, members[i], m);
+                }
+            }
+            return green;
+        }
+
+        /// <summary>
+        /// Of the steps a side road has green, over one settled cycle, the
+        /// share whose traffic reaches the next junction on the main road
+        /// with its through green on and running for the lead.
+        /// </summary>
+        private static float SideIntoGreen(CoordinationPlan plan, List<CorridorMember> members, float spacing)
+        {
+            int travel = SimTime.ToSteps(spacing / (13.9f * Coordinator.SpeedFactor));
+            int lead = Clusters.Lead(spacing);
+            bool[][][] green = Run(plan, members, plan.Cycle * 8);
+            int from = plan.Cycle * 5;
+            int fed = 0;
+            int intoGreen = 0;
+            for (int i = 0; i < members.Count; i++)
+            {
+                for (int g = from; g < from + plan.Cycle; g++)
+                {
+                    // The turn into the road ahead meets the through green
+                    // of direction A at the next junction; the turn into the
+                    // road back that of direction B at the previous one.
+                    if (i + 1 < members.Count && green[i][SideAhead][g])
+                    {
+                        fed++;
+                        intoGreen += Enumerable.Range(g + travel - lead, lead + 1).All(t => green[i + 1][ThroughA][t]) ? 1 : 0;
+                    }
+                    if (i > 0 && green[i][SideBack][g])
+                    {
+                        fed++;
+                        intoGreen += Enumerable.Range(g + travel - lead, lead + 1).All(t => green[i - 1][ThroughB][t]) ? 1 : 0;
+                    }
+                }
+            }
+            return fed > 0 ? intoGreen / (float)fed : 0f;
+        }
+
+        [Theory]
+        [InlineData(60f)]
+        [InlineData(90f)]
+        public void InAClusterTheSideRoadsTurnIntoAGreenMainRoad(float spacing)
+        {
+            var (path, members) = Tees(4, spacing, tight: true);
+            CoordinationPlan plan = Coordinator.Plan(path, members, OptimizerLimits.Default);
+
+            Assert.True(plan.Cluster);
+            float share = SideIntoGreen(plan, members, spacing);
+            Assert.True(share >= 0.9f, $"{share:P0} of the side roads' green meets green ahead; cycle {plan.Cycle}, offsets {string.Join(",", plan.Offsets)}, greens {string.Join(" ", plan.Greens.Select(g => string.Join("/", g)))}, fed into red {plan.FedIntoRed}, band {plan.BandwidthA}/{plan.BandwidthB}, travel {SimTime.ToSteps(spacing / (13.9f * Coordinator.SpeedFactor))}, lead {Clusters.Lead(spacing)}");
+        }
+
+        [Fact]
+        public void AGreenWaveAloneSendsTheSideRoadsIntoTheRed()
+        {
+            // The same road as a plain green wave: its offsets widen the band
+            // and leave the side roads to chance. This is what the feeds of
+            // a cluster change.
+            var (path, members) = Tees(4, 60f, tight: false);
+            CoordinationPlan plan = Coordinator.Plan(path, members, OptimizerLimits.Default);
+
+            Assert.False(plan.Cluster);
+            float share = SideIntoGreen(plan, members, 60f);
+            Assert.True(share < 0.5f, $"{share:P0} of the side roads' green meets green ahead");
+        }
+
         /// <summary>
         /// Whether the controller shows green to a movement. During a
         /// transition a movement keeps green if both the ending and the next

@@ -146,5 +146,13 @@ namespace TLL.Components
 
         /// <summary>Crosswalks: length in metres, for turning occupancy into people.</summary>
         public float Length;
+
+        /// <summary>
+        /// Vehicles standing in the queue for this movement at the last step,
+        /// not a sum. The neighbours in a cluster read it: for the road
+        /// between them, the queue at its far end is what is left of its room
+        /// (SignalControlSystem.ClusterJob).
+        /// </summary>
+        public float Waiting;
     }
 }

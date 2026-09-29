@@ -61,6 +61,13 @@ namespace TLL.Systems
         /// </summary>
         private const float kTramWeight = 10f;
 
+        /// <summary>
+        /// Pressure a phase gets in the adaptive mode while a neighbour in its
+        /// cluster waits to feed a road the phase empties (PhaseData.Flush):
+        /// the side road there, usually a few cars.
+        /// </summary>
+        private const float kFlushPressure = 4f;
+
         /// <summary>The game's vehicles ask for green with priority 100, emergency vehicles with 108.</summary>
         private const int kEmergencyPriority = 108;
 
@@ -84,6 +91,7 @@ namespace TLL.Systems
         private SimulationSystem m_Simulation;
         private CityConfigurationSystem m_CityConfiguration;
         private EntityQuery m_Query;
+        private EntityQuery m_ClusterQuery;
 
         public bool Available { get; private set; }
 
@@ -184,6 +192,22 @@ namespace TLL.Systems
                 },
             });
             RequireForUpdate(m_Query);
+            m_ClusterQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[]
+                {
+                    ComponentType.ReadOnly<ClusterLink>(),
+                    ComponentType.ReadWrite<JunctionRuntime>(),
+                    ComponentType.ReadOnly<JunctionMovement>(),
+                    ComponentType.ReadOnly<MovementCounter>(),
+                },
+                None = new[]
+                {
+                    ComponentType.ReadOnly<JunctionDirty>(),
+                    ComponentType.ReadOnly<Deleted>(),
+                    ComponentType.ReadOnly<Temp>(),
+                },
+            });
 
             Available = VanillaBypass.Apply(World);
             Enabled = Available;
@@ -216,6 +240,19 @@ namespace TLL.Systems
                 KeepClear = Mod.Settings == null || Mod.Settings.KeepClear,
             };
             Dependency = job.ScheduleParallel(m_Query, Dependency);
+
+            if (m_ClusterQuery.IsEmptyIgnoreFilter)
+                return;
+            var cluster = new ClusterJob
+            {
+                LinkType = GetBufferTypeHandle<ClusterLink>(true),
+                MovementType = GetBufferTypeHandle<JunctionMovement>(true),
+                CounterType = GetBufferTypeHandle<MovementCounter>(true),
+                RuntimeType = GetComponentTypeHandle<JunctionRuntime>(false),
+                Movements = GetBufferLookup<JunctionMovement>(true),
+                Counters = GetBufferLookup<MovementCounter>(true),
+            };
+            Dependency = cluster.ScheduleParallel(m_ClusterQuery, Dependency);
         }
 
         [BurstCompile]
@@ -280,7 +317,8 @@ namespace TLL.Systems
                     DynamicBuffer<DetectorLane> detectors = hasDetectors ? detectorBuffers[i] : default;
                     bool scramble = (junction.Options & JunctionOptions.Scramble) != 0;
                     ulong emergency = (GlobalStep <= runtime.EmergencyUntil ? runtime.EmergencyMovements : 0UL) | runtime.HoldMovements;
-                    Sense(phases, lanes, detectors, hasDetectors, counters, statistics, movements, runtime.State, scramble, emergency, out bool conflict);
+                    Sense(phases, lanes, detectors, hasDetectors, counters, statistics, movements, runtime.State, scramble, emergency,
+                        runtime.HeldMovements, runtime.FlushMovements, out bool conflict);
 
                     ControllerConfig config = junction.ToConfig();
                     config.DivertPedestrians = scramble;
@@ -316,11 +354,17 @@ namespace TLL.Systems
             ///
             /// An approach lane serving several movements is split among them
             /// by their measured shares.
+            ///
+            /// In a cluster, <paramref name="held"/> and <paramref name="flush"/>
+            /// are the movements the neighbours' exchange (ClusterJob) marked
+            /// at the last step: into a full road, and out of a road a
+            /// neighbour waits to feed.
             /// </summary>
             private unsafe void Sense(DynamicBuffer<JunctionPhase> phases, DynamicBuffer<JunctionLane> lanes,
                 DynamicBuffer<DetectorLane> detectors, bool hasDetectors,
                 DynamicBuffer<MovementCounter> counters, DynamicBuffer<MovementStatistics> statistics,
-                DynamicBuffer<JunctionMovement> movements, ControllerState state, bool divert, ulong emergency, out bool conflict)
+                DynamicBuffer<JunctionMovement> movements, ControllerState state, bool divert, ulong emergency,
+                ulong held, ulong flush, out bool conflict)
             {
                 int movementCount = movements.Length;
                 float* waiting = stackalloc float[movementCount];
@@ -468,6 +512,7 @@ namespace TLL.Systems
                 for (int m = 0; m < movementCount; m++)
                 {
                     ref MovementCounter counter = ref counters.ElementAt(m);
+                    counter.Waiting = waiting[m];
                     counter.QueueSteps += waiting[m];
                     if (!blocked[m])
                         counter.FreeQueueSteps += waiting[m];
@@ -487,14 +532,18 @@ namespace TLL.Systems
                     float pressure = 0f;
                     bool queued = false;
                     bool allQueuedBlocked = true;
+                    bool allQueuedHeld = true;
                     float approaching = 0f;
                     bool phaseCall = false;
                     bool phaseBusy = false;
                     bool phasePreempt = false;
+                    bool phaseFlush = false;
                     for (int m = 0; m < movementCount; m++)
                     {
-                        if ((phase.Movements & (1UL << m)) == 0)
+                        ulong bit = 1UL << m;
+                        if ((phase.Movements & bit) == 0)
                             continue;
+                        bool full = (held & bit) != 0;
                         // Demand keeps a green going and asks for one: someone
                         // waits, or arrives within the passage time, as the
                         // gap setting of a real actuated controller.
@@ -504,17 +553,21 @@ namespace TLL.Systems
                         {
                             queued = true;
                             allQueuedBlocked &= blocked[m];
+                            allQueuedHeld &= blocked[m] || full;
                         }
                         // Max-pressure: the queue plus part of what is on its
                         // way. Green for a movement whose exit is full moves
-                        // nobody, so it hardly counts.
+                        // nobody, so it hardly counts, and in a cluster the
+                        // same goes for one whose road to the next junction
+                        // has no room left.
                         float own = waiting[m] + soon[m] + 0.5f * arriving[m];
                         // A tram carries the passengers of many cars, and on
                         // its own track it is not held up by the cars' jam,
                         // which only lowers the cars' own share.
                         if (track[m])
                             own *= kTramWeight;
-                        pressure += blocked[m] ? own * 0.1f : own;
+                        pressure += blocked[m] || full ? own * 0.1f : own;
+                        phaseFlush |= (flush & bit) != 0;
                         // A platoon held for is only worth it if it can leave.
                         if (!blocked[m])
                             approaching += near[m];
@@ -530,9 +583,16 @@ namespace TLL.Systems
                     // ahead of which queue. Pedestrians then get their walk
                     // and no more, and the maximum wait makes sure they are
                     // served against steady traffic.
+                    // A neighbour waiting to feed a road this phase empties
+                    // weighs like a few cars here, so the adaptive mode takes
+                    // the phase before its own queue alone would ask for it.
+                    if (phaseFlush)
+                        pressure += kFlushPressure;
                     phase.Data.Demand = demand;
                     phase.Data.Queue = queue;
                     phase.Data.Blocked = queued && allQueuedBlocked;
+                    phase.Data.Held = queued && allQueuedHeld;
+                    phase.Data.Flush = phaseFlush;
                     phase.Data.Pressure = pressure;
                     phase.Data.Approaching = approaching;
                     phase.Data.PedestrianCall = phaseCall;

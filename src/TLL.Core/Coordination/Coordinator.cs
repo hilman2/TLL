@@ -26,6 +26,20 @@ namespace TLL.Core.Coordination
 
         /// <summary>The cycle this junction would choose on its own, in steps, or 0 if unknown.</summary>
         public int DesiredCycle;
+
+        /// <summary>
+        /// Movements whose traffic drives into the road towards the next
+        /// junction of the corridor (direction A), the through traffic among
+        /// them; null or empty at the last junction. Only a road too short
+        /// for a red (<see cref="SignalLink.Tight"/>) makes feeds of them.
+        /// </summary>
+        public int[] FeedsAhead;
+
+        /// <summary>Likewise into the road towards the previous junction (direction B).</summary>
+        public int[] FeedsBack;
+
+        /// <summary>Traffic per movement, vehicles per hour, for each feed's share of its road; null weighs all feeds of a road alike.</summary>
+        public float[] Volumes;
     }
 
     /// <summary>Timing for all junctions of a corridor.</summary>
@@ -44,11 +58,23 @@ namespace TLL.Core.Coordination
 
         public int BandwidthA;
         public int BandwidthB;
+
+        /// <summary>Some road of the corridor is too short for a red: the corridor runs as a cluster, whatever its band.</summary>
+        public bool Cluster;
+
+        /// <summary>
+        /// For a cluster, the steps per cycle its feeds reach the next
+        /// junction at red (<see cref="GreenWave.FedIntoRed"/>), weighted by
+        /// share and summed over its roads; 0 otherwise.
+        /// </summary>
+        public float FedIntoRed;
     }
 
     /// <summary>
     /// Puts the junctions of a corridor on one cycle and finds offsets for a
-    /// green wave in both directions.
+    /// green wave in both directions. Where a road of the corridor is too
+    /// short for a red, the offsets also let the traffic entering that road
+    /// meet green at its far end (<see cref="Clusters"/>).
     /// </summary>
     public static class Coordinator
     {
@@ -112,6 +138,15 @@ namespace TLL.Core.Coordination
                 corridor.TravelA.Add(travel);
                 corridor.TravelB.Add(travel);
             }
+            bool cluster = false;
+            for (int k = 0; k < path.Links.Count; k++)
+            {
+                if (!path.Links[k].Tight)
+                    continue;
+                cluster = true;
+                AddFeeds(corridor, members, greens, k, k + 1, members[k].FeedsAhead, members[k].MovementA, corridor.TravelA[k], path.Links[k].Length);
+                AddFeeds(corridor, members, greens, k + 1, k, members[k + 1].FeedsBack, members[k + 1].MovementB, corridor.TravelB[k], path.Links[k].Length);
+            }
 
             int[] offsets = GreenWave.Optimize(corridor);
             return new CoordinationPlan
@@ -122,7 +157,57 @@ namespace TLL.Core.Coordination
                 Coordinated = coordinated,
                 BandwidthA = GreenWave.BandwidthA(corridor, offsets),
                 BandwidthB = GreenWave.BandwidthB(corridor, offsets),
+                Cluster = cluster,
+                FedIntoRed = cluster ? GreenWave.FedIntoRed(corridor, offsets) : 0f,
             };
+        }
+
+        /// <summary>
+        /// The feeds of one road of a cluster in one direction: every
+        /// movement at <paramref name="from"/> that drives into it, with its
+        /// green window. The others, the side road's turns onto the main road
+        /// above all, share a weight of 1 by their traffic and wait for the
+        /// queue at the far end to move off. The through traffic arrives as
+        /// that queue leaves, and weighs <see cref="Clusters.ThroughFeedWeight"/>.
+        /// </summary>
+        private static void AddFeeds(Corridor corridor, IList<CorridorMember> members, ushort[][] greens, int from, int to,
+            int[] feeds, int through, int travel, float length)
+        {
+            if (feeds == null || feeds.Length == 0)
+                return;
+            CorridorMember m = members[from];
+            float total = 0f;
+            int others = 0;
+            foreach (int movement in feeds)
+            {
+                if (movement == through)
+                    continue;
+                total += VolumeOf(m, movement);
+                others++;
+            }
+            foreach (int movement in feeds)
+            {
+                PhaseWindow window = PhaseWindow.Of(greens[from], m.Intergreen, PhasesWith(m, movement));
+                if (window.Length <= 0)
+                    continue;
+                float weight = movement == through ? Clusters.ThroughFeedWeight
+                    : total > 0f ? VolumeOf(m, movement) / total : 1f / others;
+                corridor.Feeds.Add(new Feed
+                {
+                    From = from,
+                    To = to,
+                    WindowStart = window.Start,
+                    WindowLength = window.Length,
+                    Travel = travel,
+                    Lead = movement == through ? 0 : Clusters.Lead(length),
+                    Weight = weight,
+                });
+            }
+        }
+
+        private static float VolumeOf(CorridorMember m, int movement)
+        {
+            return m.Volumes != null && movement >= 0 && movement < m.Volumes.Length ? Math.Max(0f, m.Volumes[movement]) : 0f;
         }
 
         private static int CurrentCycle(CorridorMember m)

@@ -1048,5 +1048,71 @@ namespace TLL.Core.Tests.Control
             h.Run(10, 1);
             Assert.Equal(Stage.AllRed, h.State.Stage);
         }
+
+        /// <summary>A junction of a cluster: the main road in phase 0, in the wave, and its side road in phase 1.</summary>
+        private static ControllerHarness MainAndSide(ControlMode mode = ControlMode.Coordinated)
+        {
+            return new ControllerHarness(ControllerConfig.Default(mode),
+                ControllerHarness.Phase(5, 60, 30, PhaseFlags.Coordinated),
+                ControllerHarness.Phase(5, 60, 15));
+        }
+
+        [Fact]
+        public void ASideRoadWhoseRoadAheadIsFullIsLeftOut()
+        {
+            ControllerHarness free = MainAndSide();
+            free.Run(0, 3000, (s, p) => { p[0].Demand = 1f; p[1].Demand = 3f; });
+            ControllerHarness held = MainAndSide();
+            held.Run(0, 3000, (s, p) => { p[0].Demand = 1f; p[1].Demand = 3f; p[1].Held = true; });
+
+            Assert.Contains(free.GreenStarts(), g => g.phase == 1);
+            Assert.DoesNotContain(held.GreenStarts(), g => g.phase == 1);
+        }
+
+        [Fact]
+        public void ASideGreenEndsWhenItsRoadFillsUp()
+        {
+            // Ten steps past its minimum, the road the side road turns into
+            // is full: its green ends there, not at its force-off.
+            ControllerHarness h = MainAndSide();
+            int fullAfter = h.Phases[1].MinGreen + 10;
+            h.Run(0, 3000, (s, p) =>
+            {
+                p[0].Demand = 1f;
+                p[1].Demand = 3f;
+                p[1].Held = h.State.Stage == Stage.Green && h.State.Phase == 1 && h.State.StageSteps >= fullAfter;
+            });
+
+            var side = h.GreenLengths().Where(g => g.phase == 1).Skip(1).ToList();
+            Assert.NotEmpty(side);
+            Assert.All(side, g => Assert.True(g.length <= fullAfter + 1, $"side green of {g.length} steps, full after {fullAfter}"));
+        }
+
+        [Fact]
+        public void AFlushKeepsTheMainRoadGreenToTheEndOfItsWindow()
+        {
+            // Nobody on the main road and the side road waiting: the main
+            // road's green ends at its minimum. With a neighbour waiting for
+            // room ahead it runs its whole window.
+            ControllerHarness quiet = MainAndSide();
+            quiet.Run(0, 3000, (s, p) => { p[1].Demand = 3f; });
+            ControllerHarness flush = MainAndSide();
+            flush.Run(0, 3000, (s, p) => { p[0].Flush = true; p[1].Demand = 3f; });
+
+            Assert.All(quiet.GreenLengths().Where(g => g.phase == 0).Skip(1), g => Assert.True(g.length < quiet.Phases[0].Green));
+            var main = flush.GreenLengths().Where(g => g.phase == 0).Skip(1).ToList();
+            Assert.NotEmpty(main);
+            Assert.All(main, g => Assert.Equal(flush.Phases[0].Green, g.length));
+        }
+
+        [Fact]
+        public void AFlushAsksForAPhaseWithNobodyWaiting()
+        {
+            var h = new ControllerHarness(ControllerConfig.Default(ControlMode.Adaptive),
+                ControllerHarness.Phase(5, 60, 20),
+                ControllerHarness.Phase(5, 60, 20));
+            h.Run(0, 500, (s, p) => { p[1].Flush = true; });
+            Assert.Contains(h.GreenStarts(), g => g.phase == 1);
+        }
     }
 }

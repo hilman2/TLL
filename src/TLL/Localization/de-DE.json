@@ -153,6 +153,7 @@
   "Panel.Release": "Ans Spiel zurückgeben",
   "Panel.Of": "von",
   "Panel.CoordinatedNote": "Läuft in einer grünen Welle: fester gemeinsamer Umlauf mit den Nachbarn, Nebenrichtungen nur bei Bedarf, und die Hauptrichtung gibt früher ab, wenn niemand kommt. Wähle einen anderen Modus, um die Kreuzung herauszunehmen.",
+  "Panel.ClusterNote": "Läuft im Knotenverbund: Die Strecken zu den Nachbarn sind zu kurz für den Stau einer Rotphase, darum teilen sich die Kreuzungen einen Umlauf. Der Versatz lässt die Seitenstraßen in eine Hauptstraße einbiegen, die vorne Grün hat. Grün in eine volle Strecke wartet, und die Kreuzung vorne räumt sie zuerst. Wähle einen anderen Modus, um die Kreuzung herauszunehmen.",
   "Panel.GreenWaves": "Grüne Wellen",
   "Panel.Junctions": "Kreuzungen",
   "Panel.RebuildGreenWaves": "Neu berechnen",
@@ -233,6 +234,7 @@
   "Mode.Actuated": "Verkehrsabhängig",
   "Mode.FixedTime": "Festzeit",
   "Mode.Coordinated": "Grüne Welle",
+  "Mode.Cluster": "Knotenverbund",
   "Mode.Flashing": "Gelb blinkend",
   "Mode.Drain": "Leerfahren",
 

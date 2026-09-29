@@ -343,13 +343,17 @@ namespace TLL.Core.Control
                     s.GreenLeft = (ushort)(end - t);
             }
             bool forcedOff = s.GreenLeft == 0 && pastMin;
-            // In a green wave the side phases end when their queue is gone.
-            // The wave's own phase ends early only when the detectors see
-            // nobody on it within the hold horizon and someone else waits:
-            // its platoon has passed, and the next one comes with the next
-            // cycle, when the phase is back on schedule.
-            bool empty = current.Demand <= 0f
-                && (!current.HasFlag(PhaseFlags.Coordinated) || (current.Approaching <= 0f && OthersRequested(in c, ref phases, s.Phase)));
+            // In a green wave the side phases end when their queue is gone,
+            // or when it cannot move: its exits are backed up, or in a
+            // cluster the road it feeds is full. Their time goes back to the
+            // wave's phase, which empties those roads. The wave's own phase
+            // ends early only when the detectors see nobody on it within the
+            // hold horizon, no neighbour needs it to make room, and someone
+            // else waits: its platoon has passed, and the next one comes with
+            // the next cycle, when the phase is back on schedule.
+            bool empty = current.HasFlag(PhaseFlags.Coordinated)
+                ? current.Demand <= 0f && !current.Flush && current.Approaching <= 0f && OthersRequested(in c, ref phases, s.Phase)
+                : current.Demand <= 0f || current.Held || current.Blocked;
             bool gapOut = c.Mode == ControlMode.Coordinated && pastMin && empty;
 
             if (!forcedOff && !gapOut)
@@ -486,13 +490,15 @@ namespace TLL.Core.Control
         }
 
         /// <summary>
-        /// Whether anyone asks for the phase: vehicles, or a pedestrian at
-        /// the push button. A call asks for the green but does not keep it
-        /// going; that is what the walk time does once the walk has begun.
+        /// Whether anyone asks for the phase: vehicles, a neighbour in the
+        /// cluster that needs room (<see cref="PhaseData.Flush"/>), or a
+        /// pedestrian at the push button. A call asks for the green but does
+        /// not keep it going; that is what the walk time does once the walk
+        /// has begun.
         /// </summary>
         private static bool Requested(in ControllerConfig c, ref PhaseData phase)
         {
-            return phase.Demand > 0f || CallCounts(in c, ref phase);
+            return phase.Demand > 0f || phase.Flush || CallCounts(in c, ref phase);
         }
 
         /// <summary>
@@ -681,7 +687,8 @@ namespace TLL.Core.Control
         /// modes: the first phase in schedule order, counted from the next
         /// green to end, that still has room for its minimum green before its
         /// force-off. In coordinated mode, phases without demand are skipped,
-        /// but the coordinated phase never is.
+        /// and so are those whose queue cannot move (<see cref="PhaseData.Blocked"/>,
+        /// <see cref="PhaseData.Held"/>); the coordinated phase never is.
         /// </summary>
         private static int NextTimedPhase<TPhases>(in ControllerConfig c, ref TPhases phases, long atStep, int current)
             where TPhases : struct, IPhaseAccess
@@ -709,7 +716,7 @@ namespace TLL.Core.Control
                     continue;
                 ref PhaseData p = ref phases[i];
                 bool coordinated = p.HasFlag(PhaseFlags.Coordinated);
-                if (c.Mode == ControlMode.Coordinated && !coordinated && !Requested(in c, ref p))
+                if (c.Mode == ControlMode.Coordinated && !coordinated && (!Requested(in c, ref p) || p.Blocked || p.Held))
                     continue;
                 // A scramble runs on demand in fixed time too; its slot goes
                 // to the phase after it.

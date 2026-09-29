@@ -26,7 +26,13 @@ namespace TLL.Systems
     ///
     /// Only links with enough measured traffic for their length are
     /// considered, and only waves with a usable band run (see
-    /// <see cref="Coupling"/>); everything else stays adaptive.
+    /// <see cref="Coupling"/>); everything else stays adaptive. The exception
+    /// are clusters: junctions whose roads between them are too short for
+    /// the queue of a red (<see cref="Clusters"/>). They always run together,
+    /// with layouts that carry the main road both ways at once, offsets that
+    /// let the side roads turn into a green main road, and an exchange
+    /// between neighbours (<see cref="ClusterLink"/>) that holds greens into
+    /// a full road and has the junction ahead empty it.
     ///
     /// Runs every 16384 simulation frames, a sixteenth of a game day, and
     /// when the player asks for it. Manual junctions are never touched.
@@ -233,8 +239,15 @@ namespace TLL.Systems
                         continue;
                     // Traffic on the link in both directions, as the two
                     // junctions measured it arriving from it, at its peak.
-                    float volume = InflowFrom(nodes[i], edges[a]) + InflowFrom(nodes[k], arrival);
-                    if (!Coupling.Couple(volume, length, InOneWave(nodes[i], nodes[k])))
+                    float inflowA = InflowFrom(nodes[i], edges[a]);
+                    float inflowB = InflowFrom(nodes[k], arrival);
+                    float volume = inflowA + inflowB;
+                    int lanesToA = LanesInto(nodes[i], edges[a]);
+                    int lanesToB = LanesInto(nodes[k], arrival);
+                    // A road too short for a red joins its junctions whatever
+                    // the coupling index says (Clusters).
+                    bool tight = Clusters.Join(length, lanesToA, inflowA, lanesToB, inflowB);
+                    if (!tight && !Coupling.Couple(volume, length, InOneWave(nodes[i], nodes[k])))
                     {
                         m_LinksTooQuiet++;
                         continue;
@@ -248,6 +261,9 @@ namespace TLL.Systems
                         Length = length,
                         Speed = SpeedOf(edges[a]),
                         Weight = volume,
+                        LanesToA = lanesToA,
+                        LanesToB = lanesToB,
+                        Tight = tight,
                     });
                 }
             }
@@ -353,14 +369,21 @@ namespace TLL.Systems
                 members.Add(member);
             }
 
-            if (running && Hurts(path, nodes, runningGroup))
+            // A cluster runs whatever band it leaves and however its
+            // junctions fared in it: on their own they jam each other. Its
+            // members need layouts that carry the main road both ways at
+            // once; they are rebuilt first, and the cluster starts next round.
+            bool cluster = path.Links.Exists(l => l.Tight);
+            if (cluster && ClusterLayouts(path, nodes, group))
+                return false;
+            if (!cluster && running && Hurts(path, nodes, runningGroup))
             {
                 WriteWave("end", path, nodes, runningGroup, null, running);
                 return false;
             }
 
             CoordinationPlan plan = Coordinator.Plan(path, members, OptimizerLimits.Default);
-            if (!Coupling.BandWorthIt(plan.BandwidthA, plan.BandwidthB, plan.Cycle, hasA, hasB, running))
+            if (!cluster && !Coupling.BandWorthIt(plan.BandwidthA, plan.BandwidthB, plan.Cycle, hasA, hasB, running))
             {
                 if (!running && TryWaveLayouts(path, nodes, members, hasA, hasB, group))
                     return false;
@@ -389,6 +412,7 @@ namespace TLL.Systems
                     kept.Group = group;
                     EntityManager.SetComponentData(nodes[j], kept);
                 }
+                WriteLinks(path, nodes, edgesOf);
                 WriteWave("keep", path, nodes, group, plan, running);
                 return true;
             }
@@ -429,8 +453,128 @@ namespace TLL.Systems
                         phase.Data.Flags &= ~PhaseFlags.Coordinated;
                 }
             }
+            WriteLinks(path, nodes, edgesOf);
             if (Mod.Settings != null && Mod.Settings.VerboseLogging)
-                Mod.Log.Info($"Green wave {group}: {path.Junctions.Count} junctions, cycle {Core.SimTime.ToSeconds(plan.Cycle):0} s, band {Core.SimTime.ToSeconds(plan.BandwidthA):0} s / {Core.SimTime.ToSeconds(plan.BandwidthB):0} s.");
+            {
+                string what = plan.Cluster
+                    ? $"Cluster {group}: {path.Junctions.Count} junctions, side traffic into red {plan.FedIntoRed * Core.SimTime.SecondsPerStep:0.#} s per cycle,"
+                    : $"Green wave {group}: {path.Junctions.Count} junctions,";
+                Mod.Log.Info($"{what} cycle {Core.SimTime.ToSeconds(plan.Cycle):0} s, band {Core.SimTime.ToSeconds(plan.BandwidthA):0} s / {Core.SimTime.ToSeconds(plan.BandwidthB):0} s.");
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Gives each junction of the corridor its neighbours across roads too
+        /// short for a red (<see cref="ClusterLink"/>), for the exchange of
+        /// the control job. A junction without such a road loses its links.
+        /// </summary>
+        private void WriteLinks(CorridorPath path, List<Entity> nodes, List<List<Entity>> edgesOf)
+        {
+            int n = path.Junctions.Count;
+            var links = new List<ClusterLink>[n];
+            for (int k = 0; k < n; k++)
+                links[k] = new List<ClusterLink>();
+            for (int k = 0; k < path.Links.Count; k++)
+            {
+                SignalLink link = path.Links[k];
+                if (!link.Tight)
+                    continue;
+                Entity edgeA = EdgeAt(edgesOf[link.A], link.ApproachA);
+                Entity edgeB = EdgeAt(edgesOf[link.B], link.ApproachB);
+                float toB = Clusters.Capacity(link.Length, link.LanesToB);
+                float toA = Clusters.Capacity(link.Length, link.LanesToA);
+                links[k].Add(new ClusterLink { Neighbor = nodes[link.B], Edge = edgeA, NeighborEdge = edgeB, CapacityOut = toB, CapacityIn = toA });
+                links[k + 1].Add(new ClusterLink { Neighbor = nodes[link.A], Edge = edgeB, NeighborEdge = edgeA, CapacityOut = toA, CapacityIn = toB });
+            }
+            for (int k = 0; k < n; k++)
+                SetLinks(nodes[path.Junctions[k]], links[k]);
+        }
+
+        /// <summary>Replaces a junction's cluster links; none takes the buffer off and clears what the exchange marked.</summary>
+        private void SetLinks(Entity node, List<ClusterLink> links)
+        {
+            if (links.Count == 0)
+            {
+                if (!EntityManager.HasBuffer<ClusterLink>(node))
+                    return;
+                EntityManager.RemoveComponent<ClusterLink>(node);
+                if (EntityManager.HasComponent<JunctionRuntime>(node))
+                {
+                    JunctionRuntime runtime = EntityManager.GetComponentData<JunctionRuntime>(node);
+                    runtime.HeldMovements = 0UL;
+                    runtime.FlushMovements = 0UL;
+                    EntityManager.SetComponentData(node, runtime);
+                }
+                return;
+            }
+            DynamicBuffer<ClusterLink> buffer = EntityManager.HasBuffer<ClusterLink>(node)
+                ? EntityManager.GetBuffer<ClusterLink>(node)
+                : EntityManager.AddBuffer<ClusterLink>(node);
+            buffer.Clear();
+            foreach (ClusterLink link in links)
+                buffer.Add(link);
+        }
+
+        /// <summary>
+        /// Gives the automatic members of a cluster a layout that carries
+        /// the main road both ways in one phase, and no scramble: with a phase
+        /// per approach or one for pedestrians, the main road of a cluster
+        /// stands at every junction in turn, and the short roads between them
+        /// fill. Of the two layouts that fit, the one the autopilot expects
+        /// the shorter wait of; without an estimate, the one with fewer
+        /// phases. The junctions are rebuilt, and the cluster starts at the
+        /// next round with their new plans.
+        /// </summary>
+        /// <returns>Whether a member was switched.</returns>
+        private bool ClusterLayouts(CorridorPath path, List<Entity> nodes, int group)
+        {
+            bool switched = false;
+            foreach (int j in path.Junctions)
+            {
+                Entity node = nodes[j];
+                ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
+                bool scramble = (junction.Options & JunctionOptions.Scramble) != 0;
+                bool together = junction.Strategy == PlanStrategy.Permissive || junction.Strategy == PlanStrategy.ProtectedTurns;
+                if (junction.Origin != JunctionOrigin.Auto || (together && !scramble))
+                    continue;
+                PlanStrategy from = junction.Strategy;
+                PlanStrategy to = together ? junction.Strategy : PlanStrategy.Permissive;
+                if (!together && EntityManager.HasComponent<AutopilotState>(node))
+                {
+                    AutopilotState estimate = EntityManager.GetComponentData<AutopilotState>(node);
+                    float permissive = estimate.LayoutDelay[0];
+                    float protectedTurns = estimate.LayoutDelay[1];
+                    if (estimate.HasEstimate && protectedTurns >= 0f && (permissive < 0f || protectedTurns < permissive))
+                        to = PlanStrategy.ProtectedTurns;
+                }
+                junction.Strategy = to;
+                junction.Options &= ~JunctionOptions.Scramble;
+                EntityManager.SetComponentData(node, junction);
+                if (EntityManager.HasComponent<AutopilotState>(node))
+                {
+                    AutopilotState state = EntityManager.GetComponentData<AutopilotState>(node);
+                    state.LayoutHold = kWaveLayoutHold;
+                    state.Layout.Age = 0;
+                    state.Layout.PendingReviews = 0;
+                    EntityManager.SetComponentData(node, state);
+                }
+                EntityManager.AddComponent<RebuildRequest>(node);
+                switched = true;
+                MetricsLog.Write(MetricsRecords.Decision(m_Simulation.frameIndex, node, "layout")?
+                    .Add("from", from.ToString())
+                    .Add("to", to.ToString())
+                    .Add("from_scramble", scramble)
+                    .Add("to_scramble", false)
+                    .Add("reason", "cluster")
+                    .Add("group", group));
+                if (Mod.Settings != null && Mod.Settings.VerboseLogging)
+                    Mod.Log.Info($"Cluster: junction {node} changes from {from}{(scramble ? " with scramble" : "")} to {to}, so that the main road runs both ways at once.");
+            }
+            if (!switched)
+                return false;
+            // The members are rebuilt first; the round waits for that.
+            Requests.RebuildGreenWaves = true;
             return true;
         }
 
@@ -462,6 +606,8 @@ namespace TLL.Systems
                 DesiredCycle = EntityManager.GetComponentData<JunctionRuntime>(node).DesiredCycle,
                 MovementA = MovementBetween(movements, EdgeAt(edges, back), EdgeAt(edges, ahead)),
                 MovementB = MovementBetween(movements, EdgeAt(edges, ahead), EdgeAt(edges, back)),
+                FeedsAhead = Into(movements, EdgeAt(edges, ahead)),
+                FeedsBack = Into(movements, EdgeAt(edges, back)),
             };
             for (int p = 0; p < phases.Length; p++)
             {
@@ -469,8 +615,29 @@ namespace TLL.Systems
                 member.PhaseMovements[p] = phases[p].Movements;
                 member.Ratios[p] = phases[p].FlowRatio;
             }
+            if (EntityManager.HasBuffer<MovementStatistics>(node))
+            {
+                DynamicBuffer<MovementStatistics> statistics = EntityManager.GetBuffer<MovementStatistics>(node, true);
+                member.Volumes = new float[statistics.Length];
+                for (int m = 0; m < statistics.Length; m++)
+                    member.Volumes[m] = statistics[m].Recent;
+            }
             FillUnmeasured(node, junction, member);
             return member;
+        }
+
+        /// <summary>The car movements that drive into <paramref name="edge"/>: the traffic this junction lets into that road.</summary>
+        private static int[] Into(DynamicBuffer<JunctionMovement> movements, Entity edge)
+        {
+            if (edge == Entity.Null)
+                return null;
+            var into = new List<int>();
+            for (int m = 0; m < movements.Length; m++)
+            {
+                if (movements[m].Target == edge && movements[m].Kind != MovementKind.Pedestrian && movements[m].Kind != MovementKind.Track)
+                    into.Add(m);
+            }
+            return into.ToArray();
         }
 
         /// <summary>
@@ -797,6 +964,7 @@ namespace TLL.Systems
         /// <summary>Takes a junction out of a green wave it no longer belongs to.</summary>
         private void Dissolve(Entity node, Setting settings)
         {
+            SetLinks(node, new List<ClusterLink>());
             ManagedJunction junction = EntityManager.GetComponentData<ManagedJunction>(node);
             if (junction.Mode != ControlMode.Coordinated && junction.Group == 0)
                 return;
@@ -833,7 +1001,9 @@ namespace TLL.Systems
             {
                 row.Add("cycle_s", Core.SimTime.ToSeconds(plan.Cycle))
                     .Add("band_a_s", Core.SimTime.ToSeconds(plan.BandwidthA))
-                    .Add("band_b_s", Core.SimTime.ToSeconds(plan.BandwidthB));
+                    .Add("band_b_s", Core.SimTime.ToSeconds(plan.BandwidthB))
+                    .Add("cluster", plan.Cluster)
+                    .Add("fed_into_red_s", plan.FedIntoRed * Core.SimTime.SecondsPerStep);
             }
             MetricsLog.Write(row);
         }
@@ -881,6 +1051,18 @@ namespace TLL.Systems
                 }
             }
             return kDefaultSpeed;
+        }
+
+        /// <summary>Car lanes of the given road that lead into the junction.</summary>
+        private int LanesInto(Entity node, Entity edge)
+        {
+            int lanes = 0;
+            foreach (LaneEnd end in LaneEnds.Collect(EntityManager, node, new List<Entity> { edge }))
+            {
+                if (end.Incoming)
+                    lanes++;
+            }
+            return lanes;
         }
 
         /// <summary>Peak vehicles per hour arriving at the junction from the given road.</summary>

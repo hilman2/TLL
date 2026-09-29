@@ -474,6 +474,8 @@ namespace TLL.UI
             writer.Write((int)d.Junction.Strategy);
             writer.PropertyName("group");
             writer.Write(d.Junction.Group);
+            writer.PropertyName("cluster");
+            writer.Write(EntityManager.Exists(d.Node) && EntityManager.HasBuffer<ClusterLink>(d.Node));
             writer.PropertyName("manual");
             writer.Write(d.Junction.Origin == JunctionOrigin.Manual);
             writer.PropertyName("stage");

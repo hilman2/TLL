@@ -215,6 +215,8 @@ export interface JunctionInfo extends EntityRef {
   strategy: PlanStrategy;
   /** Green wave the junction belongs to, 0 for none. */
   group: number;
+  /** The wave is a cluster: the roads to its neighbours are too short for a red. */
+  cluster: boolean;
   manual: boolean;
   stage: Stage;
   phase: number;

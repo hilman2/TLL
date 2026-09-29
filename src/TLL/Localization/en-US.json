@@ -153,6 +153,7 @@
   "Panel.Release": "Return to the game's control",
   "Panel.Of": "of",
   "Panel.CoordinatedNote": "Runs in a green wave: a fixed cycle shared with its neighbours, side roads only on demand, and the main road gives up its green early when nobody comes. Choose another mode to take the junction out.",
+  "Panel.ClusterNote": "Runs in a cluster: the roads to its neighbours are too short for the queue of a red, so the junctions share one cycle. The offsets let the side roads turn onto a main road that is green ahead. A green into a full road waits, and the junction ahead empties it first. Choose another mode to take the junction out.",
   "Panel.GreenWaves": "Green waves",
   "Panel.Junctions": "junctions",
   "Panel.RebuildGreenWaves": "Recalculate",
@@ -233,6 +234,7 @@
   "Mode.Actuated": "Actuated",
   "Mode.FixedTime": "Fixed time",
   "Mode.Coordinated": "Green wave",
+  "Mode.Cluster": "Cluster",
   "Mode.Flashing": "Flashing yellow",
   "Mode.Drain": "Drain",
 

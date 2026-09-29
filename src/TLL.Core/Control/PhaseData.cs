@@ -114,6 +114,25 @@ namespace TLL.Core.Control
         /// </summary>
         public bool Blocked;
 
+        /// <summary>
+        /// Every movement of the phase with a queue leads into a road of the
+        /// junction's cluster that has no room left, counted from the queue
+        /// at the road's far end (Clusters). Unlike <see cref="Blocked"/> the
+        /// road need not be backed up to this junction yet: green now would
+        /// fill it. In coordinated mode such a phase, unless it carries the
+        /// main road, is left out until its road has room again.
+        /// </summary>
+        public bool Held;
+
+        /// <summary>
+        /// A neighbour in the junction's cluster waits to send traffic into a
+        /// road this phase empties, and the road has no room for it. The
+        /// phase is asked for as if it had a queue, and in coordinated mode
+        /// its green runs to the end of its window instead of ending when its
+        /// own queue has gone.
+        /// </summary>
+        public bool Flush;
+
         /// <summary>An emergency vehicle is asking for this phase.</summary>
         public bool Preempt;
 

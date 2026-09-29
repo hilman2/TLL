@@ -10,6 +10,12 @@ namespace TLL.Core.Coordination
     /// longest span of departure times at the first junction for which a
     /// vehicle travelling at the corridor speed passes every junction on
     /// green. The optimiser maximises the weighted sum of both bandwidths.
+    ///
+    /// In a cluster (<see cref="Corridor.Feeds"/>) it also counts, for all
+    /// traffic let into the roads between the junctions, the steps it would
+    /// reach the next junction at red, and takes them off the band
+    /// (<see cref="Corridor.FeedWeight"/>). That is what keeps a side road
+    /// from turning into a road whose far end is red.
     /// </summary>
     public static class GreenWave
     {
@@ -28,6 +34,14 @@ namespace TLL.Core.Coordination
             public readonly int[] Delta;
             public readonly bool[] Open;
 
+            /// <summary>
+            /// Per feed, the red steps at its far junction counted from that
+            /// junction's cycle start over two cycles: element k holds the
+            /// red steps before k. Two cycles let a window that wraps around
+            /// the end be counted as one difference.
+            /// </summary>
+            public readonly int[][] FeedRed;
+
             public Scratch(Corridor corridor)
             {
                 int n = corridor.Count;
@@ -39,6 +53,31 @@ namespace TLL.Core.Coordination
                     ArrivalB[i] = ArrivalB[i + 1] + corridor.TravelB[i];
                 Delta = new int[Math.Max(0, corridor.Cycle) + 1];
                 Open = new bool[Math.Max(0, corridor.Cycle)];
+                FeedRed = new int[corridor.Feeds.Count][];
+                for (int f = 0; f < FeedRed.Length; f++)
+                    FeedRed[f] = RedCount(corridor, corridor.Feeds[f]);
+            }
+
+            private static int[] RedCount(Corridor corridor, Feed feed)
+            {
+                int c = Math.Max(1, corridor.Cycle);
+                CorridorJunction to = corridor.Junctions[feed.To];
+                bool forward = feed.To > feed.From;
+                int start = forward ? to.WindowStartA : to.WindowStartB;
+                int length = forward ? to.WindowLengthA : to.WindowLengthB;
+                // The far junction's through green counts from Lead steps
+                // after it began, when the front of its queue has moved off.
+                // One that never ends has no queue to wait for.
+                int from = length >= c ? 0 : start + feed.Lead;
+                int open = length >= c ? c : Math.Max(0, length - feed.Lead);
+                var count = new int[2 * c + 1];
+                for (int k = 0; k < 2 * c; k++)
+                {
+                    int t = k % c;
+                    bool green = SimTime.Mod(t - from, c) < open;
+                    count[k + 1] = count[k] + (green ? 0 : 1);
+                }
+                return count;
             }
         }
 
@@ -63,8 +102,43 @@ namespace TLL.Core.Coordination
 
         private static float Score(Corridor corridor, int[] offsets, Scratch scratch)
         {
-            return corridor.WeightA * Bandwidth(corridor, offsets, scratch.ArrivalA, forward: true, scratch)
+            float score = corridor.WeightA * Bandwidth(corridor, offsets, scratch.ArrivalA, forward: true, scratch)
                 + corridor.WeightB * Bandwidth(corridor, offsets, scratch.ArrivalB, forward: false, scratch);
+            if (corridor.Feeds.Count > 0)
+                score -= corridor.FeedWeight * FedIntoRed(corridor, offsets, scratch);
+            return score;
+        }
+
+        /// <summary>
+        /// Steps of green that let traffic into a road of the cluster which
+        /// then reaches the next junction at red, or before that junction's
+        /// queue has moved off, weighted by each feed's share of its road
+        /// and summed over the roads.
+        /// </summary>
+        public static float FedIntoRed(Corridor corridor, int[] offsets)
+        {
+            return FedIntoRed(corridor, offsets, new Scratch(corridor));
+        }
+
+        private static float FedIntoRed(Corridor corridor, int[] offsets, Scratch scratch)
+        {
+            int c = corridor.Cycle;
+            if (c <= 0)
+                return 0f;
+            float sum = 0f;
+            for (int f = 0; f < corridor.Feeds.Count; f++)
+            {
+                Feed feed = corridor.Feeds[f];
+                int length = Math.Min(feed.WindowLength, c);
+                if (length <= 0)
+                    continue;
+                // The step of the far junction's cycle at which the first
+                // vehicle let in at the start of the window arrives there.
+                int arrival = SimTime.Mod(offsets[feed.From] + feed.WindowStart + feed.Travel - offsets[feed.To], c);
+                int[] red = scratch.FeedRed[f];
+                sum += feed.Weight * (red[arrival + length] - red[arrival]);
+            }
+            return sum;
         }
 
         /// <summary>

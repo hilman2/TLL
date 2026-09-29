@@ -153,5 +153,67 @@ namespace TLL.Core.Tests.Coordination
             int[] offsets = GreenWave.Optimize(c);
             Assert.Equal(60, GreenWave.BandwidthA(c, offsets));
         }
+
+        /// <summary>
+        /// Two junctions on a cycle of 100 steps; the second has its
+        /// direction-A green from <paramref name="start"/> for
+        /// <paramref name="length"/> steps. The first lets traffic into the
+        /// road between them for 20 steps from its cycle start, 10 steps'
+        /// drive from the second.
+        /// </summary>
+        private static Corridor OneFeed(int start, int length, int lead)
+        {
+            var c = new Corridor { Cycle = 100 };
+            c.Junctions.Add(new CorridorJunction { WindowLengthA = 100, WindowLengthB = 100 });
+            c.Junctions.Add(new CorridorJunction { WindowStartA = start, WindowLengthA = length, WindowLengthB = 100 });
+            c.TravelA.Add(10);
+            c.TravelB.Add(10);
+            c.Feeds.Add(new Feed { From = 0, To = 1, WindowStart = 0, WindowLength = 20, Travel = 10, Lead = lead, Weight = 1f });
+            return c;
+        }
+
+        [Theory]
+        [InlineData(0, 0)]
+        [InlineData(95, 0)]
+        [InlineData(75, 5)]
+        [InlineData(60, 20)]
+        [InlineData(45, 20)]
+        public void FedIntoRedCountsTheStepsArrivingAtRed(int secondOffset, int expected)
+        {
+            // Green at the second from 0 to 50: traffic let in at step s
+            // arrives at s + 10 - secondOffset of its cycle.
+            Corridor c = OneFeed(0, 50, 0);
+            Assert.Equal(expected, GreenWave.FedIntoRed(c, new[] { 0, secondOffset }));
+        }
+
+        [Fact]
+        public void AGreenThatWrapsAroundTheCycleEndCountsInOnePiece()
+        {
+            // Green from 80 to 120, that is 80 to 100 and 0 to 20.
+            Corridor c = OneFeed(80, 40, 0);
+            Assert.Equal(0f, GreenWave.FedIntoRed(c, new[] { 0, 30 }));
+            Assert.Equal(10f, GreenWave.FedIntoRed(c, new[] { 0, 0 }));
+        }
+
+        [Fact]
+        public void TheLeadCountsTheStartOfTheGreenAsRed()
+        {
+            // Arriving from 5 to 25 at a green from 0 to 50: fine without a
+            // lead, five steps too early with a lead of 10.
+            Assert.Equal(0f, GreenWave.FedIntoRed(OneFeed(0, 50, 0), new[] { 0, 5 }));
+            Assert.Equal(5f, GreenWave.FedIntoRed(OneFeed(0, 50, 10), new[] { 0, 5 }));
+        }
+
+        [Fact]
+        public void TheOptimiserKeepsTheFeedOutOfTheRed()
+        {
+            // The band is the same for every offset here; only the feed
+            // tells them apart. The progression in direction A lets the
+            // traffic arrive with the green, before the lead has run.
+            Corridor c = OneFeed(0, 50, 10);
+            Assert.True(GreenWave.FedIntoRed(c, GreenWave.ProgressionA(c)) > 0f);
+            int[] offsets = GreenWave.Optimize(c);
+            Assert.Equal(0f, GreenWave.FedIntoRed(c, offsets));
+        }
     }
 }

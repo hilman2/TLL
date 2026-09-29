@@ -51,6 +51,28 @@ namespace TLL.Core.Tests.Coordination
         }
 
         [Fact]
+        public void AClusterTakesItsJunctionFromAHeavierRoadAcross()
+        {
+            // The middle row's roads are too short for a red; the middle
+            // column's carry ten times the traffic. The junction where they
+            // cross goes to the row.
+            SignalNetwork net = Grid(3, 3, eastWest: 1f);
+            for (int i = 0; i < net.Links.Count; i++)
+            {
+                SignalLink l = net.Links[i];
+                if ((l.A == 1 && l.B == 4) || (l.A == 4 && l.B == 7))
+                    l.Weight = 10f;
+                if ((l.A == 3 && l.B == 4) || (l.A == 4 && l.B == 5))
+                    l.Tight = true;
+                net.Links[i] = l;
+            }
+            List<CorridorPath> corridors = CorridorFinder.Find(net, 800f);
+
+            CorridorPath withMiddle = corridors.Single(c => c.Junctions.Contains(4));
+            Assert.Equal(new[] { 3, 4, 5 }, withMiddle.Junctions.OrderBy(j => j));
+        }
+
+        [Fact]
         public void NoJunctionIsInTwoCorridors()
         {
             var random = new Random(3);

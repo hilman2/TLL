@@ -197,6 +197,16 @@ namespace TLL.Components
         /// </summary>
         public ulong HoldMovements;
 
+        /// <summary>
+        /// In a cluster: movements whose traffic drives into a road to a
+        /// neighbour that has no room left for it (PhaseData.Held), and
+        /// movements that empty a road a neighbour waits to send traffic into
+        /// (PhaseData.Flush). Set every step by the exchange between the
+        /// neighbours (SignalControlSystem.ClusterJob); 0 outside a cluster.
+        /// </summary>
+        public ulong HeldMovements;
+        public ulong FlushMovements;
+
         /// <summary>The running vehicle green has seen such a conflict.</summary>
         public bool ConflictThisGreen;
 

@@ -546,9 +546,21 @@ const ManagedDetail = ({ junction, t }: { junction: JunctionInfo; t: Translate }
       <div className={styles.chips}>
         <Chip text={junction.manual ? t("Panel.Manual", "Set by you") : t("Panel.Automatic", "Automatic")} tone={junction.manual ? "grey" : "green"} />
         <Chip
-          text={junction.mode === ControlMode.Coordinated ? `${t("Mode.Coordinated", "Green wave")} #${junction.group}` : t("Mode." + ControlMode[junction.mode], ControlMode[junction.mode])}
+          text={
+            junction.mode !== ControlMode.Coordinated
+              ? t("Mode." + ControlMode[junction.mode], ControlMode[junction.mode])
+              : junction.cluster
+                ? `${t("Mode.Cluster", "Cluster")} #${junction.group}`
+                : `${t("Mode.Coordinated", "Green wave")} #${junction.group}`
+          }
           tone={modeTone(junction.mode)}
-          hint={junction.mode === ControlMode.Coordinated ? t("Panel.CoordinatedNote", "") : t("ModeHint." + ControlMode[junction.mode], "")}
+          hint={
+            junction.mode !== ControlMode.Coordinated
+              ? t("ModeHint." + ControlMode[junction.mode], "")
+              : junction.cluster
+                ? t("Panel.ClusterNote", "")
+                : t("Panel.CoordinatedNote", "")
+          }
         />
         {junction.mode !== ControlMode.Flashing && <Chip text={`${t("Panel.Cycle", "cycle")} ${seconds(junction.cycleSeconds)}`} tone="grey" />}
       </div>
