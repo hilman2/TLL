@@ -49,5 +49,28 @@ namespace TLL.Core.Tests.Coordination
             Assert.False(Coupling.BandWorthIt(14, 14, 80, hasA: true, hasB: true, running: false));
             Assert.True(Coupling.BandWorthIt(14, 14, 80, hasA: true, hasB: true, running: true));
         }
+
+        [Fact]
+        public void AClusterKeepsItsCycleThroughTheSwingsOfItsMembers()
+        {
+            // The cycles one cluster of six asked for in six rounds of a
+            // game, in seconds: it keeps the first. A green wave replans at
+            // the big swings, 57, 91 and 97 s.
+            int running = SimTime.ToSteps(73f);
+            foreach (float wanted in new[] { 70f, 57f, 91f, 77f, 57f, 97f })
+            {
+                Assert.True(Coupling.KeepsCycle(running, SimTime.ToSteps(wanted), cluster: true), $"{wanted} s");
+                Assert.Equal(wanted == 70f || wanted == 77f, Coupling.KeepsCycle(running, SimTime.ToSteps(wanted), cluster: false));
+            }
+        }
+
+        [Fact]
+        public void AClusterReplansWhenItsTrafficReallyChanges()
+        {
+            int running = SimTime.ToSteps(60f);
+            Assert.False(Coupling.KeepsCycle(running, SimTime.ToSteps(90f), cluster: true));
+            Assert.False(Coupling.KeepsCycle(running, SimTime.ToSteps(35f), cluster: true));
+            Assert.False(Coupling.KeepsCycle(0, SimTime.ToSteps(60f), cluster: true));
+        }
     }
 }

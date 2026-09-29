@@ -50,15 +50,6 @@ namespace TLL.Systems
 
         private const float kDefaultSpeed = 13.9f;
 
-        /// <summary>
-        /// A running wave with the same junctions keeps its plan while the new
-        /// cycle stays within this share of its own. Every new plan shifts
-        /// the offsets, and the controllers need a cycle or two to follow;
-        /// replanning on every small change of the traffic kept the waves
-        /// from ever settling.
-        /// </summary>
-        private const float kKeepCycle = 0.1f;
-
         /// <summary>Rounds of the autopilot (22.5 game minutes each) a junction stays out of waves after one did not help: a game day.</summary>
         private const ushort kWaveBanRounds = 64;
 
@@ -298,8 +289,11 @@ namespace TLL.Systems
                 }
                 // Any other signal on the way, one the player runs, one the
                 // game runs, or one waiting for its plan, breaks the link:
-                // platoons do not pass it on schedule.
-                if (EntityManager.HasComponent<TrafficLights>(next) || !EntityManager.HasBuffer<ConnectedEdge>(next))
+                // platoons do not pass it on schedule. One of TLL's flashing
+                // yellow is passed like a junction without signals: the
+                // autopilot flashes a junction of a cluster whose side road
+                // is quiet, and that must not cut the cluster in two.
+                if ((EntityManager.HasComponent<TrafficLights>(next) && !Flashing(next)) || !EntityManager.HasBuffer<ConnectedEdge>(next))
                     return false;
 
                 // Heading of the traffic as it arrives at the next node.
@@ -402,7 +396,7 @@ namespace TLL.Systems
                 }
                 return false;
             }
-            if (running && Unchanged(path, nodes, runningGroup, plan.Cycle))
+            if (running && Unchanged(path, nodes, runningGroup, plan.Cycle, cluster))
             {
                 // Same wave, same timing: only the number, which counts anew
                 // in every round, follows.
@@ -901,11 +895,12 @@ namespace TLL.Systems
 
         /// <summary>
         /// Whether a running wave still has exactly these junctions, all on
-        /// the timing it gave them, and the new plan's cycle is close to it:
-        /// then its plan stays. A member rebuilt since, with other phases,
-        /// breaks the timing and so gets a new plan.
+        /// the timing it gave them, and the new plan's cycle is close to it
+        /// (<see cref="Coupling.KeepsCycle"/>): then its plan stays. A member
+        /// rebuilt since, with other phases, breaks the timing and so gets a
+        /// new plan.
         /// </summary>
-        private bool Unchanged(CorridorPath path, List<Entity> nodes, int group, int newCycle)
+        private bool Unchanged(CorridorPath path, List<Entity> nodes, int group, int newCycle, bool cluster)
         {
             int members = 0;
             foreach (Entity node in nodes)
@@ -925,7 +920,7 @@ namespace TLL.Systems
                 else if (math.abs(own - cycle) > 1)
                     return false;
             }
-            return cycle > 0 && math.abs(newCycle - cycle) <= cycle * kKeepCycle;
+            return Coupling.KeepsCycle(cycle, newCycle, cluster);
         }
 
         /// <summary>The cycle a junction's timed plan runs, in steps: its greens and the changes between them.</summary>
@@ -1051,6 +1046,11 @@ namespace TLL.Systems
                 }
             }
             return kDefaultSpeed;
+        }
+
+        private bool Flashing(Entity node)
+        {
+            return EntityManager.HasComponent<ManagedJunction>(node) && EntityManager.GetComponentData<ManagedJunction>(node).Mode == ControlMode.Flashing;
         }
 
         /// <summary>Car lanes of the given road that lead into the junction.</summary>

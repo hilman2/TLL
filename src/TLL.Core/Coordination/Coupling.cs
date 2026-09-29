@@ -1,3 +1,5 @@
+using System;
+
 namespace TLL.Core.Coordination
 {
     /// <summary>
@@ -66,6 +68,32 @@ namespace TLL.Core.Coordination
                 return false;
             float share = hasA && hasB ? (bandA + bandB) / (2f * cycle) : (hasA ? bandA : bandB) / (float)cycle;
             return share >= (running ? KeepBandShare : MinimumBandShare);
+        }
+
+        /// <summary>
+        /// Share of its cycle by which the cycle a running wave's junctions ask
+        /// for may differ before the wave gets a new plan. Every new plan
+        /// shifts the offsets, and the controllers need a cycle or two to
+        /// follow; replanning on every small change of the traffic kept the
+        /// waves from ever settling.
+        /// </summary>
+        public const float KeepCycle = 0.1f;
+
+        /// <summary>
+        /// The same for a cluster. Its cycle is the longest any member asks
+        /// for, and in coordination their wishes swing by a third from one
+        /// round to the next (73, 57, 91, 77, 57, 97 s for one cluster of six):
+        /// at <see cref="KeepCycle"/> it got a new plan nearly every round.
+        /// </summary>
+        public const float KeepClusterCycle = 0.35f;
+
+        /// <summary>Whether a running wave keeps its plan, as far as the cycle goes.</summary>
+        /// <param name="running">The cycle it runs, steps.</param>
+        /// <param name="wanted">The cycle a new plan would have, steps.</param>
+        /// <param name="cluster">Whether the wave is a cluster (<see cref="Clusters"/>).</param>
+        public static bool KeepsCycle(int running, int wanted, bool cluster)
+        {
+            return running > 0 && Math.Abs(wanted - running) <= running * (cluster ? KeepClusterCycle : KeepCycle);
         }
     }
 }

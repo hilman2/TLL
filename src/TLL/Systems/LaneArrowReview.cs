@@ -80,7 +80,18 @@ namespace TLL.Systems
                 List<LaneConnectionRule> own = rules.FindAll(r => r.Auto && r.FromEdge == edges[e]);
                 if (rules.Exists(r => !r.Auto && r.FromEdge == edges[e]))
                     continue;
+                int textBefore = text.Length;
                 List<LaneConnectionRule> renewed = Review(edges, e, ends, current, own, flow, signals, leftHandTraffic, text);
+                // The same rules as the approach has: they are in place, and
+                // the lanes do not follow them. Writing them again rebuilt
+                // the junction every round, which in a green wave or a
+                // cluster also cost it its timing, and changed nothing.
+                if (renewed != null && SameRules(renewed, own))
+                {
+                    text.Length = textBefore;
+                    ReportStuck(em, node, e, ends, current, own);
+                    renewed = null;
+                }
                 if (renewed == null)
                 {
                     result.AddRange(own);
@@ -176,6 +187,61 @@ namespace TLL.Systems
             text.Append($"approach {approach}: lanes {string.Join(" ", Array.ConvertAll(uses, u => u.ToString()))} -> {string.Join(" ", Array.ConvertAll(chosen, u => u.ToString()))}"
                 + $" for roads {string.Join(",", targets)}, {before:0.#} -> {after:0.#} {unit}; ");
             return result;
+        }
+
+        /// <summary>Whether two lists hold the same rules, in any order; who set them does not count.</summary>
+        private static bool SameRules(List<LaneConnectionRule> a, List<LaneConnectionRule> b)
+        {
+            if (a.Count != b.Count)
+                return false;
+            foreach (LaneConnectionRule r in a)
+            {
+                if (!b.Exists(o => o.Change == r.Change && o.FromEdge == r.FromEdge && o.FromLane == r.FromLane && o.ToEdge == r.ToEdge && o.ToLane == r.ToLane))
+                    return false;
+            }
+            return true;
+        }
+
+        /// <summary>Junctions whose stuck rules are in the log already, so each is reported once per session.</summary>
+        private static readonly HashSet<Entity> s_Reported = new HashSet<Entity>();
+
+        /// <summary>
+        /// Writes to the log, once per junction, which connections an
+        /// approach still has although its rules take them away, and what
+        /// the lane making each of them is: whether the rule matches it
+        /// (LaneRuleSystem.Removes), whether it is shared with a tram
+        /// (LaneRuleSystem leaves those), and its lane numbers.
+        /// </summary>
+        private static void ReportStuck(EntityManager em, Entity node, int approach, List<LaneEnd> ends, HashSet<ApproachLanes.Link> current,
+            List<LaneConnectionRule> own)
+        {
+            if (!s_Reported.Add(node))
+                return;
+            var text = new StringBuilder($"Lane arrows: junction {node}, approach {approach}, keeps its rules, but the lanes do not follow them:");
+            DynamicBuffer<LaneConnectionRule> stored = em.GetBuffer<LaneConnectionRule>(node, true);
+            DynamicBuffer<Game.Net.SubLane> lanes = em.GetBuffer<Game.Net.SubLane>(node, true);
+            foreach (LaneConnectionRule rule in own)
+            {
+                if (rule.Change != LaneConnectionChange.Removed)
+                    continue;
+                int from = LaneEnds.Find(ends, rule.FromEdge, rule.FromLane, incoming: true);
+                int to = LaneEnds.Find(ends, rule.ToEdge, rule.ToLane, incoming: false);
+                if (from < 0 || to < 0 || !current.Contains(new ApproachLanes.Link { From = from, To = to }))
+                    continue;
+                text.Append($" rule lane {rule.FromLane} -> {rule.ToEdge} lane {rule.ToLane} still built as");
+                for (int i = 0; i < lanes.Length; i++)
+                {
+                    Entity lane = lanes[i].m_SubLane;
+                    if (!em.HasComponent<Game.Net.CarLane>(lane) || em.HasComponent<Game.Net.MasterLane>(lane))
+                        continue;
+                    Game.Net.Lane path = em.GetComponentData<Game.Net.Lane>(lane);
+                    if (LaneEnds.Find(ends, path.m_StartNode, incoming: true) != from || LaneEnds.Find(ends, path.m_EndNode, incoming: false) != to)
+                        continue;
+                    text.Append($" {lane} (matched {LaneRuleSystem.Removes(stored, path)}, tram {em.HasComponent<Game.Net.TrackLane>(lane)},"
+                        + $" slave {em.HasComponent<Game.Net.SlaveLane>(lane)}, start index {path.m_StartNode.GetLaneIndex()}, end index {path.m_EndNode.GetLaneIndex()});");
+                }
+            }
+            Mod.Log.Info(text.ToString());
         }
 
         private static bool Same(LaneUse[] a, LaneUse[] b)
